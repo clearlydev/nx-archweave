@@ -29,8 +29,8 @@ export interface PluginCatalogEntry {
   homepage: string;
   repository: string;
   license: string;
-  /** The plugin's npm package, when it ships one: the version source when nothing is
-   * pinned, and the weak workspace-dependency signal when the host CLI is missing. */
+  /** The plugin's npm package, when it ships one: the weak workspace-dependency signal
+   * when the host CLI is missing. */
   npmPackage?: string;
   /** The official install instructions (linked from every manual alternative). */
   installDocs: string;

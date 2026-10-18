@@ -104,7 +104,7 @@ pnpm nx g @clearlydev/nx-archweave:record-integration \
 도구의 현재 감지 상태도 함께 보여 줘요. 그래서 "아직 미설치"와 "이미 설치됨"을 구분할 수 있어요.
 
 > [!NOTE]
-> **완전한 오프라인 미리보기는 아니에요.** `--versionRange`를 주지 않으면 `add-integration`이 npm 레지스트리에서 최신 버전을 찾아요. 또 나머지 제너레이터 2개와 같은 로컬 읽기 전용 `claude plugin list --json` 검사를 실행해요.
+> **네트워크에 접속하지 않아요.** `--versionRange`를 주지 않으면, 미리보기에는 마켓플레이스가 버전을 정한다고 표시돼요. 마켓플레이스가 자체 최신 버전을 설치하기 때문이에요. 다만 나머지 제너레이터 2개와 같은 로컬 읽기 전용 `claude plugin list --json` 검사는 실행해요.
 
 ### 2단계 — `install-integration`
 

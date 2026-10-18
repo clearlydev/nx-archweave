@@ -23,7 +23,7 @@
     },
     "versionRange": {
       "type": "string",
-      "description": "Exact version to pin. If omitted, the official npm registry is queried for the latest version (one real network call)."
+      "description": "Version to show as requested. Without it, the preview says the marketplace decides — it installs its own latest. No network access."
     },
     "dryRun": {
       "type": "boolean",

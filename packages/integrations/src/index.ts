@@ -10,5 +10,4 @@ export * from './process/command-runner.ts';
 export * from './process/read-only-command-runner.ts';
 export * from './catalog/plugin-catalog.ts';
 export * from './catalog/create-catalog-integration.ts';
-export * from './catalog/resolve-version.ts';
 export * from './hosts/claude-code/index.ts';

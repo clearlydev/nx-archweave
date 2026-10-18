@@ -89,6 +89,16 @@ describe('addIntegrationGenerator', () => {
     expect(logs.join('\n')).toContain('--scope local');
   });
 
+  it('without --versionRange, previews the version the marketplace decides — no registry lookup', async () => {
+    const logs: string[] = [];
+    const spy = jest.spyOn(console, 'log').mockImplementation((msg) => {
+      logs.push(String(msg));
+    });
+    await addIntegrationGenerator(tree, { tool: 'ponytail' }, { integrationsRoot: fakeRoot() });
+    spy.mockRestore();
+    expect(logs.join('\n')).toContain('Resolved version: latest (decided by the marketplace)');
+  });
+
   it('previews project scope by default, and carries --scope into the install hint only when it was given', async () => {
     const logs: string[] = [];
     const spy = jest.spyOn(console, 'log').mockImplementation((msg) => {

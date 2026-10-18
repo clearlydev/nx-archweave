@@ -7,9 +7,7 @@ const FIXTURES = join(__dirname, '../../../../../tools/fixtures/integrations');
 // This suite exercises the real, unmodified ponytail adapter (via the
 // composition root) against real fixture workspaces, mirroring the
 // established pattern in init/generator.integration.spec.ts — pure functions
-// tested directly against a real filesystem path, no Tree involved. An
-// explicit versionRange is always supplied so plan() never reaches the real
-// npm registry resolver. A rejecting fake
+// tested directly against a real filesystem path, no Tree involved. A rejecting fake
 // runner simulates "claude CLI not found," exercising the package.json
 // fallback path this suite is really testing (never the real claude binary).
 describe('add-integration + ponytail adapter, real fixture behavior', () => {
@@ -53,7 +51,7 @@ describe('add-integration + ponytail adapter, real fixture behavior', () => {
     expect(result.problems.length).toBeGreaterThan(0);
   });
 
-  it('plan() resolves an explicit versionRange verbatim (no real network call)', async () => {
+  it('plan() shows an explicit versionRange verbatim', async () => {
     await expect(ponytail.plan({ targetEnvironment: 'claude-code', versionRange: '4.8.4' })).resolves.toMatchObject({
       resolvedVersion: '4.8.4',
     });
