@@ -30,10 +30,10 @@ export interface IntegrationsCompositionRoot {
 // @nx-archweave/integrations); the generators' --tool/--target schema enums are kept
 // equal to it by a test (catalog-schema-enums.spec.ts).
 export function createIntegrationsCompositionRoot(
-  deps: { runner?: CommandRunner; resolveVersion?: (versionRange?: string) => Promise<string> } = {},
+  deps: { runner?: CommandRunner } = {},
 ): IntegrationsCompositionRoot {
   const runner = deps.runner ?? new NodeCommandRunner();
-  const registry = createIntegrationRegistry(createCatalogIntegrations({ runner, resolveVersion: deps.resolveVersion }));
+  const registry = createIntegrationRegistry(createCatalogIntegrations({ runner }));
 
   return {
     registry,

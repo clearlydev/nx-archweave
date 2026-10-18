@@ -37,7 +37,7 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 The examples below use `pnpm nx g`. With another package manager, run the same generator the way the block above shows.
 
 > [!NOTE]
-> The plugin ships as a self-contained bundle. Its only runtime dependencies are `@nx/devkit` and `tslib`, so adding it doesn't pull a tree of transitive packages into your workspace.
+> The plugin ships as a self-contained bundle. Its only runtime dependency is `@nx/devkit`, so adding it doesn't pull a tree of transitive packages into your workspace.
 
 ## Requirements
 

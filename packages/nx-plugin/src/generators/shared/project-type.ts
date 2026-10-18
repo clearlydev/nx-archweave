@@ -12,8 +12,8 @@ export type ProjectType = 'application' | 'library';
  * application, as in Nx); then `tsconfig.lib.json` → library; `tsconfig.app.json`
  * → application; a readable package.json with none of exports/main/module/bin
  * set → application; anything else — including a missing or unparseable
- * package.json — → library. Mirrored, not imported: the plugin's runtime
- * dependencies stay @nx/devkit + tslib. Not mirrored: the package-json plugin's
+ * package.json — → library. Mirrored, not imported: the plugin's only runtime
+ * dependency stays @nx/devkit. Not mirrored: the package-json plugin's
  * `workspaceLayout.appsDir`/`libsDir` override, which devkit's tree-based
  * `getProjects` never applies either.
  */

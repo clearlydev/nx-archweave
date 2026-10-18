@@ -76,12 +76,10 @@ export async function runInstallIntegration(
   }
   const name = entry.displayName;
   // plan() throws a clear error for an unsupported target — reused, not duplicated.
-  // No registry lookup: the marketplace decides the version.
   const plan = await integration.plan({
     targetEnvironment: target,
     versionRange: options.versionRange,
     scope,
-    resolveLatestVersion: false,
   });
 
   // The structured CLI signal, not verifyClaudeMarketplacePlugin — a missing CLI must

@@ -5,7 +5,7 @@
 // - platform=node, format=esm
 // - `@nx-archweave/*` (and any other workspace-only package actually used
 //   at runtime) are inlined into the bundle
-// - real third-party runtime deps (@nx/devkit, tslib) and node builtins
+// - the one real third-party runtime dep (@nx/devkit) and node builtins
 //   stay external, resolved from the consumer's own node_modules
 //
 // Usage: node tools/bundle.mjs <package-dir-name>
@@ -32,7 +32,7 @@ const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 const PACKAGES = {
   'nx-plugin': {
     dir: 'packages/nx-plugin',
-    external: ['@nx/devkit', 'tslib'],
+    external: ['@nx/devkit'],
     entryPoints(pkgDir) {
       // src/eslint: the `@clearlydev/nx-archweave/eslint` entry a workspace's eslint.config.mjs imports
       const entries = ['src/index.ts', 'src/bin/review-verdict.ts', 'src/eslint/index.ts'];
@@ -68,8 +68,8 @@ const PACKAGES = {
     dir: 'packages/create-nx-archweave',
     // The CLI has no runtime import of @clearlydev/nx-archweave (it only names
     // the package as an install spec in the plan it executes), so nothing
-    // workspace-internal needs inlining here; only tslib stays external.
-    external: ['tslib'],
+    // workspace-internal needs inlining here; only node builtins stay external.
+    external: [],
     entryPoints() {
       return ['src/index.ts', 'src/bin.ts'];
     },

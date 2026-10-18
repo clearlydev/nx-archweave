@@ -45,6 +45,18 @@ describe('parseCliArgs', () => {
     });
   });
 
+  it('refuses an invalid workspace name with the rule it broke and an example', () => {
+    expect(parseCliArgs(['My-App'])).toEqual({
+      kind: 'error',
+      message:
+        'Invalid workspace name "My-App": it contains uppercase letters, and npm package names are lowercase. For example: my-app',
+    });
+    expect(parseCliArgs(['my-app; rm -rf ~'])).toEqual({
+      kind: 'error',
+      message: 'Invalid workspace name "my-app; rm -rf ~": it contains whitespace. For example: my-app',
+    });
+  });
+
   it('leaves name undefined when no positional argument is given', () => {
     const outcome = parseCliArgs(['--preset=quick-start']);
     expect(outcome).toEqual({

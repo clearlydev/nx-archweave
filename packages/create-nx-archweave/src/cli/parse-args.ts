@@ -15,6 +15,7 @@ import {
   type CliReviewProvider,
 } from './types.ts';
 import { isCliPackageManager, type CliPackageManager } from './package-manager.ts';
+import { invalidWorkspaceNameMessage, workspaceNameProblem } from './workspace-name.ts';
 
 export interface ParsedArgs {
   name: string | undefined;
@@ -135,6 +136,10 @@ export function parseCliArgs(argv: readonly string[]): ParseArgsOutcome {
     };
   }
   const name = parsed.positionals[0];
+  const nameProblem = name === undefined ? undefined : workspaceNameProblem(name);
+  if (name !== undefined && nameProblem !== undefined) {
+    return { kind: 'error', message: invalidWorkspaceNameMessage(name, nameProblem) };
+  }
 
   const preset = parsed.values.preset;
   if (preset !== undefined && !PRESET_VALUES.includes(preset as CliPreset)) {

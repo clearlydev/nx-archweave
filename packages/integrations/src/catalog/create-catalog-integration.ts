@@ -1,9 +1,8 @@
 import type { ToolIntegration } from '../contracts/integration.ts';
 import type { CommandRunner } from '../process/command-runner.ts';
 import { PLUGIN_CATALOG, PLUGIN_HOSTS, type PluginCatalogEntry } from './plugin-catalog.ts';
-import { resolveVersionFromNpmRegistry } from './resolve-version.ts';
 import { detectWorkspacePackage } from '../hosts/claude-code/detect.ts';
-import { createClaudeMarketplacePlan, VERSION_DECIDED_BY_MARKETPLACE } from '../hosts/claude-code/plan.ts';
+import { createClaudeMarketplacePlan } from '../hosts/claude-code/plan.ts';
 import { createClaudeMarketplaceInstall } from '../hosts/claude-code/install.ts';
 import { createClaudeMarketplaceVerifier } from '../hosts/claude-code/verify.ts';
 
@@ -11,17 +10,6 @@ export interface CatalogIntegrationDependencies {
   /** Serves both the read-only `plugin list` verification and — only behind an
    * ApprovedInstallPlan — the one mutating `plugin install` call. */
   runner: CommandRunner;
-  /** Version resolver for plan() when no versionRange is pinned. Defaults to the npm
-   * registry for an entry with an npm package (the marketplace decides otherwise); tests
-   * inject a fake so they never touch the network. */
-  resolveVersion?: (versionRange?: string) => Promise<string>;
-}
-
-function defaultResolveVersion(entry: PluginCatalogEntry): () => Promise<string> {
-  const npmPackage = entry.npmPackage;
-  return npmPackage === undefined
-    ? async () => VERSION_DECIDED_BY_MARKETPLACE
-    : () => resolveVersionFromNpmRegistry(npmPackage);
 }
 
 // A catalog entry (data) × its host adapter (code) = the ToolIntegration every generator,
@@ -37,7 +25,7 @@ export function createCatalogIntegration(entry: PluginCatalogEntry, deps: Catalo
     license: entry.license,
     supportedEnvironments: PLUGIN_HOSTS.filter((host) => entry.hosts[host] !== undefined),
     detect: (context) => detectWorkspacePackage(entry, context),
-    plan: createClaudeMarketplacePlan(entry, { resolveVersion: deps.resolveVersion ?? defaultResolveVersion(entry) }),
+    plan: createClaudeMarketplacePlan(entry),
     install: createClaudeMarketplaceInstall(entry, { runner: deps.runner }),
     verify: createClaudeMarketplaceVerifier(entry, { runner: deps.runner }),
     uninstallInstructions: async () => [...entry.uninstallSteps],
