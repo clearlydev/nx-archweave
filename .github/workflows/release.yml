@@ -27,16 +27,17 @@ jobs:
       contents: write # the GitHub release
       id-token: write # npm trusted publishing and provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      # No dependency cache in the publishing job: setup-node advises against it (cache poisoning).
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
+          package-manager-cache: false
           registry-url: 'https://registry.npmjs.org'
 
       # Trusted publishing needs npm 11.5.1 or newer; `npm stage` is in 11.16.
