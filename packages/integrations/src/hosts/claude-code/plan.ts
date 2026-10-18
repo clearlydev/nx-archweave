@@ -1,9 +1,9 @@
 import type { IntegrationInstallScope, IntegrationOptions, InstallPlan } from '../../contracts/integration.ts';
 import type { PluginCatalogEntry } from '../../catalog/plugin-catalog.ts';
 
-/** resolvedVersion when nothing is pinned and the registry lookup is skipped: the
- * Claude Code marketplace installs its own latest, and the version that actually got
- * installed is the one recorded after verification. */
+/** resolvedVersion when nothing is pinned: the Claude Code marketplace installs its own
+ * latest, and the version that actually got installed is the one recorded after
+ * verification. plan() never looks a version up, so it needs no network. */
 export const VERSION_DECIDED_BY_MARKETPLACE = 'latest (decided by the marketplace)';
 
 /** Files Claude Code changes INSIDE the workspace for each scope (user scope writes only
@@ -14,10 +14,6 @@ const WORKSPACE_FILES_BY_SCOPE: Record<'user' | 'project' | 'local', string[]> =
   local: ['.claude/settings.local.json'],
 };
 
-export interface ClaudeMarketplacePlanDependencies {
-  resolveVersion: (versionRange?: string) => Promise<string>;
-}
-
 /** The default install scope:
  * project — Claude Code records the plugin in the workspace's .claude/settings.json
  * instead of the user's own settings. `--marketplace` itself registers the marketplace in
@@ -25,13 +21,7 @@ export interface ClaudeMarketplacePlanDependencies {
  * runs projectMarketplaceCommand (install.ts) to declare it in the workspace. */
 export const DEFAULT_PLUGIN_SCOPE: IntegrationInstallScope = 'project';
 
-// Dependency-injected so tests never hit the real npm registry (the real
-// resolver — resolveVersionFromNpmRegistry, wired by createCatalogIntegration — does a
-// real network call; that only happens in production use, never in unit tests).
-export function createClaudeMarketplacePlan(
-  entry: PluginCatalogEntry,
-  deps: ClaudeMarketplacePlanDependencies,
-): (options: IntegrationOptions) => Promise<InstallPlan> {
+export function createClaudeMarketplacePlan(entry: PluginCatalogEntry): (options: IntegrationOptions) => Promise<InstallPlan> {
   return async (options: IntegrationOptions): Promise<InstallPlan> => {
     const distribution = entry.hosts['claude-code'];
     if (options.targetEnvironment !== 'claude-code' || distribution === undefined) {
@@ -45,12 +35,8 @@ export function createClaudeMarketplacePlan(
       );
     }
 
-    // Explicit versionRange is treated as an exact pin, per the user's request.
-    // Resolving an actual semver *range* against the registry's version list is out
-    // of scope — an exact version string is what's supported.
-    const resolvedVersion =
-      options.versionRange ??
-      (options.resolveLatestVersion === false ? VERSION_DECIDED_BY_MARKETPLACE : await deps.resolveVersion(options.versionRange));
+    // An explicit versionRange is shown as given; without one the marketplace decides.
+    const resolvedVersion = options.versionRange ?? VERSION_DECIDED_BY_MARKETPLACE;
 
     // Claude Code ≥ 2.1.285 exposes the plugin install as a real CLI command
     // (flags read from `claude plugin install

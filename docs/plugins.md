@@ -104,7 +104,7 @@ pnpm nx g @clearlydev/nx-archweave:record-integration \
 It also shows the tool's current detection status, so you can tell "not installed yet" from "already there".
 
 > [!NOTE]
-> **Not a fully offline preview.** Unless you pass `--versionRange`, `add-integration` resolves the latest version from the npm registry. It also runs the same local, read-only `claude plugin list --json` check as the other two generators.
+> **No network access.** Without `--versionRange`, the preview says the marketplace decides the version, since it installs its own latest. `add-integration` does run the same local, read-only `claude plugin list --json` check as the other two generators.
 
 ### Step 2 — `install-integration`
 

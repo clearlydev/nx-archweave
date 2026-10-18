@@ -1,5 +1,9 @@
 import { buildPlan, isYarnBerry, nxGenerateCommand, NPM_10_CREATE_WORKSPACE_HINT, pendingBuildDecisions, YARN_1_CREATE_WORKSPACE_HINT, type CreatePlanInput, type StepContext } from './plan.ts';
 import { PLUGIN_CHOICES } from './types.ts';
+import { CLI_VERSION } from '../render-usage.ts';
+
+// The plan installs the plugin release this CLI was built with, so the spec follows a version bump.
+const PLUGIN_SPEC = `@clearlydev/nx-archweave@^${CLI_VERSION}`;
 
 const baseInput: CreatePlanInput = {
   packageManager: 'pnpm',
@@ -34,9 +38,9 @@ describe('buildPlan', () => {
       },
       {
         id: 'install-plugin',
-        description: 'Install @clearlydev/nx-archweave@^0.1.0',
+        description: `Install ${PLUGIN_SPEC}`,
         command: 'pnpm',
-        args: ['add', '-D', '-w', '@clearlydev/nx-archweave@^0.1.0'],
+        args: ['add', '-D', '-w', PLUGIN_SPEC],
         cwd: 'my-app',
       },
       {
@@ -568,8 +572,8 @@ describe('buildPlan — yarn', () => {
   it('adds the plugin at the root with -W on classic and without it on berry, as the created workspace says', () => {
     const install = buildPlan(yarnInput).steps.find((step) => step.id === 'install-plugin')!;
     expect(install.command).toBe('yarn');
-    expect(install.finalizeArgs!(files({ 'yarn.lock': '# yarn lockfile v1\n' }))).toEqual(['add', '-D', '-W', '@clearlydev/nx-archweave@^0.1.0']);
-    expect(install.finalizeArgs!(files({ '.yarnrc.yml': 'nodeLinker: node-modules\n' }))).toEqual(['add', '-D', '@clearlydev/nx-archweave@^0.1.0']);
+    expect(install.finalizeArgs!(files({ 'yarn.lock': '# yarn lockfile v1\n' }))).toEqual(['add', '-D', '-W', PLUGIN_SPEC]);
+    expect(install.finalizeArgs!(files({ '.yarnrc.yml': 'nodeLinker: node-modules\n' }))).toEqual(['add', '-D', PLUGIN_SPEC]);
   });
 
   it('the official backend steps use yarn too, with the flavor read the same way', () => {
@@ -604,7 +608,7 @@ describe('buildPlan — bun', () => {
     expect(plan.steps[0].failureHint).toBeUndefined();
     expect(plan.steps.find((step) => step.id === 'install-plugin')).toMatchObject({
       command: 'bun',
-      args: ['add', '-d', '@clearlydev/nx-archweave@^0.1.0'],
+      args: ['add', '-d', PLUGIN_SPEC],
     });
     const init = plan.steps.find((step) => step.id === 'run-init')!;
     expect(init.command).toBe('bun');

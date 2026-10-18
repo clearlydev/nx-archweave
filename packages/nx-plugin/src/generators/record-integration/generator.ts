@@ -32,9 +32,8 @@ export async function recordIntegrationGenerator(
 
   // plan() itself throws a clear error for an unsupported targetEnvironment —
   // reused, not duplicated. Called only to validate the
-  // target; its result is not otherwise used by this generator, so no registry
-  // lookup is made for a version nobody reads.
-  await integration.plan({ targetEnvironment: target, resolveLatestVersion: false });
+  // target; its result is not otherwise used by this generator.
+  await integration.plan({ targetEnvironment: target });
 
   // Always a live call — never a cached/previous result;
   // shared with install-integration so both record by one rule (only a

@@ -22,12 +22,6 @@ const MARKETPLACE_OK = {
 const MARKETPLACE_ARGV = ['plugin', 'marketplace', 'add', 'DietrichGebert/ponytail', '--scope', 'project', '--json'];
 const argvFor = (scope: string) => ['plugin', 'install', 'ponytail', '--marketplace', 'DietrichGebert/ponytail', '--scope', scope, '--json'];
 
-// plan() would otherwise resolve the latest version from npm — never in tests (and
-// install-integration asks it not to anyway).
-const fakeResolveVersion = async () => {
-  throw new Error('install-integration must not resolve a version from the registry');
-};
-
 interface Response {
   stdout: string;
   stderr?: string;
@@ -61,7 +55,7 @@ function scriptedRunner(script: { list?: Response[]; install?: Response[]; marke
     },
   };
   const subcommands = () => calls.map((c) => c.argv[1]);
-  return { calls, subcommands, root: createIntegrationsCompositionRoot({ runner, resolveVersion: fakeResolveVersion }) };
+  return { calls, subcommands, root: createIntegrationsCompositionRoot({ runner }) };
 }
 
 const rejectingRoot = () =>
@@ -71,7 +65,6 @@ const rejectingRoot = () =>
         throw Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' });
       },
     },
-    resolveVersion: fakeResolveVersion,
   });
 
 async function render(tree: Tree, options: Parameters<typeof installIntegrationGenerator>[1], root: ReturnType<typeof rejectingRoot>) {

@@ -14,8 +14,8 @@ import { posix, relative, resolve, sep } from 'node:path';
  * measured source of false positives. Locations are computed from path strings alone: the
  * rule never reads the file system.
  *
- * Self-contained on purpose: no `eslint` import, so the plugin's runtime dependencies stay
- * @nx/devkit + tslib. The handful of ESLint shapes it touches are typed structurally below.
+ * Self-contained on purpose: no `eslint` import, so the plugin's only runtime dependency stays
+ * @nx/devkit. The handful of ESLint shapes it touches are typed structurally below.
  */
 
 export type FsdEnforcementSeverity = 'error' | 'warn';

@@ -19,10 +19,6 @@ export interface IntegrationOptions {
   targetEnvironment: string;
   versionRange?: string;
   scope?: IntegrationInstallScope;
-  /** When false and no versionRange is pinned, plan() makes no registry call and
-   * reports that the host decides the version (a plugin marketplace installs its own
-   * latest). Defaults to true. */
-  resolveLatestVersion?: boolean;
 }
 
 export interface InstallPlan {
