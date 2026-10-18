@@ -1,0 +1,6 @@
+{
+  "preset": "solo",
+  "frontend": "react-vite",
+  "backend": "express",
+  "locale": "en"
+}

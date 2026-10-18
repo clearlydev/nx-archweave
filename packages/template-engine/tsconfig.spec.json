@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/jest",
+    "rewriteRelativeImportExtensions": false,
+    "allowImportingTsExtensions": true,
+    "types": ["jest", "node"],
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "jest.config.ts",
+    "jest.config.cts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.d.ts"
+  ],
+  "references": [
+    {
+      "path": "../review-policy/tsconfig.lib.json"
+    },
+    {
+      "path": "../templates/tsconfig.lib.json"
+    },
+    {
+      "path": "./tsconfig.lib.json"
+    }
+  ]
+}

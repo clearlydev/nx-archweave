@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "AddAgentRules",
+  "title": "Write nx-archweave's agent rules into CLAUDE.md / AGENTS.md for the AI hosts you use",
+  "type": "object",
+  "properties": {
+    "hosts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["claude-code", "codex", "cursor", "gemini-cli"]
+      },
+      "description": "The AI coding tools you use. Claude Code reads CLAUDE.md; Codex, Cursor and Gemini CLI read AGENTS.md. Defaults to toolkit.config.json's aiHosts, else Claude Code.",
+      "x-prompt": {
+        "message": "Which AI coding tools do you use? (space to select, enter to confirm; none selected = toolkit.config.json's aiHosts, else Claude Code)",
+        "type": "list",
+        "multiselect": true,
+        "items": [
+          { "value": "claude-code", "label": "Claude Code" },
+          { "value": "codex", "label": "Codex" },
+          { "value": "cursor", "label": "Cursor" },
+          { "value": "gemini-cli", "label": "Gemini CLI" }
+        ]
+      }
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["ko", "en"],
+      "description": "Content language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "teamRules": {
+      "type": "boolean",
+      "description": "Include the Team Rules section (collaboration rules for a shared repository). Defaults to toolkit.config.json's agentRules.teamRules, else false"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the full generated content and effective decision without writing"
+    }
+  },
+  "required": []
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "InstallIntegration",
+  "title": "Install a supported external integration through its official CLI, verify it live, record and declare it",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": ["ponytail"],
+      "description": "The plugin to install, by its plugin-catalog id (@nx-archweave/integrations plugin-catalog.ts). The enum is kept equal to the catalog by a test."
+    },
+    "target": {
+      "type": "string",
+      "enum": ["claude-code"],
+      "default": "claude-code",
+      "description": "The host environment to install into. Hosts with a plugin adapter; today only 'claude-code'."
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["user", "project", "local"],
+      "description": "Claude Code plugin scope for `claude plugin install --scope` (default project, which records it in the workspace's .claude/settings.json; local writes its personal .claude/settings.local.json; user installs for every project of this user). When given explicitly, an existing install at a different scope is reported instead of counted as installed."
+    },
+    "versionRange": {
+      "type": "string",
+      "description": "Version to show as requested. Not enforced — the marketplace decides the plugin version, and the version actually installed is the one recorded."
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "Run the official install command, re-verify live, record the manifest entry and declare the integration in toolkit.config.json. Without it (default) the generator only checks the current state and shows the exact command. Ignored when Nx's own --dry-run is set."
+    }
+  },
+  "required": ["tool"]
+}

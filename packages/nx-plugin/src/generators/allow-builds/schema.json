@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "AllowBuilds",
+  "title": "Allow dependency build scripts pnpm skipped, and run them",
+  "type": "object",
+  "properties": {
+    "packages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "npm package names whose install scripts may run (comma-separated: --packages=sharp,@swc/core). Each must be installed (listed in pnpm-lock.yaml)."
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow the builds in pnpm-workspace.yaml and run `pnpm rebuild` for them. Without it (default) the generator shows what would change and writes nothing. Ignored when Nx's own --dry-run is set."
+    }
+  },
+  "required": ["packages"]
+}

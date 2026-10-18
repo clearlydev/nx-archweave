@@ -1,0 +1,17 @@
+name: 기능 요청
+description: 새로운 기능이나 개선 사항을 제안합니다.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 문제를 해결하나요?
+      description: 지금 겪고 있는 문제나 한계를 설명하세요.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 해결 방법
+      description: 원하는 동작이나 구현 방향을 설명하세요.
+    validations:
+      required: true

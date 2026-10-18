@@ -1,0 +1,14 @@
+/**
+<% if (locale === 'ko') { -%>
+ * "<%- name %>"의 공개 API ("<%- layer %>" 레이어, FSD).
+ *
+ * 다른 슬라이스/레이어가 import할 수 있는 유일한 진입점입니다 — 밖으로 노출할 것은 모두 여기서
+ * 재export하고, 내부 파일(model/, ui/, api/ …)은 밖에서 직접 import하지 않습니다.
+<% } else { -%>
+ * Public API of "<%- name %>" (the "<%- layer %>" layer, FSD).
+ *
+ * The only entry point other slices and layers may import — re-export everything exposed
+ * from here; internal files (model/, ui/, api/ …) are never imported from outside.
+<% } -%>
+ */
+export { <%- publicApiName %> } from '<%- modulePath %>';

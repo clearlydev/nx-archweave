@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  # Docs-only changes start no runner at all (every minute is billed on a private
+  # repository). README.md is NOT in the list: a unit test reads it, and the package
+  # READMEs ship in the tarballs. A change that touches anything else runs in full.
+  # If branch protection ever requires these checks, a skipped workflow leaves them
+  # pending — then move the filter into a job that reports success instead.
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'internal/**'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+  pull_request:
+    paths-ignore:
+      - 'internal/**'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+  # The full matrix (every package manager, Windows, Node 24) is where the repository decides
+  # it. In the public repository (clearlydev/nx-archweave) Actions minutes are free, so every
+  # pull request runs it and a nightly run watches upstream (Nx templates, the registry). In a
+  # private copy every minute is billed (Windows twice; a nightly full matrix alone was about
+  # 3,000 minutes a month), so pull requests run one leg, the schedule is skipped, and the full
+  # matrix runs on demand — Actions → CI → Run workflow, before a release or after an Nx bump.
+  workflow_dispatch:
+    inputs:
+      legs:
+        description: 'E2E legs to run: all, or only the Windows ones (cheaper reruns)'
+        type: choice
+        options: [all, windows]
+        default: all
+  schedule:
+    - cron: '0 18 * * *'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # The schedule exists for the public repository; a private copy never runs it.
+    if: github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines floor (22); a full run adds the current LTS line above it.
+        node-version: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.repository == 'clearlydev/nx-archweave') && '[22, 24]' || '[22]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pinned pnpm version from package.json's "packageManager".
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm nx run-many -t build,test,lint,typecheck,bundle
+
+      # Release smoke: pack the plugin, install the tarball into a clean temp
+      # project, assert generators.json loads and every factory imports.
+      - run: node tools/verify-tarball.mjs
+
+  # Full create-flow release gate: pack → create a real workspace from the
+  # real template → assert wiring, registration, build/lint, doctor gate.
+  # Hybrid gate: on PRs this runs only when code changed, and only OUR
+  # failures block (upstream drift surfaces as a warning annotation); the
+  # manual and nightly runs are strict and are the upstream canary.
+  e2e:
+    # main pushes run verify only: the same tree already passed its pull request.
+    if: github.event_name != 'push' && (github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave')
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    # The steps are bash; Windows runners ship it with Git.
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      # A full run (manual, nightly, or any pull request in the public repository) covers every
+      # manager, next with and without a backend, and Windows; a private copy's pull requests run
+      # one leg (pnpm × react-vite, the full fullstack flow):
+      #   yarn classic cannot install Nx's react template (workspace:*), so it runs next;
+      #   yarn berry runs both frontends (each creates the workspace differently: template vs preset);
+      #   Windows: every manager is a .cmd shim there (the CLI's spawnableCommand path) — npm × next,
+      #   and pnpm, yarn berry and bun with react-vite;
+      #   next × nest: the backend no other leg creates (react's template ships Express).
+      matrix:
+        include: ${{ fromJSON(inputs.legs == 'windows' && '[{"pm":"npm","frontend":"next","os":"windows-latest"},{"pm":"pnpm","frontend":"react-vite","os":"windows-latest"},{"pm":"yarn","frontend":"react-vite","yarn":"berry","os":"windows-latest"},{"pm":"bun","frontend":"react-vite","os":"windows-latest"}]' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.repository == 'clearlydev/nx-archweave') && '[{"pm":"pnpm","frontend":"react-vite"},{"pm":"npm","frontend":"react-vite"},{"pm":"yarn","frontend":"react-vite","yarn":"berry"},{"pm":"yarn","frontend":"next","yarn":"berry"},{"pm":"yarn","frontend":"next","yarn":"classic"},{"pm":"bun","frontend":"react-vite"},{"pm":"npm","frontend":"next","os":"windows-latest"},{"pm":"pnpm","frontend":"react-vite","os":"windows-latest"},{"pm":"yarn","frontend":"react-vite","yarn":"berry","os":"windows-latest"},{"pm":"bun","frontend":"react-vite","os":"windows-latest"},{"pm":"pnpm","frontend":"next","backend":"nest"}]' || '[{"pm":"pnpm","frontend":"react-vite"}]')) }}
+    # Check names stay "e2e (pnpm)" / "e2e (npm)" for the existing legs (branch protection may require them).
+    name: e2e (${{ matrix.pm }}${{ matrix.yarn && format(' {0}', matrix.yarn) || '' }}${{ matrix.os && ' windows' || '' }}${{ matrix.backend && format(' {0} {1}', matrix.frontend, matrix.backend) || (matrix.frontend != 'react-vite' && format(' {0}', matrix.frontend)) || '' }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this PR touches code
+        id: filter
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only "origin/$GITHUB_BASE_REF"...HEAD | grep -qE '^(packages/|tools/e2e-create\.mjs|tools/bundle\.mjs|\.github/workflows/ci\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "docs-only change — e2e skipped"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # npm 10 (bundled with Node 22) crashes inside create-nx-workspace's own
+      # install on the current Nx dependencies (arborist "edgesOut" bug, every
+      # 10.x up to 10.9.9); the CLI documents npm >= 11 for the npm path.
+      - run: npm install -g npm@11
+        if: matrix.pm == 'npm' && (github.event_name != 'pull_request' || steps.filter.outputs.run == 'true')
+
+      # yarn berry: Corepack (bundled with Node) provides it; pin the global default so a
+      # bare `yarn` outside any project is berry, as create-nx-workspace calls it. Run from
+      # the temp dir: this repo's package.json pins pnpm, and Corepack refuses yarn here.
+      - run: corepack enable yarn && cd "$RUNNER_TEMP" && corepack install -g yarn@4 && yarn --version | grep -q '^4\.'
+        if: matrix.yarn == 'berry' && (github.event_name != 'pull_request' || steps.filter.outputs.run == 'true')
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+      # yarn classic: the runner image ships yarn 1.x globally — make sure it is what runs
+      # (from the temp dir, like the e2e script, outside this pnpm-pinned repo).
+      - run: cd "$RUNNER_TEMP" && yarn --version | grep -q '^1\.'
+        if: matrix.yarn == 'classic' && (github.event_name != 'pull_request' || steps.filter.outputs.run == 'true')
+
+      # bun: pinned to the version every bun measurement was taken with.
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.pm == 'bun' && (github.event_name != 'pull_request' || steps.filter.outputs.run == 'true')
+        with:
+          bun-version: 1.4.2
+
+      # The repo itself is pnpm either way — prepack bundles via nx.
+      - run: pnpm install --frozen-lockfile
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - run: node tools/e2e-create.mjs --pm=${{ matrix.pm }} --frontend=${{ matrix.frontend }} ${{ matrix.backend && format('--backend={0}', matrix.backend) || '' }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }}
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+  # Publish rehearsal without credentials: prepack (bundle + pack-sanitize)
+  # must survive `npm publish --dry-run` for both publishable packages.
+  publish-dry-run:
+    if: github.event_name != 'push' && (github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: |
+          set -euo pipefail
+          for dir in packages/nx-plugin packages/create-nx-archweave; do
+            log="/tmp/publish-dry-run-$(basename "$dir").log"
+            echo "::group::npm publish --dry-run ($dir)"
+            # npm 11, as a real publish would use: it rewrites a manifest it finds wrong (a
+            # "./dist/bin.js" bin path was dropped from the registry manifest) — fail on that.
+            (cd "$dir" && npx -y npm@11 publish --dry-run 2>&1 | tee "$log")
+            grep -E "npm notice (name|package):" "$log"
+            if grep -qE "auto-corrected|was invalid and removed" "$log"; then
+              echo "::error::npm rewrote the $dir manifest at publish — run 'npm pkg fix' there and commit it"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+          # the plugin tarball must carry its generator manifest, the CLI its bin
+          grep -q "generators.json" /tmp/publish-dry-run-nx-plugin.log
+          grep -q "dist/bin.js" /tmp/publish-dry-run-create-nx-archweave.log

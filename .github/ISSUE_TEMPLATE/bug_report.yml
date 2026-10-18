@@ -1,0 +1,65 @@
+name: Bug report
+description: Something nx-archweave did wrong — a generator, the create CLI, or a generated file.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A run of `nx g @clearlydev/nx-archweave:doctor --json` from the
+        workspace usually says a lot — paste it below if you can.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - create-nx-archweave (the CLI)
+        - "@clearlydev/nx-archweave (the plugin)"
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command you ran
+      placeholder: npx create-nx-archweave my-app --preset=team --frontend=next
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The output or error, and what ended up in the workspace.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: nx-archweave version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: package-manager
+    attributes:
+      label: Package manager
+      options: [npm, pnpm, yarn (berry), yarn (classic), bun]
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, Node and Nx versions
+      placeholder: macOS 15, Node 22.18, Nx 23.3
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor output (optional)
+      render: json

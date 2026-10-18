@@ -1,0 +1,40 @@
+# compiled output
+dist
+out-tsc
+test-output
+
+# the local-registry target's storage (.verdaccio/config.yml)
+/tmp
+
+# dependencies
+node_modules
+
+# Local env files Nx reads — keep secrets here, out of git.
+.env
+.env.local
+.local.env
+.env.*.local
+
+# IDEs and editors
+/.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# logs
+npm-debug.log
+yarn-error.log
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Nx
+.nx/cache
+.nx/workspace-data
+.nx/polygraph
+.nx/self-healing
+.nx/migrate-runs
+

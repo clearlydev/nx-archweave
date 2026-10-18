@@ -1,0 +1,85 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nrwl/nx/master/packages/nx/schemas/generators.json",
+  "generators": {
+    "doctor": {
+      "factory": "./dist/generators/doctor/generator",
+      "schema": "./src/generators/doctor/schema.json",
+      "description": "Diagnose the current Nx workspace (read-only)"
+    },
+    "init": {
+      "factory": "./dist/generators/init/generator",
+      "schema": "./src/generators/init/schema.json",
+      "description": "Run the preset-driven init pipeline (FSD Lite, agent rules, GitHub templates, review) against a clean working tree"
+    },
+    "add-integration": {
+      "factory": "./dist/generators/add-integration/generator",
+      "schema": "./src/generators/add-integration/schema.json",
+      "description": "Preview the official installation flow for a supported external integration"
+    },
+    "add-review": {
+      "factory": "./dist/generators/add-review/generator",
+      "schema": "./src/generators/add-review/schema.json",
+      "description": "Install the Claude PR review workflow"
+    },
+    "add-backend": {
+      "factory": "./dist/generators/add-backend/generator",
+      "schema": "./src/generators/add-backend/schema.json",
+      "description": "Wire a backend app into the workspace: shared-types lib, scope tags, and module-boundary constraints"
+    },
+    "add-agent-rules": {
+      "factory": "./dist/generators/add-agent-rules/generator",
+      "schema": "./src/generators/add-agent-rules/schema.json",
+      "description": "Install CLAUDE.md / AGENTS.md agent rules"
+    },
+    "add-github-templates": {
+      "factory": "./dist/generators/add-github-templates/generator",
+      "schema": "./src/generators/add-github-templates/schema.json",
+      "description": "Install GitHub Issue/PR templates and CODEOWNERS"
+    },
+    "add-fsd-lite": {
+      "factory": "./dist/generators/add-fsd-lite/generator",
+      "schema": "./src/generators/add-fsd-lite/schema.json",
+      "description": "Wire the archweave/fsd-boundaries ESLint rule into the frontend app and print the FSD layer guide"
+    },
+    "page": {
+      "factory": "./dist/generators/page/generator",
+      "schema": "./src/generators/page/schema.json",
+      "description": "Scaffold a new FSD page slice under src/pages (src/_pages on Next.js)"
+    },
+    "widget": {
+      "factory": "./dist/generators/widget/generator",
+      "schema": "./src/generators/widget/schema.json",
+      "description": "Scaffold a new FSD widget slice under src/widgets (opt-in: outside the Lite default scope)"
+    },
+    "feature": {
+      "factory": "./dist/generators/feature/generator",
+      "schema": "./src/generators/feature/schema.json",
+      "description": "Scaffold a new FSD feature slice under src/features"
+    },
+    "entity": {
+      "factory": "./dist/generators/entity/generator",
+      "schema": "./src/generators/entity/schema.json",
+      "description": "Scaffold a new FSD entity slice under src/entities"
+    },
+    "shared": {
+      "factory": "./dist/generators/shared/generator",
+      "schema": "./src/generators/shared/schema.json",
+      "description": "Scaffold a new FSD shared slice under src/shared"
+    },
+    "install-integration": {
+      "factory": "./dist/generators/install-integration/generator",
+      "schema": "./src/generators/install-integration/schema.json",
+      "description": "Install a supported external integration through its official CLI (on --dryRun=false), verify it live, record it, and declare it"
+    },
+    "record-integration": {
+      "factory": "./dist/generators/record-integration/generator",
+      "schema": "./src/generators/record-integration/schema.json",
+      "description": "Verify a manually installed integration and record its verified state"
+    },
+    "allow-builds": {
+      "factory": "./dist/generators/allow-builds/generator",
+      "schema": "./src/generators/allow-builds/schema.json",
+      "description": "Allow dependency build scripts pnpm skipped (pnpm-workspace.yaml) and, on --apply, run pnpm rebuild for them"
+    }
+  }
+}

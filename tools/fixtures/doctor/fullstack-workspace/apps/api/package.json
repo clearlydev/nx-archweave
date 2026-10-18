@@ -1,0 +1,11 @@
+{
+  "name": "@fullstack/api",
+  "private": true,
+  "nx": {
+    "projectType": "application",
+    "tags": [
+      "scope:api",
+      "scope:backend"
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "name": "create-nx-archweave",
+  "version": "0.1.0",
+  "description": "One command from an empty directory to a configured Nx workspace: FSD Lite structure, AI agent rules, GitHub templates, and optional AI PR review (Claude, Gemini, GPT, Cursor)",
+  "license": "MIT",
+  "author": "clearlydev (https://github.com/clearlydev)",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clearlydev/nx-archweave.git",
+    "directory": "packages/create-nx-archweave"
+  },
+  "homepage": "https://github.com/clearlydev/nx-archweave/tree/main/packages/create-nx-archweave#readme",
+  "bugs": {
+    "url": "https://github.com/clearlydev/nx-archweave/issues"
+  },
+  "keywords": [
+    "nx",
+    "create",
+    "scaffold",
+    "monorepo",
+    "feature-sliced-design",
+    "fsd",
+    "ai",
+    "code-review",
+    "claude",
+    "gemini",
+    "gpt",
+    "cursor"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "prepack": "pnpm exec nx run create-nx-archweave:bundle && node ../../tools/pack-sanitize.mjs prepack",
+    "postpack": "node ../../tools/pack-sanitize.mjs postpack"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "create-nx-archweave": "dist/bin.js"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@nx-archweave/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!**/*.tsbuildinfo",
+    "!**/*.d.ts.map"
+  ],
+  "nx": {
+    "tags": [
+      "type:cli"
+    ],
+    "targets": {
+      "bundle": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "node tools/bundle.mjs create-nx-archweave"
+        },
+        "outputs": [
+          "{projectRoot}/dist"
+        ]
+      }
+    }
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "Shared",
+  "title": "Scaffold a new FSD shared slice",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Slice name in kebab-case (e.g. \"date-format\") — becomes <app>/src/shared/<name>. Invalid values are refused with a report, not thrown"
+    },
+    "publicApiName": {
+      "type": "string",
+      "description": "Exported stub function name. Defaults to the camelCase form of name"
+    },
+    "project": {
+      "type": "string",
+      "description": "The frontend app whose source root holds the FSD layers (run add-fsd-lite first). Omitted: the workspace's one frontend application; with more than one, the run is refused with the candidates listed"
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["ko", "en"],
+      "description": "Generated content language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the files that would be generated without writing anything"
+    }
+  },
+  "required": ["name"]
+}

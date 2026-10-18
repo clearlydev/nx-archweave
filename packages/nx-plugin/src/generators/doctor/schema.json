@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "Doctor",
+  "title": "Diagnose the current Nx workspace (read-only)",
+  "type": "object",
+  "properties": {
+    "liveIntegrations": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, performs live verification (e.g. claude plugin list --json for the catalog's Claude Code plugins) instead of trusting only the recorded manifest state. Still fully read-only \u2014 no config or manifest write, no repair."
+    },
+    "json": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the machine-readable archweave/doctor-report@1 JSON to stdout instead of the console report. Still read-only \u2014 nothing is written."
+    }
+  },
+  "required": []
+}

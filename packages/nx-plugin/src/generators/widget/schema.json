@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "Widget",
+  "title": "Scaffold a new FSD widget slice",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Slice name in kebab-case (e.g. \"header\") — becomes <app>/src/widgets/<name> (a self-contained block of UI composed from features and entities). Invalid values are refused with a report, not thrown"
+    },
+    "publicApiName": {
+      "type": "string",
+      "description": "Exported stub function name. Defaults to the camelCase form of name"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Extra segments to start the slice with, each as <segment>/index.ts (e.g. ui,api). model always exists — it holds the stub. Names are by purpose: ui, api, lib, config … (components/hooks/utils/types are refused)"
+    },
+    "project": {
+      "type": "string",
+      "description": "The frontend app whose source root holds the FSD layers. Omitted: the workspace's one frontend application; with more than one, the run is refused with the candidates listed"
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "ko",
+        "en"
+      ],
+      "description": "Generated content language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the files that would be generated without writing anything"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "description": "Scaffold a new FSD widget slice. widgets is outside the Lite default scope — this generator is how a workspace opts in; the lint rule already knows the layer"
+}

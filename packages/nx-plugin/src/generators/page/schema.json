@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "Page",
+  "title": "Scaffold a new FSD page slice",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Slice name in kebab-case (e.g. \"home\") — becomes <app>/src/pages/<name> (a screen composed from the layers below). Invalid values are refused with a report, not thrown"
+    },
+    "publicApiName": {
+      "type": "string",
+      "description": "Exported stub function name. Defaults to the camelCase form of name"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Extra segments to start the slice with, each as <segment>/index.ts (e.g. ui,api). model always exists — it holds the stub. Names are by purpose: ui, api, lib, config … (components/hooks/utils/types are refused)"
+    },
+    "project": {
+      "type": "string",
+      "description": "The frontend app whose source root holds the FSD layers. Omitted: the workspace's one frontend application; with more than one, the run is refused with the candidates listed"
+    },
+    "frontend": {
+      "type": "string",
+      "enum": [
+        "react-vite",
+        "next"
+      ],
+      "description": "Decides the layer directory: pages/ on react-vite, _pages/ on next (Next.js reads src/pages as its Pages Router). Omitted: toolkit.config.json's frontend (init records it), else detected from a next.config file in the app, else react-vite"
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "ko",
+        "en"
+      ],
+      "description": "Generated content language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the files that would be generated without writing anything"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "description": "Scaffold a new FSD page slice. On Next.js the layer directory is _pages (Next.js reads src/pages as its Pages Router)"
+}

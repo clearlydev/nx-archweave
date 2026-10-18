@@ -1,0 +1,4 @@
+# CODEOWNERS
+# Define who is required to review changes to matching paths.
+# See https://docs.github.com/articles/about-code-owners
+* @your-team  # TODO: set real owners

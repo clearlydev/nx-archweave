@@ -1,0 +1,111 @@
+import { join } from 'node:path';
+import { buildReviewChecks } from './review-checks.ts';
+
+const FIXTURES = join(__dirname, '../../../../tools/fixtures/doctor');
+
+function checkFor(root: string, id: string) {
+  return buildReviewChecks(root).find((c) => c.id === id);
+}
+
+describe('buildReviewChecks', () => {
+  describe('review-workflow-present', () => {
+    it('is not-applicable when the main workflow is absent and config makes no claim', () => {
+      const check = checkFor(join(FIXTURES, 'review-nothing-installed'), 'review-workflow-present');
+      expect(check?.status).toBe('not-applicable');
+    });
+
+    it('is a pass (informational) when the main workflow file exists', () => {
+      const check = checkFor(join(FIXTURES, 'review-config-matches-workflow'), 'review-workflow-present');
+      expect(check?.status).toBe('pass');
+      expect(check?.evidence).toContain('.github/workflows/claude-code-review.yml');
+    });
+
+    it('warns when absent but toolkit.config.json declares review.enabled: true', () => {
+      const check = checkFor(join(FIXTURES, 'review-config-claims-enabled-but-missing'), 'review-workflow-present');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toMatch(/review\.enabled: true/);
+    });
+
+    it('resolves the gemini workflow path when toolkit.config.json declares review.provider: gemini', () => {
+      const check = checkFor(join(FIXTURES, 'review-gemini-matches-workflow'), 'review-workflow-present');
+      expect(check?.status).toBe('pass');
+      expect(check?.evidence).toContain('.github/workflows/gemini-code-review.yml');
+    });
+  });
+
+  describe('review-alt-file-coexistence', () => {
+    it('is not-applicable when the alternate file does not exist', () => {
+      const check = checkFor(join(FIXTURES, 'review-nothing-installed'), 'review-alt-file-coexistence');
+      expect(check?.status).toBe('not-applicable');
+    });
+
+    it('warns with a manual-swap suggestedAction when both the main and alternate files exist', () => {
+      const check = checkFor(join(FIXTURES, 'review-alt-coexists'), 'review-alt-file-coexistence');
+      expect(check?.status).toBe('warning');
+      expect(check?.evidence).toEqual([
+        '.github/workflows/claude-code-review.yml',
+        '.github/workflows/claude-code-review.archweave.yml',
+      ]);
+      expect(check?.suggestedAction).toMatch(/manually swap/);
+    });
+
+    it('warns about an orphaned alternate file when the main file is absent', () => {
+      const check = checkFor(join(FIXTURES, 'review-alt-orphaned'), 'review-alt-file-coexistence');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toMatch(/orphaned/);
+    });
+  });
+
+  describe('review-config-consistency', () => {
+    it('is not-applicable when the main workflow is absent', () => {
+      const check = checkFor(join(FIXTURES, 'review-nothing-installed'), 'review-config-consistency');
+      expect(check?.status).toBe('not-applicable');
+    });
+
+    it('is not-applicable when the main workflow is present but config has no review field', () => {
+      const check = checkFor(join(FIXTURES, 'review-alt-coexists'), 'review-config-consistency');
+      expect(check?.status).toBe('not-applicable');
+    });
+
+    it('passes when the installed workflow exactly matches what the config options would generate', () => {
+      const check = checkFor(join(FIXTURES, 'review-config-matches-workflow'), 'review-config-consistency');
+      expect(check?.status).toBe('pass');
+    });
+
+    it('warns on drift when the installed workflow no longer matches the config options', () => {
+      const check = checkFor(join(FIXTURES, 'review-config-drift'), 'review-config-consistency');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toMatch(/differs/);
+    });
+
+    it('warns when the review field has an unrecognized shape', () => {
+      const check = checkFor(join(FIXTURES, 'review-config-invalid-review-shape'), 'review-config-consistency');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toMatch(/unrecognized shape/);
+    });
+
+    it('errors when toolkit.config.json is not valid JSON (unusable config, same severity as nx-version)', () => {
+      const check = checkFor(join(FIXTURES, 'review-config-unparseable-json'), 'review-config-consistency');
+      expect(check?.status).toBe('error');
+      expect(check?.message).toMatch(/could not be parsed/);
+      expect(check?.suggestedAction).toMatch(/before running add-review/);
+    });
+
+    it('passes for an npm workspace whose workflow was rendered with npm install steps', () => {
+      const check = checkFor(join(FIXTURES, 'review-npm-matches-workflow'), 'review-config-consistency');
+      expect(check?.status).toBe('pass');
+    });
+
+    it('passes for a gemini-configured workspace whose installed gemini-code-review.yml matches the config', () => {
+      const check = checkFor(join(FIXTURES, 'review-gemini-matches-workflow'), 'review-config-consistency');
+      expect(check?.status).toBe('pass');
+      expect(check?.evidence).toContain('.github/workflows/gemini-code-review.yml');
+    });
+  });
+
+  it('never includes secret values in evidence or message', () => {
+    const checks = buildReviewChecks(join(FIXTURES, 'review-config-matches-workflow'));
+    const serialized = JSON.stringify(checks);
+    expect(serialized).not.toMatch(/CLAUDE_CODE_OAUTH_TOKEN=/);
+  });
+});

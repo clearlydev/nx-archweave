@@ -1,0 +1,11 @@
+<% if (locale === 'ko') { -%>
+// TODO: "<%- name %>"의 실제 동작을 구현하세요.
+export function <%- publicApiName %>(): void {
+  // TODO: 이 스텁 본문을 실제 구현으로 교체하세요.
+}
+<% } else { -%>
+// TODO: implement the real behavior of "<%- name %>".
+export function <%- publicApiName %>(): void {
+  // TODO: replace this stub body with the real implementation.
+}
+<% } -%>

@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/shared"
+    },
+    {
+      "path": "./packages/templates"
+    },
+    {
+      "path": "./packages/review-policy"
+    },
+    {
+      "path": "./packages/integrations"
+    },
+    {
+      "path": "./packages/template-engine"
+    },
+    {
+      "path": "./packages/nx-plugin"
+    },
+    {
+      "path": "./packages/create-nx-archweave"
+    }
+  ],
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0"
+  }
+}

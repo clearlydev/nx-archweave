@@ -1,0 +1,28 @@
+name: 버그 리포트
+description: 재현하고 수정할 수 있도록 문제를 신고합니다.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 방법
+      description: 문제를 일으키는 정확한 단계를 나열하세요.
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 예상 동작
+      description: 어떤 동작을 예상했나요?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 실제로는 어떤 일이 일어났나요?
+    validations:
+      required: true

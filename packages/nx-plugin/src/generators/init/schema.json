@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "Init",
+  "title": "Run the preset-driven init pipeline (FSD Lite, agent rules, GitHub templates, review)",
+  "type": "object",
+  "properties": {
+    "preset": {
+      "type": "string",
+      "enum": [
+        "quick-start",
+        "solo",
+        "team"
+      ],
+      "description": "Preset that determines each sub-generator's default configuration (buildPresetConfig). Recorded in toolkit.config.json; omitted: the recorded one (required when none is recorded)"
+    },
+    "frontend": {
+      "type": "string",
+      "enum": [
+        "react-vite",
+        "next",
+        "none"
+      ],
+      "description": "Target frontend; 'none' is a backend-only workspace (needs --backend; FSD is skipped). Recorded in toolkit.config.json; omitted: the recorded one (required when none is recorded)"
+    },
+    "backend": {
+      "type": "string",
+      "enum": [
+        "express",
+        "nest",
+        "none"
+      ],
+      "description": "Backend app wiring: delegates app creation to the official @nx generators and wires shared-types, scope tags, and module-boundary constraints. 'none' leaves the workspace frontend-only. Omitted: toolkit.config.json's backend (add-backend records it), else none — no schema default, which would shadow the recorded one"
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "ko",
+        "en"
+      ],
+      "description": "Generated content language, passed through to every enabled sub-generator and recorded in toolkit.config.json. Omitted: the recorded locale, else en (no schema default — Nx would apply it even when the flag is omitted and shadow the recorded value)"
+    },
+    "reviewProvider": {
+      "type": "string",
+      "enum": ["claude", "gemini", "gpt", "cursor"],
+      "description": "Review provider when review is on. Omitted: toolkit.config.json's review.provider (unless --aiHosts changes the first host), else the first AI host's (Claude Code → claude, Codex → gpt, Cursor → cursor, Gemini CLI → gemini)"
+    },
+    "aiHosts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["claude-code", "codex", "cursor", "gemini-cli"]
+      },
+      "description": "The AI coding tools the workspace is set up for: they decide the agent-rules files (Claude Code → CLAUDE.md; Codex, Cursor, Gemini CLI → AGENTS.md) and the review provider default (the first one's). Recorded in toolkit.config.json. Default: Claude Code."
+    },
+    "fsd": {
+      "type": "boolean",
+      "description": "Toggle add-fsd-lite. Defaults to the preset's enablement (always on)"
+    },
+    "agentRules": {
+      "type": "boolean",
+      "description": "Toggle add-agent-rules. Defaults to the preset's enablement (on)"
+    },
+    "githubTemplates": {
+      "type": "boolean",
+      "description": "Toggle add-github-templates. Defaults to the preset's enablement (on)"
+    },
+    "review": {
+      "type": "boolean",
+      "description": "Toggle add-review. Defaults to the preset's review.enabled default (quick-start: off, solo/team: on)"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Preview the full pipeline: zero writes, and the post-run validation callback never runs"
+    },
+    "allowDirty": {
+      "type": "boolean",
+      "default": false,
+      "description": "Run even when the working tree has uncommitted changes. The report then warns that `git restore .` also reverts those pre-existing changes. Used by create-nx-archweave, whose own plugin-install step dirties the fresh workspace right before init runs"
+    },
+    "applyEslint": {
+      "type": "boolean",
+      "default": false,
+      "description": "Write the ESLint rules for real — the scope depConstraints into the root config (add-backend) and the archweave/fsd-boundaries rule into the frontend app's config (add-fsd-lite) — instead of printing report-only snippets. The create CLI passes this on workspaces it just created; leave it off to keep existing configs untouched"
+    },
+    "packageManager": {
+      "type": "string",
+      "enum": [
+        "pnpm",
+        "npm",
+        "yarn",
+        "bun"
+      ],
+      "description": "Package manager of the workspace (default: detected from lockfiles, then the one recorded in toolkit.config.json, then pnpm). Recorded in toolkit.config.json."
+    }
+  }
+}

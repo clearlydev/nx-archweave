@@ -1,0 +1,7 @@
+{
+  "name": "integration-aligned-verified-fixture",
+  "devDependencies": {
+    "nx": "23.1.0",
+    "@dietrichgebert/ponytail": "4.8.4"
+  }
+}

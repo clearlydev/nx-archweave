@@ -1,0 +1,86 @@
+name: Release
+
+# Pushing a v<version> tag — `pnpm release` makes the version commit and the tag — publishes both
+# packages with npm provenance. npm trusted publishing (OIDC, no token) is configured per package on
+# npmjs.com, for this repository, this workflow file and the `npm` environment, so a package's very
+# first release is published by hand; a version already on npm is skipped, which lets that first
+# tag (v0.1.0) still get its GitHub release.
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Only the public repository publishes; a private copy never does.
+    if: github.repository == 'clearlydev/nx-archweave'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@^11.5.2
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: The tag matches both package versions
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for dir in packages/nx-plugin packages/create-nx-archweave; do
+            actual=$(node -p "require('./$dir/package.json').version")
+            if [ "$actual" != "$version" ]; then
+              echo "::error::$dir is at $actual, the tag says $version"
+              exit 1
+            fi
+          done
+          if ! grep -q "^## $version " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $version' section"
+            exit 1
+          fi
+          if grep -q "^## $version — unreleased" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md still marks $version as unreleased — give it the release date"
+            exit 1
+          fi
+
+      - run: pnpm nx run-many -t build,test,lint,typecheck,bundle
+
+      - run: node tools/verify-tarball.mjs
+
+      # The plugin first: the CLI installs @clearlydev/nx-archweave@^<its own version>.
+      - name: Publish
+        run: |
+          for dir in packages/nx-plugin packages/create-nx-archweave; do
+            spec=$(node -p "const p = require('./$dir/package.json'); p.name + '@' + p.version")
+            if npm view "$spec" version >/dev/null 2>&1; then
+              echo "::notice::$spec is already on npm — not published again"
+            else
+              (cd "$dir" && npm publish --provenance --access public)
+            fi
+          done
+
+      - name: GitHub release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '$0 ~ "^## " v " " {on=1; next} /^## / && on {exit} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"

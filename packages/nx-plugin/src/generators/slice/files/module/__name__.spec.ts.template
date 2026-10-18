@@ -1,0 +1,11 @@
+import { <%- publicApiName %> } from './<%- name %>.js';
+
+describe('<%- name %>', () => {
+<% if (locale === 'ko') { -%>
+  it('스캐폴드된 스텁을 호출할 수 있다 (실제 assertion으로 교체하세요)', () => {
+<% } else { -%>
+  it('is scaffolded and callable (replace with real assertions)', () => {
+<% } -%>
+    expect(() => <%- publicApiName %>()).not.toThrow();
+  });
+});

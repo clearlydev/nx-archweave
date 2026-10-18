@@ -1,0 +1,47 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`renderVerdictComment en: APPROVE on round 1 is just the verdict line 1`] = `
+"<!-- archweave-verdict -->
+**Verdict: APPROVE** — no findings."
+`;
+
+exports[`renderVerdictComment en: BLOCK on the final round carries the banner and the history 1`] = `
+"<!-- archweave-verdict -->
+> ⚠️ **Automated review ended.** The maximum of 2 review rounds has been reached with blocking findings (P0/P1) still open. Human review is required.
+
+**Verdict: BLOCK** — P0/P1 findings must be resolved before this change can merge.
+
+**Round history:**
+- round 2: 1 fixed, 1 remaining"
+`;
+
+exports[`renderVerdictComment en: CHANGES_RECOMMENDED mid-run has history but no banner 1`] = `
+"<!-- archweave-verdict -->
+**Verdict: CHANGES_RECOMMENDED** — P2 findings should be addressed.
+
+**Round history:**
+- round 2: 1 fixed, 1 remaining"
+`;
+
+exports[`renderVerdictComment ko: APPROVE on round 1 is just the verdict line 1`] = `
+"<!-- archweave-verdict -->
+**판정: APPROVE** — finding이 없습니다."
+`;
+
+exports[`renderVerdictComment ko: BLOCK on the final round carries the banner and the history 1`] = `
+"<!-- archweave-verdict -->
+> ⚠️ **자동 리뷰 종료.** 최대 2회의 리뷰 라운드에 도달했지만 병합을 막는 finding(P0/P1)이 남아 있습니다. 사람의 리뷰가 필요합니다.
+
+**판정: BLOCK** — 병합 전에 P0/P1 finding을 해결해야 합니다.
+
+**라운드 이력:**
+- 2차: 1건 해결, 1건 잔존"
+`;
+
+exports[`renderVerdictComment ko: CHANGES_RECOMMENDED mid-run has history but no banner 1`] = `
+"<!-- archweave-verdict -->
+**판정: CHANGES_RECOMMENDED** — P2 finding을 해결하는 것을 권장합니다.
+
+**라운드 이력:**
+- 2차: 1건 해결, 1건 잔존"
+`;

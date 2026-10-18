@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "AddGithubTemplates",
+  "title": "Install GitHub Issue/PR templates and CODEOWNERS",
+  "type": "object",
+  "properties": {
+    "issue": {
+      "type": "boolean",
+      "default": false,
+      "description": "Install the bug-report and feature-request Issue Forms"
+    },
+    "pr": {
+      "type": "boolean",
+      "default": true,
+      "description": "Install the PULL_REQUEST_TEMPLATE.md"
+    },
+    "codeowners": {
+      "type": "boolean",
+      "default": false,
+      "description": "Install a CODEOWNERS placeholder"
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["ko", "en"],
+      "description": "Template language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the full content of every selected file without writing"
+    }
+  },
+  "required": []
+}

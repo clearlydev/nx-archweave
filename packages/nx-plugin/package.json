@@ -1,0 +1,103 @@
+{
+  "name": "@clearlydev/nx-archweave",
+  "version": "0.1.0",
+  "description": "Nx generators that make a workspace ready to work on in one preset: FSD Lite structure with enforced module boundaries, AI agent rules, GitHub templates, and optional AI PR review (Claude, Gemini, GPT, Cursor)",
+  "license": "MIT",
+  "author": "clearlydev (https://github.com/clearlydev)",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clearlydev/nx-archweave.git",
+    "directory": "packages/nx-plugin"
+  },
+  "homepage": "https://github.com/clearlydev/nx-archweave/tree/main/packages/nx-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/clearlydev/nx-archweave/issues"
+  },
+  "keywords": [
+    "nx",
+    "nx-plugin",
+    "generators",
+    "monorepo",
+    "scaffolding",
+    "feature-sliced-design",
+    "fsd",
+    "ai",
+    "code-review",
+    "claude",
+    "gemini",
+    "gpt",
+    "cursor"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "pnpm exec nx run @clearlydev/nx-archweave:bundle && node ../../tools/pack-sanitize.mjs prepack",
+    "postpack": "node ../../tools/pack-sanitize.mjs postpack"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "generators": "./generators.json",
+  "bin": {
+    "archweave-review-verdict": "dist/bin/review-verdict.js"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@nx-archweave/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./eslint": {
+      "@nx-archweave/source": "./src/eslint/index.ts",
+      "types": "./dist/eslint/index.d.ts",
+      "import": "./dist/eslint/index.js",
+      "default": "./dist/eslint/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "generators.json",
+    "src/generators/*/schema.json",
+    "!**/*.tsbuildinfo",
+    "!**/*.d.ts.map",
+    "!dist/generators/**/*.d.ts",
+    "!dist/runtime/**/*.d.ts",
+    "!dist/bin/**/*.d.ts"
+  ],
+  "nx": {
+    "tags": [
+      "type:plugin"
+    ],
+    "targets": {
+      "bundle": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "node tools/bundle.mjs nx-plugin"
+        },
+        "outputs": [
+          "{projectRoot}/dist"
+        ]
+      }
+    }
+  },
+  "dependencies": {
+    "@nx/devkit": "^23.1.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@nx-archweave/integrations": "workspace:*",
+    "@nx-archweave/shared": "workspace:*",
+    "@nx-archweave/template-engine": "workspace:*"
+  }
+}

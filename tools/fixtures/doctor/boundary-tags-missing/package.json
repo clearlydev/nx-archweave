@@ -1,0 +1,7 @@
+{
+  "name": "btm",
+  "private": true,
+  "devDependencies": {
+    "nx": "23.2.0"
+  }
+}

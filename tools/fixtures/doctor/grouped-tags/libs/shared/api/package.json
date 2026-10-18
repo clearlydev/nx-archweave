@@ -1,0 +1,9 @@
+{
+  "name": "@g/api-util",
+  "private": true,
+  "nx": {
+    "tags": [
+      "scope:backend"
+    ]
+  }
+}

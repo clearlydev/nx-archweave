@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "AddFsdLite",
+  "title": "Wire the FSD layer rules into the frontend app",
+  "type": "object",
+  "properties": {
+    "frontend": {
+      "type": "string",
+      "enum": ["react-vite", "next"],
+      "description": "Target frontend — decides the layer set the guide prints. Next.js has no FSD 'app' layer (its App Router directory is it) and its pages layer is the _pages/ directory (FSD's Next.js guide: Next.js reads src/pages as its Pages Router). Omitted: toolkit.config.json's frontend (init records it); required when none is recorded"
+    },
+    "project": {
+      "type": "string",
+      "description": "The frontend app whose eslint.config.mjs gets the rule and whose source root holds the layers. Omitted: the workspace's one frontend application (e2e projects and the backend api are not candidates); with more than one, the run is refused with the candidates listed"
+    },
+    "enforcement": {
+      "type": "string",
+      "enum": ["error", "warn"],
+      "description": "Severity of the archweave/fsd-boundaries ESLint rule. The rule is canonical FSD either way; only how hard it reports differs (Team preset: error; Solo / Quick Start: warn). Defaults to toolkit.config.json's fsd.enforcement, else warn"
+    },
+    "applyEslint": {
+      "type": "boolean",
+      "default": false,
+      "description": "Write the rule into the app's ESLint config instead of printing a paste-ready snippet. The create CLI passes this on workspaces it just created; leave it off to keep an existing config untouched"
+    },
+    "steiger": {
+      "type": "boolean",
+      "default": false,
+      "description": "Also set up steiger, the official FSD linter, as an opt-in fsd-check target: writes the app's steiger.config.mjs (recommended rules; an existing config is kept), adds the target to the app and the two devDependencies to the root package.json, and prints the install command. Needs Node >= 22.18"
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["ko", "en"],
+      "description": "Report and snippet language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the report (including what --applyEslint would write) without writing anything"
+    }
+  }
+}

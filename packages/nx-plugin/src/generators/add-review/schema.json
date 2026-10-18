@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "AddReview",
+  "title": "Install the PR review workflow",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "gemini",
+        "gpt",
+        "cursor"
+      ],
+      "description": "Review provider whose workflow to install. Omitted: toolkit.config.json's review.provider, else claude (no schema default — it would shadow the recorded one on a rerun)"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "fast",
+        "standard",
+        "thorough"
+      ],
+      "description": "Review mode (thorough adds the over-engineering pass). Omitted: toolkit.config.json's review.mode, else standard"
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "ko",
+        "en"
+      ],
+      "description": "Review language. Defaults to toolkit.config.json's locale, else en"
+    },
+    "maxRounds": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "description": "Automatic review round cap per PR (bounded 1-5). Omitted: toolkit.config.json's review.maxRounds, else 3"
+    },
+    "onConflict": {
+      "type": "string",
+      "enum": [
+        "overwrite",
+        "skip",
+        "alternate-filename"
+      ],
+      "description": "How to resolve an existing, differing workflow file. Omit to get a merge proposal (diff printed, nothing written)"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Print the full generated YAML, config snippet, and effective decision without writing"
+    },
+    "packageManager": {
+      "type": "string",
+      "enum": [
+        "pnpm",
+        "npm",
+        "yarn",
+        "bun"
+      ],
+      "description": "Package manager the generated workflow installs with (default: detected, then pnpm)."
+    }
+  },
+  "required": []
+}

@@ -1,0 +1,47 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`runInit — backend section backend omitted equals backend 'none' — the post-rename baseline (regression) 1`] = `
+"init (preset: solo, frontend: react-vite)
+
+## add-fsd-lite
+FSD layers (in web, apps/web/src):
+  apps/web/src/app       composition root: providers, routing, global styles (the framework entry point lives here)
+  apps/web/src/pages     one slice per screen, composed from the layers below
+  apps/web/src/features  one slice per user-facing capability (add-to-cart, sign-in)
+  apps/web/src/entities  one slice per business object (user, product)
+  apps/web/src/shared    segments, not slices: ui, api, lib, model, config — named by purpose
+Layer directories appear with their first slice (canonical FSD):
+  nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)
+  widgets/ is outside the default scope but one command away: nx g @clearlydev/nx-archweave:widget
+Imports go downward only, slices on one layer never import each other, and a slice is
+imported through its index.ts — the archweave/fsd-boundaries ESLint rule reports violations.
+
+ESLint: report-only (pass --applyEslint to write the rule into web's eslint.config.mjs).
+// nx-archweave FSD layer rules — add these to the frontend app's eslint.config.mjs yourself:
+// 1) the import after the last import,
+// 2) the spread as the last element of the export default [...] array.
+import { fsdBoundaries } from '@clearlydev/nx-archweave/eslint';
+...fsdBoundaries({ severity: 'warn' }),
+
+## add-agent-rules
+add-agent-rules:
+  hosts: claude-code
+  locale: en
+  teamRules: false
+
+  CLAUDE.md: created
+
+## add-github-templates
+  .github/PULL_REQUEST_TEMPLATE.md: created
+
+## add-review
+  .github/workflows/claude-code-review.yml: created
+  toolkit.config.json: created with the review field
+
+Note: the review workflow stays green-skipped until you register the CLAUDE_CODE_OAUTH_TOKEN secret.
+Note: this workflow runs with elevated permissions only after it is merged to the default branch —
+merging is the first real validation.
+
+## toolkit.config.json
+  recorded locale, preset, frontend, fsd.enforcement, agentRules.teamRules, aiHosts (updated)"
+`;

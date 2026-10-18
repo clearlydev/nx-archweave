@@ -1,0 +1,12 @@
+{
+  "integrations": {
+    "ponytail": {
+      "source": "DietrichGebert/ponytail",
+      "repository": "https://github.com/DietrichGebert/ponytail",
+      "version": "4.8.4",
+      "method": "claude-code-plugin-marketplace",
+      "managedBy": "external-tool",
+      "verification": "failed"
+    }
+  }
+}

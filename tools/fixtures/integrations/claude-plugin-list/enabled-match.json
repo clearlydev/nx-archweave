@@ -1,0 +1,11 @@
+[
+  {
+    "id": "ponytail@ponytail",
+    "version": "4.8.4",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/example/.claude/plugins/cache/ponytail/ponytail/4.8.4",
+    "installedAt": "2026-07-15T10:00:00.000Z",
+    "lastUpdated": "2026-07-15T10:00:00.000Z"
+  }
+]

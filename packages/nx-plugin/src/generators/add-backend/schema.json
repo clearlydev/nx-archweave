@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "AddBackend",
+  "title": "Wire a backend app into the workspace: shared-types, scope tags, module-boundary constraints",
+  "type": "object",
+  "properties": {
+    "backend": {
+      "type": "string",
+      "enum": [
+        "express",
+        "nest"
+      ],
+      "description": "Which backend the api app uses. App creation itself is delegated to the official @nx generator — when the api project is missing, the refusal report prints the exact commands to run first"
+    },
+    "apiName": {
+      "type": "string",
+      "default": "api",
+      "description": "Name of the backend application project to wire (convention: api)"
+    },
+    "frontendProject": {
+      "type": "string",
+      "description": "Explicit frontend project to wire, skipping auto-detection — the escape hatch when the workspace has several applications"
+    },
+    "applyEslint": {
+      "type": "boolean",
+      "default": false,
+      "description": "Write the scope depConstraints into the root ESLint config (only the exact Nx-generated allow-all block is rewritten; anything else degrades to a report-only snippet). Off by default so existing configs are never modified unasked"
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Preview every wiring action with zero writes"
+    }
+  },
+  "required": [
+    "backend"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "id": "RecordIntegration",
+  "title": "Verify a manually installed integration and record its verified state",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": ["ponytail"],
+      "description": "The plugin to verify and record, by its plugin-catalog id (@nx-archweave/integrations plugin-catalog.ts). The enum is kept equal to the catalog by a test."
+    },
+    "target": {
+      "type": "string",
+      "enum": ["claude-code"],
+      "default": "claude-code",
+      "description": "The host environment to verify against. Hosts with a plugin adapter; today only 'claude-code'."
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "Write the manifest entry (only if live verification succeeds). Without it (default) the generator performs the same live read-only verification and shows what would be recorded, writing nothing. Ignored when Nx's own --dry-run is set."
+    }
+  },
+  "required": ["tool"]
+}

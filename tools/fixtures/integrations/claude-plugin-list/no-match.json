@@ -1,0 +1,11 @@
+[
+  {
+    "id": "frontend-design@claude-plugins-official",
+    "version": "6.1.1",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/example/.claude/plugins/cache/claude-plugins-official/frontend-design/6.1.1",
+    "installedAt": "2026-07-14T11:18:46.173Z",
+    "lastUpdated": "2026-07-14T11:18:46.173Z"
+  }
+]

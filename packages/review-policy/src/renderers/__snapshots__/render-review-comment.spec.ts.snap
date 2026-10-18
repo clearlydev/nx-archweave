@@ -1,0 +1,63 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`renderReviewComment (a) no findings → APPROVE verdict line, no sections, no banner 1`] = `"**Verdict: APPROVE** — no findings."`;
+
+exports[`renderReviewComment (b) one P0, rounds not exhausted → BLOCK without termination banner 1`] = `
+"**Verdict: BLOCK** — P0/P1 findings must be resolved before this change can merge.
+
+## Correctness & Security
+
+### [P0] P0 sample finding
+- **File:** \`src/example.ts:10-12\` (null-deref)
+- **Evidence:** foo may be undefined here
+- **Impact:** crashes the generator on empty config
+- **Reproduction:** run with an empty nx.json
+- **Recommendation:** guard with an early return
+- **Confidence:** confirmed"
+`;
+
+exports[`renderReviewComment (c) maxRounds reached with P0 remaining → termination banner at the very top 1`] = `
+"> ⚠️ **Automated review ended.** The maximum of 3 review rounds has been reached with blocking findings (P0/P1) still open. Human review is required.
+
+**Verdict: BLOCK** — P0/P1 findings must be resolved before this change can merge.
+
+## Correctness & Security
+
+### [P0] P0 sample finding
+- **File:** \`src/example.ts:10-12\` (null-deref)
+- **Evidence:** foo may be undefined here
+- **Impact:** crashes the generator on empty config
+- **Reproduction:** run with an empty nx.json
+- **Recommendation:** guard with an early return
+- **Confidence:** confirmed
+
+---
+
+**Round history:**
+- round 1: 0 fixed, 1 remaining
+- round 2: 0 fixed, 1 remaining
+- round 3: 0 fixed, 1 remaining"
+`;
+
+exports[`renderReviewComment (d) locale ko renders Korean copy 1`] = `
+"> ⚠️ **자동 리뷰 종료.** 최대 3회의 리뷰 라운드에 도달했지만 병합을 막는 finding(P0/P1)이 남아 있습니다. 사람의 리뷰가 필요합니다.
+
+**판정: BLOCK** — 병합 전에 P0/P1 finding을 해결해야 합니다.
+
+## 정확성 & 보안
+
+### [P0] P0 sample finding
+- **파일:** \`src/example.ts:10-12\` (null-deref)
+- **근거:** foo may be undefined here
+- **영향:** crashes the generator on empty config
+- **재현 조건:** run with an empty nx.json
+- **권장 조치:** guard with an early return
+- **확신도:** confirmed
+
+---
+
+**라운드 이력:**
+- 1라운드: 해결 0건, 미해결 1건
+- 2라운드: 해결 0건, 미해결 1건
+- 3라운드: 해결 0건, 미해결 1건"
+`;

@@ -1,0 +1,7 @@
+{
+  "name": "web",
+  "projectType": "application",
+  "tags": [
+    "scope:frontend"
+  ]
+}

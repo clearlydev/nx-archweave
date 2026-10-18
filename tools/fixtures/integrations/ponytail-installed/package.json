@@ -1,0 +1,6 @@
+{
+  "name": "ponytail-installed-fixture",
+  "devDependencies": {
+    "@dietrichgebert/ponytail": "4.8.4"
+  }
+}

@@ -1,0 +1,449 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`cursorProvider ko locale carries the ko policy prompts and workflow instructions 1`] = `
+"name: Cursor Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: archweave-review-\${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check review secret
+        id: secret-gate
+        env:
+          REVIEW_SECRET: \${{ secrets.CURSOR_API_KEY }}
+        run: |
+          if [ -z "$REVIEW_SECRET" ]; then
+            echo "AI review is not active: register the CURSOR_API_KEY secret to enable it."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check review round limit
+        id: round-gate
+        if: steps.secret-gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          rounds=$(printf '%s' "$counts" | cut -f1)
+          echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
+          if [ "$rounds" -ge 5 ]; then
+            echo "Automated review round limit (5) reached for this PR; skipping."
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install cursor-agent CLI
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+
+      - name: Run Cursor review
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        env:
+          CURSOR_API_KEY: \${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          agent -p "$(cat <<'ARCHWEAVE_CURSOR_REVIEW_PROMPT'
+          이 pull request의 diff를 \`gh pr diff\`와 \`gh pr view\`로 확인하고 리뷰하세요.
+          구체적 지적은 inline comment로, 전체 요약은 정확히 한 개의 top-level comment로 게시하세요.
+          top-level 요약 코멘트에는 반드시 리터럴 마커 <!-- archweave-review-round -->를 포함하세요.
+          조치가 필요한 문제가 없으면 "조치가 필요한 문제를 찾지 못했습니다."라는 top-level comment를 정확히 한 개 게시하세요(이때도 마커는 포함).
+          코드를 수정하지 마세요(Do not modify any code). PR을 승인하거나 병합하지 마세요(never approve or merge).
+          요약과 설명은 한국어로 쓰되, 파일명·함수명·식별자는 원문 그대로 유지하세요.
+
+          ---
+
+          당신은 정확성(correctness)과 보안(security)에 집중하는 코드 리뷰어입니다.
+
+          주어진 diff를 리뷰하고, finding을 "Correctness"와 "Security" 두 개의 최상위 섹션으로 분리해 보고하세요. 두 섹션을 절대 섞지 마세요.
+
+          우선순위 P0, P1, P2, Nit에 해당하는 finding만 보고하세요. P3는 보고하지 마세요 — P3(과잉 설계)는 별도의 리뷰어가 담당하므로 이 리뷰의 범위 밖입니다.
+
+          모든 finding에 대해 아래 스키마의 모든 필드를 채우세요:
+          - priority: P0 | P1 | P2 | Nit
+          - category: kebab-case category name
+          - title: one-line summary
+          - file: path of the affected file
+          - lineRange: { start, end? }
+          - evidence: what in the code proves the problem
+          - impact: what goes wrong and for whom
+          - reproductionCondition: the exact input/state that triggers it
+          - recommendation: the concrete fix
+          - confidence: confirmed | plausible
+
+          같은 원인에서 나온 finding이 여러 개라면 중복 보고하지 말고 하나의 finding으로 합쳐서 보고하세요.
+
+          ---
+
+          당신은 과잉 설계(over-engineering)만을 전담하는 코드 리뷰어입니다.
+
+          주어진 diff를 리뷰하고 우선순위 P3만 보고하세요. P0, P1, P2, Nit은 보고하지 마세요 — 정확성과 보안은 별도의 리뷰어가 담당합니다.
+
+          finding은 "Over-engineering"이라는 별도의 최상위 섹션으로 보고하고, correctness/security 섹션과 절대 섞지 마세요.
+
+          모든 finding에 대해 아래 스키마의 모든 필드를 채우세요:
+          - priority: P3
+          - category: kebab-case category name
+          - title: one-line summary
+          - file: path of the affected file
+          - lineRange: { start, end? }
+          - evidence: what in the code proves the problem
+          - impact: what goes wrong and for whom
+          - reproductionCondition: the exact input/state that triggers it
+          - recommendation: the concrete fix
+          - confidence: confirmed | plausible
+
+          같은 원인에서 나온 finding이 여러 개라면 중복 보고하지 말고 하나의 finding으로 합쳐서 보고하세요.
+
+          ---
+
+          top-level 요약 코멘트의 맨 끝에 기계 판독용 findings 블록을 덧붙이세요:
+          리터럴 마커 줄 <!-- archweave-findings-v1 --> 다음에 fenced \`\`\`json 블록으로
+          { "schema": "archweave/findings@1", "findings": [ ... ] }를, finding마다 한 원소씩, 위 finding 스키마 그대로 작성하세요.
+          finding이 없어도 빈 배열로 블록을 반드시 포함하세요.
+          ARCHWEAVE_CURSOR_REVIEW_PROMPT
+          )"
+
+      - name: Set up pnpm
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Compute review verdict
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: \${{ github.token }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          ARCHWEAVE_PR_NUMBER: \${{ github.event.pull_request.number }}
+          ARCHWEAVE_MAX_ROUNDS: '5'
+          ARCHWEAVE_LOCALE: 'ko'
+          ARCHWEAVE_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          ARCHWEAVE_ROUND_AFTER_ID: \${{ steps.round-gate.outputs.last-comment-id }}
+        run: |
+          if [ -x node_modules/.bin/archweave-review-verdict ]; then
+            node_modules/.bin/archweave-review-verdict
+          else
+            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+          fi
+"
+`;
+
+exports[`cursorProvider standard mode: skeleton, gates, CLI install, run step, prompt input, single review prompt 1`] = `
+"name: Cursor Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: archweave-review-\${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check review secret
+        id: secret-gate
+        env:
+          REVIEW_SECRET: \${{ secrets.CURSOR_API_KEY }}
+        run: |
+          if [ -z "$REVIEW_SECRET" ]; then
+            echo "AI review is not active: register the CURSOR_API_KEY secret to enable it."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check review round limit
+        id: round-gate
+        if: steps.secret-gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          rounds=$(printf '%s' "$counts" | cut -f1)
+          echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
+          if [ "$rounds" -ge 3 ]; then
+            echo "Automated review round limit (3) reached for this PR; skipping."
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install cursor-agent CLI
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+
+      - name: Run Cursor review
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        env:
+          CURSOR_API_KEY: \${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          agent -p "$(cat <<'ARCHWEAVE_CURSOR_REVIEW_PROMPT'
+          Review the diff of this pull request using \`gh pr diff\` and \`gh pr view\`.
+          Post specific findings as inline comments and exactly one top-level summary comment.
+          Always include the literal marker <!-- archweave-review-round --> in the top-level summary comment.
+          If there are no findings that require action, post exactly one top-level comment saying so (and still include the marker).
+          Do not modify any code, and never approve or merge the pull request.
+          Write summaries and explanations in English; keep file names, function names, and identifiers verbatim.
+
+          ---
+
+          You are a code reviewer focused on correctness and security.
+
+          Review the provided diff and report findings in two explicitly separated top-level sections: "Correctness" and "Security". Never mix the two.
+
+          Only report findings with priority P0, P1, P2, Nit. Do NOT report P3 (over-engineering) findings — they are covered by a separate reviewer and are out of scope here.
+
+          For every finding, fill in every field of this schema:
+          - priority: P0 | P1 | P2 | Nit
+          - category: kebab-case category name
+          - title: one-line summary
+          - file: path of the affected file
+          - lineRange: { start, end? }
+          - evidence: what in the code proves the problem
+          - impact: what goes wrong and for whom
+          - reproductionCondition: the exact input/state that triggers it
+          - recommendation: the concrete fix
+          - confidence: confirmed | plausible
+
+          If multiple findings share the same root cause, merge them into a single finding instead of reporting duplicates.
+
+          ---
+
+          At the END of the top-level summary comment, append the machine-readable findings block:
+          the literal marker line <!-- archweave-findings-v1 -->, then a fenced \`\`\`json block containing
+          { "schema": "archweave/findings@1", "findings": [ ... ] } with one entry per finding,
+          using exactly the finding schema above. If there are no findings, still append the block with an empty findings array.
+          ARCHWEAVE_CURSOR_REVIEW_PROMPT
+          )"
+
+      - name: Set up pnpm
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Compute review verdict
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: \${{ github.token }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          ARCHWEAVE_PR_NUMBER: \${{ github.event.pull_request.number }}
+          ARCHWEAVE_MAX_ROUNDS: '3'
+          ARCHWEAVE_LOCALE: 'en'
+          ARCHWEAVE_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          ARCHWEAVE_ROUND_AFTER_ID: \${{ steps.round-gate.outputs.last-comment-id }}
+        run: |
+          if [ -x node_modules/.bin/archweave-review-verdict ]; then
+            node_modules/.bin/archweave-review-verdict
+          else
+            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+          fi
+"
+`;
+
+exports[`fast workflow is byte-pinned 1`] = `
+"name: Cursor Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: archweave-review-\${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check review secret
+        id: secret-gate
+        env:
+          REVIEW_SECRET: \${{ secrets.CURSOR_API_KEY }}
+        run: |
+          if [ -z "$REVIEW_SECRET" ]; then
+            echo "AI review is not active: register the CURSOR_API_KEY secret to enable it."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check review round limit
+        id: round-gate
+        if: steps.secret-gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          rounds=$(printf '%s' "$counts" | cut -f1)
+          echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
+          if [ "$rounds" -ge 3 ]; then
+            echo "Automated review round limit (3) reached for this PR; skipping."
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install cursor-agent CLI
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+
+      - name: Run Cursor review
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        env:
+          CURSOR_API_KEY: \${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          agent -p "$(cat <<'ARCHWEAVE_CURSOR_REVIEW_PROMPT'
+          Review the diff of this pull request using \`gh pr diff\` and \`gh pr view\`.
+          Post specific findings as inline comments and exactly one top-level summary comment.
+          Always include the literal marker <!-- archweave-review-round --> in the top-level summary comment.
+          If there are no findings that require action, post exactly one top-level comment saying so (and still include the marker).
+          Do not modify any code, and never approve or merge the pull request.
+          Write summaries and explanations in English; keep file names, function names, and identifiers verbatim.
+
+          ---
+
+          You are a code reviewer focused on correctness and security.
+
+          Review the provided diff and report only the most critical problems. Skip minor style and taste remarks entirely — report nothing below P2.
+
+          Only report findings with priority P0, P1, P2. Do NOT report P3 (over-engineering) findings — they are out of scope here.
+
+          For every finding, fill in every field of this schema:
+          - priority: P0 | P1 | P2
+          - category: kebab-case category name
+          - title: one-line summary
+          - file: path of the affected file
+          - lineRange: { start, end? }
+          - evidence: what in the code proves the problem
+          - impact: what goes wrong and for whom
+          - reproductionCondition: the exact input/state that triggers it
+          - recommendation: the concrete fix
+          - confidence: confirmed | plausible
+
+          If multiple findings share the same root cause, merge them into a single finding instead of reporting duplicates.
+
+          ---
+
+          At the END of the top-level summary comment, append the machine-readable findings block:
+          the literal marker line <!-- archweave-findings-v1 -->, then a fenced \`\`\`json block containing
+          { "schema": "archweave/findings@1", "findings": [ ... ] } with one entry per finding,
+          using exactly the finding schema above. If there are no findings, still append the block with an empty findings array.
+          ARCHWEAVE_CURSOR_REVIEW_PROMPT
+          )"
+
+      - name: Set up pnpm
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Compute review verdict
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: \${{ github.token }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          ARCHWEAVE_PR_NUMBER: \${{ github.event.pull_request.number }}
+          ARCHWEAVE_MAX_ROUNDS: '3'
+          ARCHWEAVE_LOCALE: 'en'
+          ARCHWEAVE_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          ARCHWEAVE_ROUND_AFTER_ID: \${{ steps.round-gate.outputs.last-comment-id }}
+        run: |
+          if [ -x node_modules/.bin/archweave-review-verdict ]; then
+            node_modules/.bin/archweave-review-verdict
+          else
+            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+          fi
+"
+`;

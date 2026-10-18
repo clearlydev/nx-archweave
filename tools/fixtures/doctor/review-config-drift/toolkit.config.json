@@ -1,0 +1,10 @@
+{
+  "review": {
+    "enabled": true,
+    "provider": "claude",
+    "mode": "fast",
+    "locale": "en",
+    "maxRounds": 5,
+    "blockingPriorities": ["P0", "P1"]
+  }
+}

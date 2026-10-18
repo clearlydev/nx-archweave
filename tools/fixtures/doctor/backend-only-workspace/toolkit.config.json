@@ -1,0 +1,6 @@
+{
+  "preset": "solo",
+  "frontend": "none",
+  "backend": "express",
+  "locale": "en"
+}
