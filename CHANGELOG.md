@@ -1,3 +1,9 @@
+## 0.1.1 (2026-10-18)
+
+### 🩹 Fixes
+
+- add-integration preview now works offline and behind proxies ([#2](https://github.com/clearlydev/nx-archweave/pull/2))
+
 ## 0.1.0 (2026-10-18)
 
 The first public release. Both packages require Node >= 22.18.
