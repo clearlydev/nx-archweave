@@ -32,7 +32,7 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 - **Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun. All four package managers are first-class.
 - Generators detect the workspace's real package manager from its lockfiles.
 - The examples below use `pnpm nx g`. With another package manager, run the same generator the way the `doctor` commands above show.
-- The package ships as a self-contained bundle. Its only runtime dependencies are `@nx/devkit` and `tslib`.
+- The package ships as a self-contained bundle. Its only runtime dependency is `@nx/devkit`.
 
 ## Quick start
 

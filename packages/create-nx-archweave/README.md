@@ -185,7 +185,7 @@ The printed next steps cover the first commit. If review is enabled, they also c
 
 - `nx build create-nx-archweave` runs tsc, for local dev and typecheck.
 - `nx test` runs Jest.
-- `nx bundle` (depends on `build`) uses esbuild to bundle `src/index.ts` and `src/bin.ts` into `dist/`. The `bin.js` shebang is preserved, and only `tslib` stays external.
+- `nx bundle` (depends on `build`) uses esbuild to bundle `src/index.ts` and `src/bin.ts` into `dist/`. The `bin.js` shebang is preserved, and the CLI has no runtime dependencies.
 - The CLI has no runtime import of the plugin. It only names the plugin as an install spec.
 
 ## License

@@ -13,8 +13,8 @@ nx-archweave는 프로젝트 7개로 이루어진 Nx 모노레포예요. 내부(
 | `review-policy` | `@nx-archweave/review-policy` | 리뷰 스키마, 모드, 프롬프트, 코멘트 렌더러 | `tslib` |
 | `integrations` | `@nx-archweave/integrations` | 통합 레지스트리와 검증 | `shared`, `tslib` |
 | `template-engine` | `@nx-archweave/template-engine` | 조립 계층(아래 참고) | `shared`, `templates`, `review-policy`, `tslib` |
-| `nx-plugin` | **`@clearlydev/nx-archweave`** | 제너레이터 16종과 ESLint 규칙(아래 참고) | `@nx/devkit`, `tslib` |
-| `create-nx-archweave` | **`create-nx-archweave`** | `npx` CLI | `tslib` |
+| `nx-plugin` | **`@clearlydev/nx-archweave`** | 제너레이터 16종과 ESLint 규칙(아래 참고) | `@nx/devkit` |
+| `create-nx-archweave` | **`create-nx-archweave`** | `npx` CLI | — |
 
 - **`templates`**: 기존 파일에 끼워 넣거나 옵션별로 조립하는 콘텐츠예요. 에이전트 규칙 섹션, ESLint·Steiger 설정, shared 타입이 여기 있어요.
 - **`template-engine`**: 조립 계층이에요. 프리셋, 리뷰 프로바이더, doctor 체크, `ToolkitConfig`가 여기 있어요.

@@ -13,8 +13,8 @@ nx-archweave is an Nx monorepo of 7 projects: 5 internal (private) packages and 
 | `review-policy` | `@nx-archweave/review-policy` | Review schema, modes, prompts, comment renderers | `tslib` |
 | `integrations` | `@nx-archweave/integrations` | Integration registry and verification | `shared`, `tslib` |
 | `template-engine` | `@nx-archweave/template-engine` | Assembly layer (see below) | `shared`, `templates`, `review-policy`, `tslib` |
-| `nx-plugin` | **`@clearlydev/nx-archweave`** | The 16 generators and the ESLint rule (see below) | `@nx/devkit`, `tslib` |
-| `create-nx-archweave` | **`create-nx-archweave`** | The `npx` CLI | `tslib` |
+| `nx-plugin` | **`@clearlydev/nx-archweave`** | The 16 generators and the ESLint rule (see below) | `@nx/devkit` |
+| `create-nx-archweave` | **`create-nx-archweave`** | The `npx` CLI | — |
 
 - **`templates`** holds content that's spliced into existing files or composed per option: agent-rule sections, ESLint and Steiger config, and shared types.
 - **`template-engine`** is the assembly layer: presets, review providers, doctor checks and `ToolkitConfig`.

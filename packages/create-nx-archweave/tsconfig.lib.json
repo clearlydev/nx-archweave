@@ -6,7 +6,9 @@
     "tsBuildInfoFile": "dist/tsconfig.lib.tsbuildinfo",
     "emitDeclarationOnly": false,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": ["node"],
+    // The esbuild bundle targets node20, so no helper is ever imported: tslib isn't a dependency.
+    "importHelpers": false
   },
   "include": ["src/**/*.ts"],
   "references": [],
