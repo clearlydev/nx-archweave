@@ -144,8 +144,10 @@ A maintainer releases both packages together, with the same version:
 3. The Release workflow then:
    - checks the tag against both package versions and the changelog section
    - runs the gate and the tarball smoke test
-   - publishes the plugin, then the CLI, with npm provenance (a version that's already on npm is skipped)
+   - stages the plugin and the CLI on npm, with provenance (a version that's already on npm is skipped)
    - creates the GitHub release from the changelog section
+
+   Staged versions go public only after the maintainer approves them.
 
 How the packages are built:
 
