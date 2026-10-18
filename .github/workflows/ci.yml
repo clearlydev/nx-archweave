@@ -178,7 +178,10 @@ jobs:
             echo "::group::npm publish --dry-run ($dir)"
             # npm 11, as a real publish would use: it rewrites a manifest it finds wrong (a
             # "./dist/bin.js" bin path was dropped from the registry manifest) — fail on that.
-            (cd "$dir" && npx -y npm@11 publish --dry-run 2>&1 | tee "$log")
+            # npm refuses even a dry run over a version that's already on npm, so this runs
+            # under a throwaway prerelease version that's never published.
+            (cd "$dir" && npm pkg set version="0.0.0-ci.$GITHUB_RUN_ID" \
+              && npx -y npm@11 publish --dry-run --tag ci 2>&1 | tee "$log")
             grep -E "npm notice (name|package):" "$log"
             if grep -qE "auto-corrected|was invalid and removed" "$log"; then
               echo "::error::npm rewrote the $dir manifest at publish — run 'npm pkg fix' there and commit it"
