@@ -30,6 +30,11 @@ on:
         type: choice
         options: [all, windows]
         default: all
+      ubuntu:
+        description: 'Ubuntu runner image (try the next one before ubuntu-latest moves to it)'
+        type: choice
+        options: [ubuntu-latest, ubuntu-26.04, ubuntu-24.04]
+        default: ubuntu-latest
   schedule:
     - cron: '0 18 * * *'
 
@@ -44,19 +49,19 @@ jobs:
   verify:
     # The schedule exists for the public repository; a private copy never runs it.
     if: github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave'
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.ubuntu || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         # engines floor (22); a full run adds the current LTS line above it.
         node-version: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.repository == 'clearlydev/nx-archweave') && '[22, 24]' || '[22]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Reads the pinned pnpm version from package.json's "packageManager".
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
@@ -77,7 +82,7 @@ jobs:
   e2e:
     # main pushes run verify only: the same tree already passed its pull request.
     if: github.event_name != 'push' && (github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave')
-    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.os || inputs.ubuntu || 'ubuntu-latest' }}
     timeout-minutes: 30
     # The steps are bash; Windows runners ship it with Git.
     defaults:
@@ -98,7 +103,7 @@ jobs:
     # Check names stay "e2e (pnpm)" / "e2e (npm)" for the existing legs (branch protection may require them).
     name: e2e (${{ matrix.pm }}${{ matrix.yarn && format(' {0}', matrix.yarn) || '' }}${{ matrix.os && ' windows' || '' }}${{ matrix.backend && format(' {0} {1}', matrix.frontend, matrix.backend) || (matrix.frontend != 'react-vite' && format(' {0}', matrix.frontend)) || '' }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -113,10 +118,10 @@ jobs:
             echo "docs-only change — e2e skipped"
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
         with:
           node-version: 22
@@ -158,13 +163,13 @@ jobs:
   # must survive `npm publish --dry-run` for both publishable packages.
   publish-dry-run:
     if: github.event_name != 'push' && (github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave')
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.ubuntu || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -178,7 +183,10 @@ jobs:
             echo "::group::npm publish --dry-run ($dir)"
             # npm 11, as a real publish would use: it rewrites a manifest it finds wrong (a
             # "./dist/bin.js" bin path was dropped from the registry manifest) — fail on that.
-            (cd "$dir" && npx -y npm@11 publish --dry-run 2>&1 | tee "$log")
+            # npm refuses even a dry run over a version that's already on npm, so this runs
+            # under a throwaway prerelease version that's never published.
+            (cd "$dir" && npm pkg set version="0.0.0-ci.$GITHUB_RUN_ID" \
+              && npx -y npm@11 publish --dry-run --tag ci 2>&1 | tee "$log")
             grep -E "npm notice (name|package):" "$log"
             if grep -qE "auto-corrected|was invalid and removed" "$log"; then
               echo "::error::npm rewrote the $dir manifest at publish — run 'npm pkg fix' there and commit it"
