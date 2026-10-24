@@ -225,7 +225,8 @@ if (withBackend) steps.push('registration');
 // Claude Code, so CLAUDE.md carries our marked block — next to Nx's own block, which
 // must survive (the react template ships it; --aiAgents=claude writes it for next).
 const claudeMd = readFileSync(join(demoDir, 'CLAUDE.md'), 'utf-8');
-for (const marker of ['<!-- nx-archweave:agent-rules start -->', '<!-- nx-archweave:agent-rules end -->', '<!-- nx configuration start-->']) {
+// The start marker carries a hash of the block (`start hash=<12 hex> -->`), so only its prefix is fixed.
+for (const marker of ['<!-- nx-archweave:agent-rules start hash=', '<!-- nx-archweave:agent-rules end -->', '<!-- nx configuration start-->']) {
   if (!claudeMd.includes(marker)) fail('agent rules', `CLAUDE.md lacks "${marker}"`, claudeMd);
 }
 if (readdirSync(demoDir).some((file) => file.endsWith('.generated.md'))) fail('agent rules', 'a .generated.md file was written');

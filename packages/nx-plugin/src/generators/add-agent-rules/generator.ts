@@ -1,9 +1,11 @@
 import type { Tree } from '@nx/devkit';
-import { applyAgentRulesBlock, composeAgentRules, rulesFilesFor, validateAgentRules } from '@nx-archweave/template-engine';
+import { applyAgentRulesBlock, composeAgentRules, rulesFilesFor, validateAgentRules, type FsdPolicyNotes } from '@nx-archweave/template-engine';
 import type { AddAgentRulesGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
 import { readToolkitConfig, recordAiHosts, resolveAiHostsOption, resolveLocaleOption } from '../shared/toolkit-config-file.ts';
 import { renderAddAgentRulesReport, type AddAgentRulesReport, type AgentRuleFileResult } from './render.ts';
+import { renderLineDiff } from '../add-review/render.ts';
+import { resolveFsdPolicy } from '../../eslint/fsd-policy.ts';
 
 /** Option > toolkit.config.json `agentRules.teamRules` > false.
  * The schema deliberately carries no default so an omitted flag still reaches the config
@@ -25,6 +27,17 @@ function resolveFsdStructure(config: Record<string, unknown> | null): boolean {
   if (typeof enabled === 'boolean') return enabled;
   const frontend = config?.['frontend'];
   return typeof frontend === 'string' && frontend !== 'none';
+}
+
+const POLICY_KEYS = ['preset', 'sliceGroups', 'sharedPublicApi', 'testFiles'];
+
+/** The FSD options toolkit.config.json records, for the Frontend Structure section; undefined
+ * when it records none (the section then keeps its canonical text). */
+function resolveFsdPolicyNotes(config: Record<string, unknown> | null): FsdPolicyNotes | undefined {
+  const fsd = config?.['fsd'];
+  if (typeof fsd !== 'object' || fsd === null || !POLICY_KEYS.some((key) => key in fsd)) return undefined;
+  const policy = resolveFsdPolicy(fsd);
+  return { sliceGroups: policy.sliceGroups !== false, sharedPublicApi: policy.sharedPublicApi, testFiles: policy.testFiles !== false };
 }
 
 export interface RunAddAgentRulesOptions {
@@ -50,7 +63,7 @@ export function runAddAgentRules(
   const teamRules = resolveTeamRules(options.teamRules, config);
   const dryRun = options.dryRun ?? false;
 
-  const composed = composeAgentRules({ files, locale, teamRules, fsdStructure: fsdStructure ?? resolveFsdStructure(config) });
+  const composed = composeAgentRules({ files, locale, teamRules, fsdStructure: fsdStructure ?? resolveFsdStructure(config), fsdPolicy: resolveFsdPolicyNotes(config) });
 
   const results: AgentRuleFileResult[] = composed.map(({ filePath, content }) => {
     if (!validateAgentRules(content, teamRules ? ['team-rules'] : [])) {
@@ -64,13 +77,21 @@ export function runAddAgentRules(
     }
 
     const existing = tree.read(filePath, 'utf-8');
-    const outcome = applyAgentRulesBlock(existing, content);
+    const outcome = applyAgentRulesBlock(existing, content, { overwrite: options.overwriteBlock === true });
 
     switch (outcome.kind) {
       case 'unchanged':
         return { filePath, action: 'unchanged', reason: null, content: null };
       case 'unrecognized':
         return { filePath, action: 'unrecognized', reason: outcome.reason, content: null };
+      case 'user-modified':
+        return {
+          filePath,
+          action: 'user-modified',
+          reason: null,
+          content: null,
+          diff: renderLineDiff(outcome.existingBody, outcome.generatedBody),
+        };
       case 'create':
       case 'append':
       case 'replace': {

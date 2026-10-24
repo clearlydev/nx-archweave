@@ -2,7 +2,7 @@ import type { ToolkitAiHost } from '@nx-archweave/shared';
 
 /** What happened to each rules file: only nx-archweave's
  * marked block is ever written — never the text around it. */
-export type AgentRuleFileAction = 'created' | 'appended' | 'updated' | 'unchanged' | 'unrecognized';
+export type AgentRuleFileAction = 'created' | 'appended' | 'updated' | 'unchanged' | 'unrecognized' | 'user-modified';
 
 export interface AgentRuleFileResult {
   filePath: string;
@@ -11,6 +11,8 @@ export interface AgentRuleFileResult {
   reason: string | null;
   /** Populated only in dryRun (the whole file as it was — or would be — written). */
   content: string | null;
+  /** Set only when action is 'user-modified': the user's block against the generated one. */
+  diff?: string;
 }
 
 export interface AddAgentRulesReport {
@@ -34,6 +36,7 @@ const ACTION_LINE: Record<AgentRuleFileAction, (result: AgentRuleFileResult) => 
   updated: (result) => `${result.filePath}: nx-archweave block updated (nothing outside it changed)`,
   unchanged: (result) => `${result.filePath}: unchanged`,
   unrecognized: (result) => `${result.filePath}: not written — ${result.reason ?? 'the nx-archweave markers could not be placed'}`,
+  'user-modified': (result) => `${result.filePath}: not written — the nx-archweave block was edited by hand, so it is kept`,
 };
 
 export function renderAddAgentRulesReport(report: AddAgentRulesReport): string {
@@ -46,6 +49,11 @@ export function renderAddAgentRulesReport(report: AddAgentRulesReport): string {
   lines.push('');
   for (const file of report.files) {
     lines.push(`  ${ACTION_LINE[file.action](file)}`);
+    if (file.action === 'user-modified') {
+      lines.push('    What this run would write instead (your block → generated):');
+      for (const line of (file.diff ?? '').split('\n')) lines.push(`    ${line}`);
+      lines.push('    Rerun with --overwriteBlock to replace the block with the generated one.');
+    }
   }
 
   const RECORD_LINE: Record<AddAgentRulesReport['hostsRecord'], string | null> = {
@@ -61,7 +69,7 @@ export function renderAddAgentRulesReport(report: AddAgentRulesReport): string {
 
   if (report.files.some((file) => file.action === 'unrecognized')) {
     lines.push('');
-    lines.push('Manual fix needed: keep exactly one "<!-- nx-archweave:agent-rules start -->" … "<!-- nx-archweave:agent-rules end -->"');
+    lines.push('Manual fix needed: keep exactly one "<!-- nx-archweave:agent-rules start … -->" … "<!-- nx-archweave:agent-rules end -->"');
     lines.push('pair in the file (or remove both markers), then rerun add-agent-rules.');
   }
 
