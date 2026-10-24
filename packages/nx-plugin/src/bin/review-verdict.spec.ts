@@ -163,3 +163,122 @@ describe('runReviewVerdictBin — rounds bound to this run, verdict updated in p
     expect(calls.find((c) => c.args.includes('POST'))?.stdin).not.toContain('Commit');
   });
 });
+
+describe('runReviewVerdictBin — output mode (a separate job posts the comment)', () => {
+  const OUTPUT = { ...ENV, ARCHWEAVE_VERDICT_OUTPUT: 'github-output', GITHUB_OUTPUT: '/runner/output' };
+  const verdictComment = (id: number) => ({ id, user: { login: 'github-actions[bot]', type: 'Bot' }, body: '<!-- archweave-verdict -->\nold' });
+  const parseOutputs = (text: string): Record<string, string> => {
+    const outputs: Record<string, string> = {};
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const heredoc = /^([\w-]+)<<(.+)$/.exec(lines[i]);
+      if (heredoc) {
+        const end = lines.indexOf(heredoc[2], i + 1);
+        outputs[heredoc[1]] = lines.slice(i + 1, end).join('\n');
+        i = end;
+      } else if (lines[i].includes('=')) {
+        outputs[lines[i].slice(0, lines[i].indexOf('='))] = lines[i].slice(lines[i].indexOf('=') + 1);
+      }
+    }
+    return outputs;
+  };
+
+  it('BLOCK: writes the comment, the earlier verdict id and blocked=true, posts nothing, exits 0', () => {
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const written: { path: string; text: string }[] = [];
+    const comments = JSON.stringify([verdictComment(95), JSON.parse(blockComment('P0'))[0]]);
+    const result = runReviewVerdictBin(OUTPUT, stubExec(comments, calls), (path, text) => written.push({ path, text }));
+    expect(result.exitCode).toBe(0);
+    expect(calls.some((c) => c.args.includes('-X'))).toBe(false);
+    expect(written.map((w) => w.path)).toEqual(['/runner/output']);
+    const outputs = parseOutputs(written[0].text);
+    expect(outputs['comment-body']).toContain('<!-- archweave-verdict -->');
+    expect(outputs['previous-comment-id']).toBe('95');
+    expect(outputs['blocked']).toBe('true');
+    expect(result.logs.join('\n')).toContain('BLOCK');
+  });
+
+  it('a clean review writes blocked=false and no earlier id when there is none', () => {
+    const written: string[] = [];
+    const ok = JSON.stringify([
+      { user: { login: 'claude[bot]', type: 'Bot' }, body: `${ROUND_MARKER}\n${FINDINGS_MARKER}\n\`\`\`json\n{"schema":"archweave/findings@1","findings":[]}\n\`\`\`` },
+    ]);
+    expect(runReviewVerdictBin(OUTPUT, stubExec(ok, []), (_p, text) => written.push(text)).exitCode).toBe(0);
+    const outputs = parseOutputs(written.join(''));
+    expect(outputs['blocked']).toBe('false');
+    expect(outputs['previous-comment-id']).toBe('');
+  });
+
+  it('no review writes nothing, so the comment job is skipped', () => {
+    const written: string[] = [];
+    expect(runReviewVerdictBin(OUTPUT, stubExec('[]', []), (_p, text) => written.push(text)).exitCode).toBe(0);
+    expect(written).toEqual([]);
+  });
+
+  it('a delimiter line inside the comment cannot end the output early', () => {
+    const written: string[] = [];
+    runReviewVerdictBin(OUTPUT, stubExec(blockComment('P0'), []), (_p, text) => written.push(text));
+    const delimiter = /^comment-body<<(.+)$/m.exec(written[0])?.[1] ?? '';
+    expect(delimiter).toMatch(/^ARCHWEAVE_[0-9a-f]{16}$/);
+    expect(written[0].split('\n').filter((line) => line === delimiter)).toHaveLength(1);
+  });
+
+  it('without GITHUB_OUTPUT it posts the comment itself, as the default mode does', () => {
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const { GITHUB_OUTPUT: _unset, ...env } = OUTPUT;
+    expect(runReviewVerdictBin(env, stubExec(blockComment('P0'), calls), () => undefined).exitCode).toBe(1);
+    expect(calls.some((c) => c.args.includes('POST'))).toBe(true);
+  });
+});
+
+describe('runReviewVerdictBin — workflows generated before output mode', () => {
+  // The exact environment a 0.2.x workflow passes: no ARCHWEAVE_VERDICT_OUTPUT.
+  const OLD_WORKFLOW_ENV = {
+    GH_TOKEN: 'token',
+    GITHUB_REPOSITORY: 'o/r',
+    ARCHWEAVE_PR_NUMBER: '7',
+    ARCHWEAVE_MAX_ROUNDS: '3',
+    ARCHWEAVE_LOCALE: 'en',
+    ARCHWEAVE_HEAD_SHA: 'abcdef1234567890abcdef1234567890abcdef12',
+    ARCHWEAVE_ROUND_AFTER_ID: '',
+    GITHUB_OUTPUT: '/runner/output',
+  };
+
+  it('still posts the verdict comment itself and exits 1 on BLOCK, writing no outputs', () => {
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const written: string[] = [];
+    const result = runReviewVerdictBin(OLD_WORKFLOW_ENV, stubExec(blockComment('P0'), calls), (_p, text) => written.push(text));
+    expect(result.exitCode).toBe(1);
+    expect(calls.find((c) => c.args.includes('POST'))?.stdin).toContain('<!-- archweave-verdict -->');
+    expect(written).toEqual([]);
+  });
+});
+
+describe('runReviewVerdictBin — a comment fetch that fails', () => {
+  const OUTPUT = { ...ENV, ARCHWEAVE_VERDICT_OUTPUT: 'github-output', GITHUB_OUTPUT: '/runner/output' };
+  const failing: BinExec = () => ({ status: 1, stdout: '' });
+  const garbled: BinExec = () => ({ status: 0, stdout: 'not json' });
+
+  it.each([
+    ['gh fails', failing],
+    ['gh returns non-JSON', garbled],
+  ])('output mode: %s → an error annotation with the cause and the way back, exit 1', (_case, exec) => {
+    const written: string[] = [];
+    const result = runReviewVerdictBin(OUTPUT, exec, (_p, text) => written.push(text));
+    // A read-only token that cannot read the comments must not let a BLOCK pass as green.
+    expect(result.exitCode).toBe(1);
+    expect(written).toEqual([]);
+    expect(result.logs).toEqual([
+      '::error title=Review verdict not computed::Could not read PR comments, so the verdict could not be computed. ' +
+        'Re-run the failed jobs to retry. If it fails again, check that the review job has pull-requests: read.',
+    ]);
+  });
+
+  it.each([
+    ['gh fails', failing, 'verdict gate: could not fetch PR comments via gh — skipping (check stays green).'],
+    ['gh returns non-JSON', garbled, 'verdict gate: unexpected gh output — skipping (check stays green).'],
+  ])('default mode (an earlier workflow): %s → the same log line as before, no annotation', (_case, exec, line) => {
+    const result = runReviewVerdictBin(ENV, exec);
+    expect(result).toEqual({ exitCode: 0, logs: [line] });
+  });
+});

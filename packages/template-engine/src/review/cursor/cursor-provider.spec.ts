@@ -15,7 +15,9 @@ describe('cursorProvider', () => {
     expect(yaml).toContain('id: secret-gate');
     expect(yaml).toContain('id: round-gate');
     expect(yaml).toContain('-ge 3');
-    expect(yaml).toContain('curl https://cursor.com/install -fsS | bash');
+    expect(yaml).toContain("curl --proto '=https' --tlsv1.2 -fsS https://cursor.com/install | bash");
+    // Both directories the installer has used, so `agent` resolves wherever it lands.
+    expect(yaml).toContain('echo "$HOME/.local/bin" >> "$GITHUB_PATH"');
     expect(yaml).toContain('echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"');
     expect(yaml).toContain('agent -p "$(cat <<');
     expect(yaml).toContain('CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}');

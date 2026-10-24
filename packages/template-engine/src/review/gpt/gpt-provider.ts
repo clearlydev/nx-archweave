@@ -9,13 +9,8 @@ import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts
 import {
   indentBlock,
   renderCheckoutStep,
-  renderConcurrencyBlock,
-  renderPermissionsBlock,
-  renderRoundGateStep,
-  renderSecretGateStep,
-  renderTriggerBlock,
-  renderVerdictGateStep,
-  renderWorkspaceSetupSteps,
+  renderReviewWorkflow,
+  REVIEW_GATE_CONDITION,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
 import { pinnedUses } from '../action-pins.ts';
@@ -67,67 +62,49 @@ function composePrompt(input: ReviewWorkflowInput): string {
 }
 
 function buildWorkflowYaml(input: ReviewWorkflowInput): string {
-  const gateCondition =
-    "steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'";
-
-  const steps = [
-    renderSecretGateStep(SECRET_NAME),
-    renderRoundGateStep(input.maxRounds),
-    renderCheckoutStep(gateCondition, ['ref: refs/pull/${{ github.event.pull_request.number }}/merge']),
-    [
-      '- name: Fetch base and head refs for the PR',
-      `  if: ${gateCondition}`,
-      '  env:',
-      '    PR_BASE_REF: ${{ github.event.pull_request.base.ref }}',
-      '    PR_NUMBER: ${{ github.event.pull_request.number }}',
-      '  run: |',
-      '    # Explicit destinations: the sandboxed review step has no network, so both sides',
-      '    # of the diff must survive as stable local refs (FETCH_HEAD alone is ambiguous).',
-      '    git fetch --no-tags origin \\',
-      '      "+refs/heads/$PR_BASE_REF:refs/remotes/origin/pr-base" \\',
-      '      "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-head"',
-    ].join('\n'),
-    [
-      '- name: Run Codex review',
-      '  id: codex-review',
-      `  if: ${gateCondition}`,
-      `  uses: ${pinnedUses('openai/codex-action')}`,
-      '  with:',
-      `    openai-api-key: \${{ secrets.${SECRET_NAME} }}`,
-      '    permission-profile: ":read-only"',
-      '    prompt: |',
-      indentBlock(composePrompt(input), 6),
-    ].join('\n'),
-    [
-      '- name: Post review comment',
-      `  if: ${gateCondition}`,
-      '  env:',
-      '    GH_TOKEN: ${{ github.token }}',
-      '    PR_NUMBER: ${{ github.event.pull_request.number }}',
-      '    REVIEW_BODY: ${{ steps.codex-review.outputs.final-message }}',
-      '  run: |',
-      '    printf %s "$REVIEW_BODY" | gh pr comment "$PR_NUMBER" --body-file -',
-    ].join('\n'),
-    renderWorkspaceSetupSteps(input.packageManager),
-    renderVerdictGateStep(input.maxRounds, input.locale)
-  ];
-
-  return [
-    'name: GPT Code Review',
-    '',
-    renderTriggerBlock(),
-    '',
-    renderConcurrencyBlock(),
-    '',
-    renderPermissionsBlock(),
-    '',
-    'jobs:',
-    '  review:',
-    '    runs-on: ubuntu-latest',
-    '    steps:',
-    indentBlock(steps.join('\n\n'), 6),
-    '',
-  ].join('\n');
+  return renderReviewWorkflow(input, {
+    name: 'GPT Code Review',
+    secretName: SECRET_NAME,
+    // An API key: codex-action needs no OIDC token.
+    idToken: false,
+    reviewSteps: [
+      renderCheckoutStep(REVIEW_GATE_CONDITION, ['ref: refs/pull/${{ github.event.pull_request.number }}/merge']),
+      [
+        '- name: Fetch base and head refs for the PR',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        '  env:',
+        '    PR_BASE_REF: ${{ github.event.pull_request.base.ref }}',
+        '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+        '  run: |',
+        '    # Explicit destinations: the sandboxed review step has no network, so both sides',
+        '    # of the diff must survive as stable local refs (FETCH_HEAD alone is ambiguous).',
+        '    git fetch --no-tags origin \\',
+        '      "+refs/heads/$PR_BASE_REF:refs/remotes/origin/pr-base" \\',
+        '      "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-head"',
+      ].join('\n'),
+      [
+        '- name: Run Codex review',
+        '  id: codex-review',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        `  uses: ${pinnedUses('openai/codex-action')}`,
+        '  with:',
+        `    openai-api-key: \${{ secrets.${SECRET_NAME} }}`,
+        '    permission-profile: ":read-only"',
+        '    prompt: |',
+        indentBlock(composePrompt(input), 6),
+      ].join('\n'),
+      [
+        '- name: Post review comment',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        '  env:',
+        '    GH_TOKEN: ${{ github.token }}',
+        '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+        '    REVIEW_BODY: ${{ steps.codex-review.outputs.final-message }}',
+        '  run: |',
+        '    printf %s "$REVIEW_BODY" | gh pr comment "$PR_NUMBER" --body-file -',
+      ].join('\n'),
+    ],
+  });
 }
 
 export const gptProvider: ReviewWorkflowProvider = {

@@ -9,13 +9,8 @@ import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts
 import {
   indentBlock,
   renderCheckoutStep,
-  renderConcurrencyBlock,
-  renderPermissionsBlock,
-  renderRoundGateStep,
-  renderSecretGateStep,
-  renderTriggerBlock,
-  renderVerdictGateStep,
-  renderWorkspaceSetupSteps,
+  renderReviewWorkflow,
+  REVIEW_GATE_CONDITION,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
 import { pinnedUses } from '../action-pins.ts';
@@ -62,41 +57,26 @@ function composePrompt(input: ReviewWorkflowInput): string {
 }
 
 function buildWorkflowYaml(input: ReviewWorkflowInput): string {
-  const steps = [
-    renderSecretGateStep(SECRET_NAME),
-    renderRoundGateStep(input.maxRounds),
-    renderCheckoutStep("steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'"),
-    [
-      '- name: Run Claude review',
-      "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'",
-      `  uses: ${pinnedUses('anthropics/claude-code-action')}`,
-      '  with:',
-      `    claude_code_oauth_token: \${{ secrets.${SECRET_NAME} }}`,
-      '    prompt: |',
-      indentBlock(composePrompt(input), 6),
-      '    claude_args: |',
-      `      --allowedTools "${ALLOWED_TOOLS}"`,
-    ].join('\n'),
-    renderWorkspaceSetupSteps(input.packageManager),
-    renderVerdictGateStep(input.maxRounds, input.locale)
-  ];
-
-  return [
-    'name: Claude Code Review',
-    '',
-    renderTriggerBlock(),
-    '',
-    renderConcurrencyBlock(),
-    '',
-    renderPermissionsBlock(),
-    '',
-    'jobs:',
-    '  review:',
-    '    runs-on: ubuntu-latest',
-    '    steps:',
-    indentBlock(steps.join('\n\n'), 6),
-    '',
-  ].join('\n');
+  return renderReviewWorkflow(input, {
+    name: 'Claude Code Review',
+    secretName: SECRET_NAME,
+    // The Claude GitHub App signs in with the workflow's OIDC token (claude-code-action's FAQ).
+    idToken: true,
+    reviewSteps: [
+      renderCheckoutStep(REVIEW_GATE_CONDITION),
+      [
+        '- name: Run Claude review',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        `  uses: ${pinnedUses('anthropics/claude-code-action')}`,
+        '  with:',
+        `    claude_code_oauth_token: \${{ secrets.${SECRET_NAME} }}`,
+        '    prompt: |',
+        indentBlock(composePrompt(input), 6),
+        '    claude_args: |',
+        `      --allowedTools "${ALLOWED_TOOLS}"`,
+      ].join('\n'),
+    ],
+  });
 }
 
 export const claudeProvider: ReviewWorkflowProvider = {

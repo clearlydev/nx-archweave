@@ -9,13 +9,8 @@ import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts
 import {
   indentBlock,
   renderCheckoutStep,
-  renderConcurrencyBlock,
-  renderPermissionsBlock,
-  renderRoundGateStep,
-  renderSecretGateStep,
-  renderTriggerBlock,
-  renderVerdictGateStep,
-  renderWorkspaceSetupSteps,
+  renderReviewWorkflow,
+  REVIEW_GATE_CONDITION,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
 
@@ -36,7 +31,7 @@ const PROMPT_HEREDOC_DELIMITER = 'ARCHWEAVE_CURSOR_REVIEW_PROMPT';
 /** Research finding (2026-09-12, verified against https://cursor.com/docs/cli/github-actions
  * and https://cursor.com/docs/cli/headless): there is no official Marketplace Action, so the
  * workflow installs the `cursor-agent` CLI itself (`curl https://cursor.com/install -fsS | bash`,
- * then add `$HOME/.cursor/bin` to `$GITHUB_PATH`) and invokes it headless via `agent -p "<prompt>"`.
+ * then adds its directory to `$GITHUB_PATH`) and invokes it headless via `agent -p "<prompt>"`.
  * Unlike the sandboxed gpt/codex-action provider, `cursor-agent` is not sandboxed by default (the
  * docs' "full autonomy" example has the agent call `gh`/git directly) — so, like claude/gemini, the
  * model itself runs `gh pr diff` / `gh pr comment` inside the review step. */
@@ -75,52 +70,39 @@ function composePrompt(input: ReviewWorkflowInput): string {
 }
 
 function buildWorkflowYaml(input: ReviewWorkflowInput): string {
-  const gateCondition =
-    "steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'";
-
-  const steps = [
-    renderSecretGateStep(SECRET_NAME),
-    renderRoundGateStep(input.maxRounds),
-    renderCheckoutStep(gateCondition),
-    [
-      '- name: Install cursor-agent CLI',
-      `  if: ${gateCondition}`,
-      '  run: |',
-      '    curl https://cursor.com/install -fsS | bash',
-      '    echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"',
-    ].join('\n'),
-    [
-      '- name: Run Cursor review',
-      `  if: ${gateCondition}`,
-      '  env:',
-      `    CURSOR_API_KEY: \${{ secrets.${SECRET_NAME} }}`,
-      '    GH_TOKEN: ${{ github.token }}',
-      '  run: |',
-      `    agent -p "$(cat <<'${PROMPT_HEREDOC_DELIMITER}'`,
-      indentBlock(composePrompt(input), 4),
-      `    ${PROMPT_HEREDOC_DELIMITER}`,
-      '    )"',
-    ].join('\n'),
-    renderWorkspaceSetupSteps(input.packageManager),
-    renderVerdictGateStep(input.maxRounds, input.locale)
-  ];
-
-  return [
-    'name: Cursor Code Review',
-    '',
-    renderTriggerBlock(),
-    '',
-    renderConcurrencyBlock(),
-    '',
-    renderPermissionsBlock(),
-    '',
-    'jobs:',
-    '  review:',
-    '    runs-on: ubuntu-latest',
-    '    steps:',
-    indentBlock(steps.join('\n\n'), 6),
-    '',
-  ].join('\n');
+  return renderReviewWorkflow(input, {
+    name: 'Cursor Code Review',
+    secretName: SECRET_NAME,
+    // An API key: the Cursor CLI needs no OIDC token.
+    idToken: false,
+    reviewSteps: [
+      renderCheckoutStep(REVIEW_GATE_CONDITION),
+      [
+        '- name: Install cursor-agent CLI',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        '  run: |',
+        // HTTPS only, TLS 1.2 or newer. Cursor publishes no pinned version or checksum for
+        // this installer; docs/pr-review.md states what that leaves open.
+        "    curl --proto '=https' --tlsv1.2 -fsS https://cursor.com/install | bash",
+        // The docs name ~/.cursor/bin; the installer currently links `agent` into ~/.local/bin.
+        // Both go on the PATH, so the next step finds it wherever the installer puts it.
+        '    echo "$HOME/.local/bin" >> "$GITHUB_PATH"',
+        '    echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"',
+      ].join('\n'),
+      [
+        '- name: Run Cursor review',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        '  env:',
+        `    CURSOR_API_KEY: \${{ secrets.${SECRET_NAME} }}`,
+        '    GH_TOKEN: ${{ github.token }}',
+        '  run: |',
+        `    agent -p "$(cat <<'${PROMPT_HEREDOC_DELIMITER}'`,
+        indentBlock(composePrompt(input), 4),
+        `    ${PROMPT_HEREDOC_DELIMITER}`,
+        '    )"',
+      ].join('\n'),
+    ],
+  });
 }
 
 export const cursorProvider: ReviewWorkflowProvider = {

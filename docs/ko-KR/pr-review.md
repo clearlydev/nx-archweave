@@ -40,19 +40,30 @@
 
 ### 워크플로 보안
 
+- 워크플로에는 잡이 3개 있고, 각 잡은 필요한 권한만 받아요.
+  - `ai-review`는 프로바이더 시크릿을 들고 AI 리뷰를 돌려요. 의존성은 설치하지 않아요. OIDC 토큰(`id-token: write`)은 `claude` 프로바이더의 잡만 요청할 수 있어요. Claude GitHub App이 이 토큰으로 로그인하기 때문이에요. `gemini`, `gpt`, `cursor`는 API 키를 써서 OIDC 토큰을 받지 않아요.
+  - `review`는 required check로 지정하는 잡이에요. 읽기 전용 토큰(`contents: read`, `pull-requests: read`)만 갖고, 시크릿과 OIDC 토큰 없이 워크스페이스 의존성을 설치해 verdict bin을 실행해요. `ai-review`가 성공하고 그 결과가 `review` 잡에 전달된 경우가 아니면 실패하고, BLOCK이어도 실패해요.
+  - `review-comment`는 `pull-requests: write`로 verdict 코멘트를 게시해요. checkout도 의존성 설치도 하지 않고, verdict는 스크립트에 직접 넣지 않고 환경 변수로만 받아요.
+- `review` 잡은 install script를 끄고 설치해요: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`, `yarn install --frozen-lockfile --ignore-scripts`(yarn 1), `YARN_ENABLE_SCRIPTS=false yarn install --immutable --mode=skip-build`(yarn 2 이상), `bun install --frozen-lockfile --ignore-scripts`. verdict bin은 순수 JavaScript라 빌드 단계가 필요 없어요.
 - 모든 액션은 커밋 SHA로 고정되고, 버전은 뒤의 주석에 적혀요(`actions/checkout@<sha> # v7.0.1`). 버전 태그는 다른 코드를 가리키도록 옮길 수 있지만 커밋은 그럴 수 없어요. 이 워크플로는 프로바이더 시크릿을 다루기 때문에 고정해요. `add-review`는 `.github/dependabot.yml`이 없으면 `github-actions` 항목이 든 파일을 만들고, 파일은 있는데 그 항목이 없으면 추가할 내용을 보여 줘요. 그래서 고정된 버전도 직접 검토하는 PR로 계속 갱신돼요.
-- checkout 단계는 `persist-credentials: false`를 써요. 저장소 토큰이 `.git/config`에 남아 이후 단계(AI 에이전트의 셸 포함)에서 읽히지 않게 하려는 거예요.
+- 모든 checkout 단계는 `persist-credentials: false`를 써요. 저장소 토큰이 `.git/config`에 남아 이후 단계(AI 에이전트의 셸 포함)에서 읽히지 않게 하려는 거예요.
 - pnpm 워크스페이스: 워크플로가 러너에서 `package.json`의 `packageManager`를 읽어요. 필드가 있으면 `pnpm/action-setup`이 그 값을 쓰고, 없으면 pnpm 10을 넘겨요.
-- `cursor` 프로바이더는 `curl https://cursor.com/install -fsS | bash`로 `cursor-agent`를 설치해요. 이 스크립트는 버전이나 체크섬으로 고정되지 않아서, 실행할 때마다 그 시점에 Cursor가 배포한 버전이 설치돼요.
+- `cursor` 프로바이더는 `curl --proto '=https' --tlsv1.2 -fsS https://cursor.com/install | bash`로 `cursor-agent`를 설치해요. Cursor는 이 설치에 고정 버전이나 체크섬을 제공하지 않아요. 그래서 남는 위험은 [보안 범위](#보안-범위)에 적었어요.
+
+### 보안 범위
+
+이 보호 장치들은 pull request의 코드가 닿을 수 있는 범위를 줄여요. 워크플로를 바꿀 수 있는 사람으로부터 워크플로를 지켜 주지는 않아요. GitHub는 포크에서 온 pull request의 워크플로 실행에 시크릿을 넘기지 않고 읽기 전용 토큰만 줘요. 그래서 포크의 pull request는 리뷰되지 않고, 시크릿 게이트가 green-skip 해요. 저장소에 push 권한이 있는 사람은 브랜치에서 워크플로 파일을 고쳐 프로바이더 시크릿으로 원하는 것을 실행할 수 있어요. 그러니 쓰기 권한은 그 시크릿을 맡겨도 되는 사람에게만 주세요.
+
+`cursor` 프로바이더는 고정의 예외예요. 실행할 때마다 그 시점에 Cursor가 배포한 버전이 설치돼요. 설치 단계 자체에는 시크릿이 없지만, 설치된 바이너리는 다음 단계에서 `CURSOR_API_KEY`와 pull request 코멘트를 쓸 수 있는 `GH_TOKEN`을 받아 실행돼요. 다운로드가 변조되면 둘 다 넘어가요. 이 위험을 감수할 수 없는 저장소라면 다른 프로바이더를 고르세요.
 
 ### verdict 게이트
 
 1. 모델이 요약 코멘트 끝에 기계 판독용 `archweave/findings@1` JSON 블록을 덧붙여요.
-2. 마지막 워크플로 스텝이 플러그인의 `archweave-review-verdict` bin으로 이 JSON 블록을 파싱해 verdict를 계산해요. P0/P1이 하나라도 있으면 `BLOCK`이에요.
-3. verdict 스텝은 PR마다 짧은 verdict 코멘트 하나를 유지해요. 이 코멘트를 라운드마다 고치고, 라운드별 해결/잔존 이력과 판정한 커밋을 함께 적어요.
-4. verdict 스텝은 **BLOCK이면 check를 실패**시켜요. 그래서 required check로 지정하면 P0/P1이 실제로 머지를 막아요.
+2. `review` 잡이 플러그인의 `archweave-review-verdict` bin으로 이 JSON 블록을 파싱해 verdict를 계산해요. P0/P1이 하나라도 있으면 `BLOCK`이에요.
+3. `review-comment` 잡은 PR마다 짧은 verdict 코멘트 하나를 유지해요. 이 코멘트를 라운드마다 고치고, 라운드별 해결/잔존 이력과 판정한 커밋을 함께 적어요.
+4. `review` 잡은 **BLOCK이면 check를 실패**시켜요. 그래서 `review`를 required check로 지정하면 P0/P1이 실제로 머지를 막아요. AI 리뷰가 성공하지 않아도 실패하고, 시크릿 게이트나 라운드 게이트가 리뷰를 끈 경우에는 녹색으로 끝나요.
 
-verdict 스텝은 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 리뷰가 요약을 남기지 않으면, 그 실행은 이전 커밋의 라운드를 다시 판정하지 않아요.
+verdict는 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 리뷰가 요약을 남기지 않으면, 그 실행은 이전 커밋의 라운드를 다시 판정하지 않아요.
 
 > [!NOTE]
 > 한 PR의 리뷰 실행은 대기열에 들어가 하나씩 차례로 돌아요. 다른 실행이 대기 중일 때 push하면 새 실행이 대기 중인 실행을 대신해요. 그래서 중간 커밋은 리뷰 없이 지나갈 수 있어요.
@@ -64,12 +75,16 @@ verdict 스텝은 같은 실행이 게시한 요약만 판정해요. 어떤 실�
 | 판독 불가 findings 블록 | "사람이 직접 리뷰" 고지 |
 | 요약 없는 실행 | "사람이 직접 리뷰" 고지 |
 | 플러그인이 제거된 레포 | 스텝 skip |
-| `gh` 실패 | 로그만 |
+| verdict 코멘트 게시 실패 | 로그만 |
 
-빨간 X는 파이프라인 자체에서는 생기지 않아요. 파싱된 차단 finding만 빨간 X를 만들어요.
+`review` check는 파싱된 차단 finding 말고도 세 가지 경우에 빨간색이 돼요. 모두 BLOCK인지 아닌지 알 수 없는 경우라서, BLOCK을 녹색으로 통과시키지 않으려고 실패로 끝나요.
+
+- AI 리뷰가 성공하지 않은 경우(실패, 취소, skip).
+- AI 리뷰 잡의 결과가 `review` 잡에 전달되지 않은 경우(예: 다시 실행할 때). 모든 잡을 다시 실행하세요(AI 리뷰도 다시 돌고 비용도 다시 들어요).
+- `review` 잡이 pull request 코멘트를 읽지 못한 경우. 실패한 잡을 다시 실행하세요. 또 실패하면 `review` 잡에 `pull-requests: read`가 있는지 확인하세요.
 
 > [!NOTE]
-> verdict 게이트에 필요한 설치 스텝은 락파일 불일치처럼 워크스페이스 자체가 깨진 경우 빨간색이 될 수 있어요. 이 빨간 X는 워크스페이스 결함이 드러난 것이고, verdict가 아니에요.
+> `review` 잡의 설치 스텝은 락파일 불일치처럼 워크스페이스 자체가 깨진 경우 빨간색이 될 수 있어요. 이 빨간 X는 워크스페이스 결함이 드러난 것이고, verdict가 아니에요.
 
 ## 모드와 발견 항목
 
