@@ -27,6 +27,8 @@ Pull requests are squash-merged, so your title becomes the one commit on `main`.
 | `perf` | a speedup | yes |
 | `docs`, `refactor`, `test`, `ci`, `build`, `chore`, `revert` | everything else | no |
 
+A change that breaks or changes workspaces an earlier version set up ships with a migration (see below) and a `feat` title, so it bumps the minor number. Don't mark a title with `!` or a `BREAKING CHANGE` footer: while the version is 0.x, that would release 1.0.0.
+
 The scope is optional (`cli`, `plugin`, `docs` …). A check validates the title on every pull request. If the check fails, edit the title and the check runs again. The commit messages inside your branch can be anything you like.
 
 ## Ideas we'd welcome
@@ -142,11 +144,11 @@ A maintainer releases both packages together, with the same version:
 
 1. On an up-to-date `main`, preview with `pnpm release --dry-run`, then run `pnpm release`. Nx Release then:
    - reads the commits since the last `v*` tag
-   - bumps both `package.json` files (while the version is 0.x, `feat` and `fix` both bump the patch number)
+   - bumps both `package.json` files: a `feat` bumps the minor number, anything else in the changelog the patch number
    - writes the changelog section
    - commits `chore(release): v<version>` and tags that commit
 
-   If the release breaks or changes workspaces that an earlier version set up, cut it with `pnpm release minor` instead.
+   To pick the version yourself, pass it: `pnpm release 0.4.0`.
 2. Run `git push --follow-tags`.
 3. The Release workflow then:
    - checks the tag against both package versions and the changelog section
