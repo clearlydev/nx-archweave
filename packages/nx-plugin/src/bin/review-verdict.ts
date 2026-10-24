@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { appendFileSync, realpathSync } from 'node:fs';
 import { runVerdictGate, VERDICT_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/template-engine';
 
 export type BinExec = (command: string, args: string[], stdin?: string) => { status: number | null; stdout: string };
@@ -10,11 +11,42 @@ const realExec: BinExec = (command, args, stdin) => {
   return { status: result.status ?? null, stdout: result.stdout ?? '' };
 };
 
+/** Appends to the file GitHub Actions reads step outputs from. */
+export type OutputWriter = (path: string, text: string) => void;
+
+const realWriteOutput: OutputWriter = (path, text) => appendFileSync(path, text);
+
+/** `ARCHWEAVE_VERDICT_OUTPUT=github-output` hands the verdict comment to a later job instead
+ * of posting it: the job that runs this bin then needs no write token. Unset (every workflow
+ * generated before the mode existed), the bin posts the comment itself and exits 1 on BLOCK. */
+function outputModePath(env: Record<string, string | undefined>): string | undefined {
+  return env['ARCHWEAVE_VERDICT_OUTPUT'] === 'github-output' && env['GITHUB_OUTPUT'] ? env['GITHUB_OUTPUT'] : undefined;
+}
+
+/** Step outputs in GitHub's heredoc form; the delimiter is random, so no line of the comment can
+ * end the value early. */
+function renderStepOutputs(commentBody: string, previousId: number | undefined, blocked: boolean): string {
+  let delimiter: string;
+  do delimiter = `ARCHWEAVE_${randomBytes(8).toString('hex')}`;
+  while (commentBody.split('\n').includes(delimiter));
+  return [`comment-body<<${delimiter}`, commentBody, delimiter, `previous-comment-id=${previousId ?? ''}`, `blocked=${blocked}`, ''].join('\n');
+}
+
+/** Output mode fails closed when the comments cannot be read: the job reads them with a
+ * read-only token, and a check that judged nothing must not pass a BLOCK as green. The default
+ * mode (workflows generated before output mode) keeps its green skip. */
+const UNREAD_COMMENTS_ERROR =
+  '::error title=Review verdict not computed::Could not read PR comments, so the verdict could not be computed. ' +
+  'Re-run the failed jobs to retry. If it fails again, check that the review job has pull-requests: read.';
+
 /** Every adapter-level failure is a warning + exit 0 — the only
- * red is a parsed BLOCK, and that decision lives in runVerdictGate. */
+ * red is a parsed BLOCK, and that decision lives in runVerdictGate. In output mode the BLOCK
+ * travels as `blocked=true` and the workflow's next step fails the job, and comments that
+ * cannot be read fail it too (UNREAD_COMMENTS_ERROR). */
 export function runReviewVerdictBin(
   env: Record<string, string | undefined>,
   exec: BinExec,
+  writeOutput: OutputWriter = realWriteOutput,
 ): { exitCode: number; logs: string[] } {
   const logs: string[] = [];
   const repo = env['GITHUB_REPOSITORY'];
@@ -31,14 +63,16 @@ export function runReviewVerdictBin(
   const roundAfterId = watermark !== undefined && /^\d+$/.test(watermark) ? Number(watermark) : undefined;
   const sha = env['ARCHWEAVE_HEAD_SHA'];
   const headSha = sha !== undefined && /^[0-9a-f]{7,40}$/i.test(sha) ? sha : undefined;
+  const outputPath = outputModePath(env);
   const fetched = exec('gh', ['api', `repos/${repo}/issues/${pr}/comments`, '--paginate']);
-  if (fetched.status !== 0) {
-    logs.push('verdict gate: could not fetch PR comments via gh — skipping (check stays green).');
-    return { exitCode: 0, logs };
-  }
-  const pages = splitConcatenatedJson(fetched.stdout);
+  const pages = fetched.status === 0 ? splitConcatenatedJson(fetched.stdout) : null;
   if (pages === null) {
-    logs.push('verdict gate: unexpected gh output — skipping (check stays green).');
+    if (outputPath !== undefined) return { exitCode: 1, logs: [UNREAD_COMMENTS_ERROR] };
+    logs.push(
+      fetched.status !== 0
+        ? 'verdict gate: could not fetch PR comments via gh — skipping (check stays green).'
+        : 'verdict gate: unexpected gh output — skipping (check stays green).',
+    );
     return { exitCode: 0, logs };
   }
   // Only Bot-authored comments count: the review rounds are posted by the
@@ -62,24 +96,29 @@ export function runReviewVerdictBin(
   // One verdict comment per PR, edited every round: the newest earlier one is updated, and a
   // new one is posted only when there is none or the edit is refused (e.g. another app's).
   const previous = [...comments].reverse().find((c) => c.body.includes(VERDICT_MARKER) && c.id !== undefined);
-  const payload = JSON.stringify({ body: result.commentBody });
-  const updated =
-    previous !== undefined &&
-    exec('gh', ['api', '-X', 'PATCH', `repos/${repo}/issues/comments/${previous.id}`, '--input', '-'], payload).status === 0;
-  if (!updated) {
-    const post = exec('gh', ['api', '-X', 'POST', `repos/${repo}/issues/${pr}/comments`, '--input', '-'], payload);
-    if (post.status !== 0) logs.push('verdict gate: could not post the verdict comment (continuing).');
+  const settled = result.kind === 'no-round' || result.kind === 'unparseable';
+  if (outputPath !== undefined) {
+    writeOutput(outputPath, renderStepOutputs(result.commentBody, previous?.id, !settled && result.exitCode !== 0));
+  } else {
+    const payload = JSON.stringify({ body: result.commentBody });
+    const updated =
+      previous !== undefined &&
+      exec('gh', ['api', '-X', 'PATCH', `repos/${repo}/issues/comments/${previous.id}`, '--input', '-'], payload).status === 0;
+    if (!updated) {
+      const post = exec('gh', ['api', '-X', 'POST', `repos/${repo}/issues/${pr}/comments`, '--input', '-'], payload);
+      if (post.status !== 0) logs.push('verdict gate: could not post the verdict comment (continuing).');
+    }
   }
-  if (result.kind === 'no-round') {
-    logs.push('verdict gate: this run posted no review round for the current commit — earlier rounds are not judged again; check stays green.');
-    return { exitCode: 0, logs };
-  }
-  if (result.kind === 'unparseable') {
-    logs.push('verdict gate: review output was not machine-readable — human review requested, check stays green.');
+  if (settled) {
+    logs.push(
+      result.kind === 'no-round'
+        ? 'verdict gate: this run posted no review round for the current commit — earlier rounds are not judged again; check stays green.'
+        : 'verdict gate: review output was not machine-readable — human review requested, check stays green.',
+    );
     return { exitCode: 0, logs };
   }
   logs.push(`verdict gate: ${result.verdict}`);
-  return { exitCode: result.exitCode, logs };
+  return { exitCode: outputPath === undefined ? result.exitCode : 0, logs };
 }
 
 /** gh api --paginate emits each page's JSON back-to-back ("[...][...]") —
