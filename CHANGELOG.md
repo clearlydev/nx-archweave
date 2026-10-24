@@ -1,3 +1,9 @@
+## 0.2.0 (2026-10-24)
+
+### 🚀 Features
+
+- support existing Nx workspaces ([#4](https://github.com/clearlydev/nx-archweave/pull/4))
+
 ## 0.1.1 (2026-10-18)
 
 ### 🩹 Fixes
