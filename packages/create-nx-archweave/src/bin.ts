@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { execFile, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseCliArgs } from './cli/parse-args.ts';
+import { checkInvocationDirectory, renderLocationRefusal } from './cli/location-check.ts';
 import { collectMissingInputs, reviewProviderConflict } from './cli/prompts.ts';
 import { buildPlan, nxGenerateCommand } from './cli/plan.ts';
 import { detectInstalledHosts } from './cli/host-probe.ts';
@@ -43,6 +46,14 @@ async function main(argv: readonly string[]): Promise<number> {
     return 1;
   }
   const name = args.name;
+
+  if (!args.allowNested) {
+    const location = checkInvocationDirectory(process.cwd(), { gitRoot, hasPackageJson: (dir) => existsSync(join(dir, 'package.json')) });
+    if (!location.ok) {
+      console.error(renderLocationRefusal(location));
+      return 1;
+    }
+  }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (question: string): Promise<string> => {
@@ -222,3 +233,9 @@ main(process.argv.slice(2))
     console.error(error instanceof Error ? error.stack ?? error.message : String(error));
     process.exitCode = 1;
   });
+
+/** `git rev-parse --show-toplevel` from `dir`; null outside a repository or without git. */
+function gitRoot(dir: string): string | null {
+  const result = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf-8' });
+  return result.status === 0 && result.stdout.trim() !== '' ? result.stdout.trim() : null;
+}

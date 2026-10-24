@@ -39,6 +39,9 @@ export interface ParsedArgs {
    * passed" — package-manager.ts then asks or reads the launching manager. Any other
    * value is refused before this field is ever set. */
   packageManager: CliPackageManager | undefined;
+  /** `--allow-nested`: create the workspace even inside a git repository or a package.json
+   * project (location-check.ts refuses that otherwise). */
+  allowNested: boolean;
 }
 
 export type ParseArgsOutcome =
@@ -117,6 +120,7 @@ export function parseCliArgs(argv: readonly string[]): ParseArgsOutcome {
     'review-provider': { type: 'string' },
     'plugin-source': { type: 'string' },
     'package-manager': { type: 'string' },
+    'allow-nested': { type: 'boolean' },
   } as const;
 
   let parsed: ReturnType<typeof parseNodeArgs<{ args: string[]; options: typeof options; allowPositionals: true }>>;
@@ -222,6 +226,7 @@ export function parseCliArgs(argv: readonly string[]): ParseArgsOutcome {
       review,
       pluginSource: parsed.values['plugin-source'],
       packageManager,
+      allowNested: parsed.values['allow-nested'] === true,
     },
   };
 }

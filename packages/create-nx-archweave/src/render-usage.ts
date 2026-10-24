@@ -61,6 +61,7 @@ export function renderUsage(): string {
     '  --review, --no-review              Force AI PR review on/off (quick-start asks y/N; solo/team: on)',
     '  --review-provider <name>           claude, gemini, gpt or cursor (asked when review is on; default: the first AI tool\'s)',
     '  --plugin-source <spec>             Override the nx-archweave plugin package/version to install',
+    '  --allow-nested                     Create the workspace even inside a git repository or package.json project',
     '  --package-manager <name>           npm, pnpm, yarn or bun (asked if omitted; without a terminal: the one that ran this command, else npm)',
     '  -h, --help                         Show this help',
     '  -v, --version                      Show the CLI version',

@@ -23,6 +23,7 @@ describe('parseCliArgs', () => {
         review: true,
         pluginSource: './local-plugin.tgz',
         packageManager: 'pnpm',
+        allowNested: false,
       },
     });
   });
@@ -41,6 +42,7 @@ describe('parseCliArgs', () => {
         review: undefined,
         pluginSource: undefined,
         packageManager: undefined,
+        allowNested: false,
       },
     });
   });
@@ -260,5 +262,14 @@ describe('parseCliArgs — backend-only (--frontend=none)', () => {
     const outcome = parseCliArgs(['my-api', '--frontend=none', '--backend=none']);
     expect(outcome.kind).toBe('error');
     if (outcome.kind === 'error') expect(outcome.message).toContain('--backend=express or --backend=nest');
+  });
+});
+
+describe('parseCliArgs — --allow-nested', () => {
+  it('is off unless passed', () => {
+    const outcome = parseCliArgs(['demo']);
+    expect(outcome.kind === 'ok' && outcome.args.allowNested).toBe(false);
+    const nested = parseCliArgs(['demo', '--allow-nested']);
+    expect(nested.kind === 'ok' && nested.args.allowNested).toBe(true);
   });
 });
