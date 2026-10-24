@@ -3,6 +3,7 @@ import {
   sharedTypesIndexContent,
   sharedTypesPackageJsonContent,
 } from '@nx-archweave/templates';
+import { DEFAULT_BOUNDARY_TAGS, type BoundaryTags } from './eslint-boundaries.ts';
 
 /**
  * Pure assembly for the backend wiring (shape confirmed by E2E): the shared-types
@@ -24,21 +25,44 @@ export interface BackendWiring {
    * `@org/shared-types`); a bare name gains one (`my-app` →
    * `@my-app/shared-types`). */
   sharedTypesPackageName: string;
-  tagByRole: { frontend: 'scope:frontend'; backend: 'scope:backend'; shared: 'scope:shared' };
+  /** Where the lib lives, relative to the workspace root. */
+  sharedTypesRoot: string;
+  tagByRole: BoundaryTags;
 }
 
-export function composeBackendWiring(input: { workspaceName: string }): BackendWiring {
+export const DEFAULT_SHARED_TYPES_ROOT = 'libs/shared-types';
+
+/** `sharedTypes` from a toolkit config object: `false` for none, else where the lib goes and
+ * (optionally) its import path. */
+export function readSharedTypesConfig(config: Record<string, unknown> | null | undefined): false | { path: string; importPath?: string } {
+  const value = config?.['sharedTypes'];
+  if (value === false) return false;
+  if (typeof value !== 'object' || value === null) return { path: DEFAULT_SHARED_TYPES_ROOT };
+  const record = value as Record<string, unknown>;
+  const path = typeof record['path'] === 'string' && record['path'].trim() !== '' ? record['path'].replace(/\/+$/, '') : DEFAULT_SHARED_TYPES_ROOT;
+  const importPath = typeof record['importPath'] === 'string' && record['importPath'].trim() !== '' ? record['importPath'] : undefined;
+  return importPath === undefined ? { path } : { path, importPath };
+}
+
+export function composeBackendWiring(input: {
+  workspaceName: string;
+  tags?: BoundaryTags;
+  sharedTypes?: { path: string; importPath?: string };
+}): BackendWiring {
   const scoped = /^@([^/]+)\//.exec(input.workspaceName);
   const scope = scoped ? `@${scoped[1]}` : `@${input.workspaceName.split('/').pop() || 'workspace'}`;
-  const sharedTypesPackageName = `${scope}/shared-types`;
+  const sharedTypesRoot = input.sharedTypes?.path ?? DEFAULT_SHARED_TYPES_ROOT;
+  const sharedTypesPackageName = input.sharedTypes?.importPath ?? `${scope}/shared-types`;
+  const tagByRole = input.tags ?? DEFAULT_BOUNDARY_TAGS;
   return {
     sharedTypesFiles: [
-      { filePath: 'libs/shared-types/package.json', content: sharedTypesPackageJsonContent(sharedTypesPackageName) },
-      { filePath: 'libs/shared-types/src/index.ts', content: sharedTypesIndexContent() },
-      { filePath: 'libs/shared-types/src/lib/api-types.ts', content: sharedTypesApiTypesContent() },
+      { filePath: `${sharedTypesRoot}/package.json`, content: sharedTypesPackageJsonContent(sharedTypesPackageName, tagByRole.shared) },
+      { filePath: `${sharedTypesRoot}/src/index.ts`, content: sharedTypesIndexContent() },
+      { filePath: `${sharedTypesRoot}/src/lib/api-types.ts`, content: sharedTypesApiTypesContent() },
     ],
     sharedTypesPackageName,
-    tagByRole: { frontend: 'scope:frontend', backend: 'scope:backend', shared: 'scope:shared' },
+    sharedTypesRoot,
+    tagByRole,
   };
 }
 
@@ -58,7 +82,7 @@ export type WorkspaceGlobResult = { status: 'added'; text: string } | { status: 
  * (which the JSON.parse above makes unlikely), it falls back to re-serializing,
  * which is correct but rewrites the whole file.
  */
-export function addSharedTypesNpmWorkspace(packageJsonText: string): WorkspaceGlobResult {
+export function addSharedTypesNpmWorkspace(packageJsonText: string, entry: string = DEFAULT_SHARED_TYPES_ROOT): WorkspaceGlobResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(packageJsonText);
@@ -78,21 +102,20 @@ export function addSharedTypesNpmWorkspace(packageJsonText: string): WorkspaceGl
   } else {
     return { status: 'unrecognized' };
   }
-  if (target.some((entry) => entry === 'libs/shared-types' || entry === 'libs/*')) return { status: 'present' };
+  const parentGlob = `${entry.split('/').slice(0, -1).join('/')}/*`;
+  if (target.some((existing) => existing === entry || existing === parentGlob)) return { status: 'present' };
 
-  const surgical = insertSharedTypesWorkspace(packageJsonText, field === undefined ? 'absent' : Array.isArray(field) ? 'array' : 'object');
+  const surgical = insertSharedTypesWorkspace(packageJsonText, field === undefined ? 'absent' : Array.isArray(field) ? 'array' : 'object', JSON.stringify(entry));
   if (surgical !== null) return { status: 'added', text: surgical };
 
   // fallback: correct JSON, noisy diff
   if (field === undefined) pkg['workspaces'] = target;
-  target.push('libs/shared-types');
+  target.push(entry);
   // [ \t]+ on purpose: \s+ would swallow blank lines before the first key.
   const indent = /\n([ \t]+)"/.exec(packageJsonText)?.[1] ?? '  ';
   const trailing = packageJsonText.endsWith('\n') ? '\n' : '';
   return { status: 'added', text: `${JSON.stringify(pkg, null, indent)}${trailing}` };
 }
-
-const SHARED_TYPES_ENTRY = '"libs/shared-types"';
 
 /** Index just past the JSON value starting at `start` (a string, or a bracketed value). */
 function skipJsonValue(text: string, start: number): number {
@@ -147,22 +170,22 @@ function objectMembers(text: string, open: number): { key: string; valueStart: n
 }
 
 /** Appends the entry to the array at [open, close), in the array's own layout. */
-function appendToArray(text: string, open: number, close: number, eol: string): string {
+function appendToArray(text: string, open: number, close: number, eol: string, quoted: string): string {
   const inner = text.slice(open + 1, close - 1);
-  if (inner.trim() === '') return `${text.slice(0, open + 1)}${SHARED_TYPES_ENTRY}${text.slice(close - 1)}`;
+  if (inner.trim() === '') return `${text.slice(0, open + 1)}${quoted}${text.slice(close - 1)}`;
   if (!inner.includes('\n')) {
     // inline: ["apps/*", "libs/*"] → keep it on one line
     const body = inner.replace(/\s+$/, '');
-    return `${text.slice(0, open + 1)}${body}, ${SHARED_TYPES_ENTRY}${inner.slice(body.length)}${text.slice(close - 1)}`;
+    return `${text.slice(0, open + 1)}${body}, ${quoted}${inner.slice(body.length)}${text.slice(close - 1)}`;
   }
   // one entry per line: copy the last entry's indentation
   const lastEntryLineStart = text.lastIndexOf('\n', open + 1 + inner.trimEnd().length - 1) + 1;
   const itemIndent = /^[ \t]*/.exec(text.slice(lastEntryLineStart))?.[0] ?? '  ';
   const bodyEnd = open + 1 + inner.trimEnd().length;
-  return `${text.slice(0, bodyEnd)},${eol}${itemIndent}${SHARED_TYPES_ENTRY}${text.slice(bodyEnd)}`;
+  return `${text.slice(0, bodyEnd)},${eol}${itemIndent}${quoted}${text.slice(bodyEnd)}`;
 }
 
-function insertSharedTypesWorkspace(text: string, form: 'array' | 'object' | 'absent'): string | null {
+function insertSharedTypesWorkspace(text: string, form: 'array' | 'object' | 'absent', quoted: string): string | null {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   const rootOpen = text.indexOf('{');
   if (rootOpen === -1) return null;
@@ -176,19 +199,19 @@ function insertSharedTypesWorkspace(text: string, form: 'array' | 'object' | 'ab
     const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? '  ';
     if (last === undefined) {
       const close = skipJsonValue(text, rootOpen) - 1;
-      return `${text.slice(0, rootOpen + 1)}${eol}${indent}"workspaces": [${SHARED_TYPES_ENTRY}]${eol}${text.slice(close)}`;
+      return `${text.slice(0, rootOpen + 1)}${eol}${indent}"workspaces": [${quoted}]${eol}${text.slice(close)}`;
     }
-    return `${text.slice(0, last.valueEnd)},${eol}${indent}"workspaces": [${SHARED_TYPES_ENTRY}]${text.slice(last.valueEnd)}`;
+    return `${text.slice(0, last.valueEnd)},${eol}${indent}"workspaces": [${quoted}]${text.slice(last.valueEnd)}`;
   }
   if (workspaces === undefined) return null;
   if (form === 'array') {
     if (text[workspaces.valueStart] !== '[') return null;
-    return appendToArray(text, workspaces.valueStart, workspaces.valueEnd, eol);
+    return appendToArray(text, workspaces.valueStart, workspaces.valueEnd, eol, quoted);
   }
   if (text[workspaces.valueStart] !== '{') return null;
   const packages = objectMembers(text, workspaces.valueStart)?.find((member) => member.key === 'packages');
   if (packages === undefined || text[packages.valueStart] !== '[') return null;
-  return appendToArray(text, packages.valueStart, packages.valueEnd, eol);
+  return appendToArray(text, packages.valueStart, packages.valueEnd, eol, quoted);
 }
 
 /**
@@ -200,8 +223,10 @@ function insertSharedTypesWorkspace(text: string, form: 'array' | 'object' | 'ab
  * whole file, so a libs glob in another YAML section reads as present; forms
  * like 'libs/**' are not recognized as covering; output joins with LF.
  */
-export function addSharedTypesWorkspaceGlob(yamlText: string): WorkspaceGlobResult {
-  if (/^\s*-\s*['"]?(libs\/shared-types|libs\/\*)['"]?\s*$/m.test(yamlText)) {
+export function addSharedTypesWorkspaceGlob(yamlText: string, entry: string = DEFAULT_SHARED_TYPES_ROOT): WorkspaceGlobResult {
+  const escape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  const parentGlob = `${entry.split('/').slice(0, -1).join('/')}/*`;
+  if (new RegExp(`^\\s*-\\s*['"]?(${escape(entry)}|${escape(parentGlob)})['"]?\\s*$`, 'm').test(yamlText)) {
     return { status: 'present' };
   }
   const lines = yamlText.split('\n');
@@ -219,6 +244,6 @@ export function addSharedTypesWorkspaceGlob(yamlText: string): WorkspaceGlobResu
   }
   if (lastEntry === packagesIndex) return { status: 'unrecognized' };
   const indent = /^(\s+)-/.exec(lines[lastEntry])?.[1] ?? '  ';
-  lines.splice(lastEntry + 1, 0, `${indent}- 'libs/shared-types'`);
+  lines.splice(lastEntry + 1, 0, `${indent}- '${entry}'`);
   return { status: 'added', text: lines.join('\n') };
 }

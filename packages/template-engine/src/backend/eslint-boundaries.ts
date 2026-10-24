@@ -32,17 +32,43 @@ export interface ScopeConstraint {
  * so these ride on top of the allow-all baseline without touching anything
  * else in the user's graph.
  */
-export const SCOPE_CONSTRAINTS: readonly ScopeConstraint[] = [
-  { sourceTag: 'scope:frontend', notDependOnLibsWithTags: ['scope:backend'] },
-  { sourceTag: 'scope:backend', notDependOnLibsWithTags: ['scope:frontend'] },
-  { sourceTag: 'scope:shared', notDependOnLibsWithTags: ['scope:frontend', 'scope:backend'] },
-];
+/** The tag each role's projects carry. `toolkit.config.json`'s `boundaries.tags` replaces any
+ * of them, so a workspace with its own tag scheme keeps it. */
+export interface BoundaryTags {
+  frontend: string;
+  backend: string;
+  shared: string;
+}
+
+export const DEFAULT_BOUNDARY_TAGS: BoundaryTags = { frontend: 'scope:frontend', backend: 'scope:backend', shared: 'scope:shared' };
+
+/** `boundaries.tags` from a toolkit config object, each role falling back to its default. */
+export function readBoundaryTags(config: Record<string, unknown> | null | undefined): BoundaryTags {
+  const boundaries = config?.['boundaries'];
+  const tags = typeof boundaries === 'object' && boundaries !== null ? (boundaries as Record<string, unknown>)['tags'] : undefined;
+  const pick = (role: keyof BoundaryTags): string => {
+    const value = typeof tags === 'object' && tags !== null ? (tags as Record<string, unknown>)[role] : undefined;
+    return typeof value === 'string' && value.trim() !== '' ? value : DEFAULT_BOUNDARY_TAGS[role];
+  };
+  return { frontend: pick('frontend'), backend: pick('backend'), shared: pick('shared') };
+}
+
+export function scopeConstraints(tags: BoundaryTags = DEFAULT_BOUNDARY_TAGS): ScopeConstraint[] {
+  return [
+    { sourceTag: tags.frontend, notDependOnLibsWithTags: [tags.backend] },
+    { sourceTag: tags.backend, notDependOnLibsWithTags: [tags.frontend] },
+    { sourceTag: tags.shared, notDependOnLibsWithTags: [tags.frontend, tags.backend] },
+  ];
+}
+
+export const SCOPE_CONSTRAINTS: readonly ScopeConstraint[] = scopeConstraints();
 
 /** Root ESLint flat-config filenames, in lookup order. Shared by the writer
  * (add-backend) and the checker (doctor) so both always inspect the same file. */
 export const ESLINT_CONFIG_CANDIDATES = ['eslint.config.mjs', 'eslint.config.js', 'eslint.config.cjs'] as const;
 
-const APPLIED_MARKER = "sourceTag: 'scope:frontend'";
+/** Our constraints are in place when the frontend role's deny rule is. */
+const appliedMarker = (tags: BoundaryTags): string => `sourceTag: '${tags.frontend}'`;
 
 /** The exact depConstraints block a fresh Nx workspace ships: a single
  * allow-all entry. Whitespace is tolerated, nothing else is. */
@@ -117,16 +143,16 @@ export type BoundaryClassification = 'enforced' | 'allow-all' | 'unknown';
  * are masked first. The marker OUTRANKS a wildcard block: under conjunctive
  * constraint semantics our deny rules enforce even when an allow-all baseline
  * coexists — the baseline is deliberately part of the applied shape. */
-export function classifyBoundaryConstraints(configText: string): BoundaryClassification {
+export function classifyBoundaryConstraints(configText: string, tags: BoundaryTags = DEFAULT_BOUNDARY_TAGS): BoundaryClassification {
   const masked = maskComments(configText);
-  if (masked.includes(APPLIED_MARKER)) return 'enforced';
+  if (masked.includes(appliedMarker(tags))) return 'enforced';
   if (findAllowAllMatches(masked).length > 0) return 'allow-all';
   return 'unknown';
 }
 
-function renderConstraintsBlock(indent: string, eol: string): string {
-  const renderList = (tags: string[]): string => tags.map((t) => `'${t}'`).join(', ');
-  const inner = SCOPE_CONSTRAINTS.map((c) => {
+function renderConstraintsBlock(indent: string, eol: string, tags: BoundaryTags): string {
+  const renderList = (list: string[]): string => list.map((t) => `'${t}'`).join(', ');
+  const inner = scopeConstraints(tags).map((c) => {
     const field = c.notDependOnLibsWithTags
       ? `notDependOnLibsWithTags: [${renderList(c.notDependOnLibsWithTags)}]`
       : `onlyDependOnLibsWithTags: [${renderList(c.onlyDependOnLibsWithTags ?? [])}]`;
@@ -152,8 +178,8 @@ export type ApplyBoundaryResult =
   | { status: 'already-applied' }
   | { status: 'unrecognized' };
 
-export function applyBoundaryConstraints(configText: string): ApplyBoundaryResult {
-  const classification = classifyBoundaryConstraints(configText);
+export function applyBoundaryConstraints(configText: string, tags: BoundaryTags = DEFAULT_BOUNDARY_TAGS): ApplyBoundaryResult {
+  const classification = classifyBoundaryConstraints(configText, tags);
   if (classification === 'enforced') return { status: 'already-applied' };
   if (classification === 'unknown') return { status: 'unrecognized' };
 
@@ -170,21 +196,21 @@ export function applyBoundaryConstraints(configText: string): ApplyBoundaryResul
   const eol = configText.includes('\r\n') ? '\r\n' : '\n';
   const lineStart = configText.lastIndexOf('\n', match.index) + 1;
   const indent = /^[ \t]*/.exec(configText.slice(lineStart, match.index))?.[0] ?? '';
-  const replacement = renderConstraintsBlock(indent, eol);
+  const replacement = renderConstraintsBlock(indent, eol, tags);
   const text = configText.slice(0, match.index) + replacement + configText.slice(match.index + match.length);
   return { status: 'applied', text };
 }
 
 /** Paste-ready report-only snippet for the non-write paths. */
-export function buildBoundarySnippet(): string {
+export function buildBoundarySnippet(tags: BoundaryTags = DEFAULT_BOUNDARY_TAGS): string {
   // Rendered in the exact shape applyBoundaryConstraints writes: pasting it must
-  // satisfy APPLIED_MARKER, or doctor keeps reporting 'not enforced' to a user who
+  // satisfy the applied marker, or doctor keeps reporting 'not enforced' to a user who
   // followed its own suggestion.
   return [
     '// nx-archweave project boundaries — merge these entries into the depConstraints',
     "// array of the '@nx/enforce-module-boundaries' rule in your root ESLint config.",
     '// They ride on top of your existing entries: constraints apply conjunctively,',
     '// so the allow-all baseline can stay.',
-    renderConstraintsBlock('', '\n'),
+    renderConstraintsBlock('', '\n', tags),
   ].join('\n');
 }

@@ -17,7 +17,8 @@ export interface AddBackendReport {
   frontendProject?: string;
   /** project.json paths that failed to read/parse (invalid-project-json refusal). */
   invalidProjects?: string[];
-  sharedTypes: 'created' | 'skipped';
+  /** `disabled`: toolkit.config.json says `sharedTypes: false`. */
+  sharedTypes: 'created' | 'skipped' | 'disabled';
   tags: TagResult[];
   /** Workspace registration of libs/shared-types (pnpm-workspace.yaml or
    * package.json workspaces, per the detected package manager). */
@@ -28,10 +29,12 @@ export interface AddBackendReport {
   packageManagerNote?: string;
   /** toolkit.config.json backend persistence (doctor's gate). */
   config?: 'created' | 'updated' | 'unchanged';
-  tsconfigPaths: 'added' | 'present' | 'workspace-link' | 'unrecognized';
+  tsconfigPaths: 'added' | 'present' | 'workspace-link' | 'unrecognized' | 'none';
   eslint: 'applied' | 'already-applied' | 'snippet-only' | 'degraded-unrecognized';
   snippet?: string;
   sharedTypesPackage?: string;
+  /** Where the shared-types lib lives (`libs/shared-types` unless configured). */
+  sharedTypesRoot?: string;
 }
 
 /** Section body, no header — init prints its own `## add-backend` title and
@@ -83,10 +86,13 @@ export function renderAddBackendBody(report: AddBackendReport): string {
 
   if (report.packageManagerNote !== undefined) lines.push(`  note: ${report.packageManagerNote}`);
   lines.push(`  frontend project: ${report.frontendProject ?? 'none (backend-only workspace)'}`);
+  const libPath = report.sharedTypesRoot ?? 'libs/shared-types';
   lines.push(
     report.sharedTypes === 'created'
-      ? `  libs/shared-types: created (import it as ${report.sharedTypesPackage})`
-      : '  libs/shared-types: already exists — skipped',
+      ? `  ${libPath}: created (import it as ${report.sharedTypesPackage})`
+      : report.sharedTypes === 'disabled'
+        ? '  shared-types lib: none (sharedTypes: false in toolkit.config.json)'
+        : `  ${libPath}: already exists — skipped`,
   );
   if (report.config !== undefined && report.config !== 'unchanged') {
     lines.push(`  toolkit.config.json: backend "${report.backend}" recorded (${report.config}) — doctor's backend checks now run`);
@@ -96,13 +102,13 @@ export function renderAddBackendBody(report: AddBackendReport): string {
     const registry = packageManagerCommands(pmName).workspaceRegistration;
     lines.push(
       {
-        added: `  ${registry}: 'libs/shared-types' registered — run \`${pmName} install\` once to link it`,
-        present: `  ${registry}: already covers libs/shared-types`,
+        added: `  ${registry}: '${libPath}' registered — run \`${pmName} install\` once to link it`,
+        present: `  ${registry}: already covers ${libPath}`,
         unrecognized:
           // an integrated layout lists no workspace packages: the paths alias below links it
           report.tsconfigPaths === 'added' || report.tsconfigPaths === 'present'
-            ? `  ${registry}: no workspace package list (integrated layout) — the tsconfig paths alias links libs/shared-types`
-            : `  ${registry}: shape not recognized — add 'libs/shared-types' to its workspace list yourself`,
+            ? `  ${registry}: no workspace package list (integrated layout) — the tsconfig paths alias links ${libPath}`
+            : `  ${registry}: shape not recognized — add '${libPath}' to its workspace list yourself`,
       }[report.workspaceGlob],
     );
   }
@@ -115,6 +121,7 @@ export function renderAddBackendBody(report: AddBackendReport): string {
       present: '  tsconfig.base.json paths: already wired',
       'workspace-link': '  tsconfig paths: not needed — the workspace package link is the wiring',
       unrecognized: '  tsconfig.base.json: could not be parsed — left untouched',
+      none: '  tsconfig paths: nothing to wire (no shared-types lib)',
     }[report.tsconfigPaths],
   );
 

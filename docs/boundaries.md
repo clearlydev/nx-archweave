@@ -33,6 +33,15 @@ The rules work as a deny list:
 - `add-backend` finds the frontend app and the `api` app by their declared `projectType`. If a project doesn't declare one, it uses the type Nx infers.
 - That means it also works in workspaces made with the classic `react-monorepo` preset, whose apps are plain `package.json` projects.
 - If the `api` app is missing, `add-backend` refuses and prints the official commands to create it next to the frontend (`apps/api`).
+- **Your own tags.** If the workspace already has a tag scheme, name the role tags in `toolkit.config.json`. `add-backend` then tags the apps, writes the deny rules, and `doctor` checks them with those names. A tag already present is never added twice, and existing tags are never removed.
+- **Your own shared-types location, or none.** `sharedTypes` moves the lib and its import path, or turns it off.
+
+```jsonc
+{
+  "boundaries": { "tags": { "frontend": "type:web", "backend": "type:api", "shared": "type:shared" } },
+  "sharedTypes": { "path": "packages/types", "importPath": "@acme/types" }  // or false
+}
+```
 
 > [!NOTE]
 > **Express 4.** Say you pick Express in a workspace whose `@nx/react` expects Express 4. The printed commands first declare `express` in that range, so npm doesn't reject the generated app.
