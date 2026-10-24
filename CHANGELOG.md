@@ -1,3 +1,9 @@
+## 0.2.1 (2026-10-24)
+
+### 🩹 Fixes
+
+- update the review workflow's pinned actions to their Node 24 versions ([#9](https://github.com/clearlydev/nx-archweave/pull/9))
+
 ## 0.2.0 (2026-10-24)
 
 ### 🚀 Features
