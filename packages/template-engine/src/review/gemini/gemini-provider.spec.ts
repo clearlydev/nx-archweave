@@ -15,7 +15,7 @@ describe('geminiProvider', () => {
     expect(yaml).toContain('id: secret-gate');
     expect(yaml).toContain('id: round-gate');
     expect(yaml).toContain('-ge 3');
-    expect(yaml).toContain('uses: google-github-actions/run-gemini-cli@v0');
+    expect(yaml).toContain('uses: google-github-actions/run-gemini-cli@');
     expect(yaml).toContain('gemini_api_key: ${{ secrets.GEMINI_API_KEY }}');
     expect(yaml).toContain("if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'");
     expect(yaml).toContain('You are a code reviewer focused on correctness and security.');

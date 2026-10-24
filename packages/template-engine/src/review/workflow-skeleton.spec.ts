@@ -75,7 +75,7 @@ describe('renderVerdictGateStep', () => {
 describe('renderWorkspaceSetupSteps', () => {
   it('npm: setup-node with npm cache then npm ci, both behind the two gates (token-less repos must not pay install)', () => {
     const steps = renderWorkspaceSetupSteps('npm');
-    expect(steps).toContain('actions/setup-node@v4');
+    expect(steps).toContain('actions/setup-node@');
     expect(steps).toContain('cache: npm');
     expect(steps).toContain('npm ci');
     expect(steps).not.toContain('pnpm');
@@ -83,17 +83,19 @@ describe('renderWorkspaceSetupSteps', () => {
     expect(gateCount).toBeGreaterThanOrEqual(2);
   });
 
-  it('pnpm: action-setup with an explicit version (workspaces ship no packageManager field) and a frozen install', () => {
+  it('pnpm: the version is decided on the runner (explicit only without a packageManager field), then a frozen install', () => {
     const steps = renderWorkspaceSetupSteps('pnpm');
-    expect(steps).toContain('pnpm/action-setup@v4');
-    expect(steps).toContain('version: 10');
+    expect(steps).toContain('pnpm/action-setup@');
+    expect(steps).toContain('echo "version=10" >> "$GITHUB_OUTPUT"');
+    expect(steps).toContain('version: ${{ steps.pnpm-version.outputs.version }}');
+    expect(steps.indexOf('Detect pnpm version')).toBeLessThan(steps.indexOf('pnpm/action-setup@'));
     expect(steps).toContain('pnpm install --frozen-lockfile');
     expect(steps).toContain('cache: pnpm');
   });
 
   it("yarn: Corepack serves both flavors; the install picks --immutable (berry) or --frozen-lockfile (classic) from yarn's own major", () => {
     const steps = renderWorkspaceSetupSteps('yarn');
-    expect(steps).toContain('actions/setup-node@v4');
+    expect(steps).toContain('actions/setup-node@');
     // no setup-node yarn cache: it would ask the runner's global yarn 1 about a berry project
     expect(steps).not.toContain('cache:');
     expect(steps).toContain('corepack enable yarn');
@@ -104,8 +106,8 @@ describe('renderWorkspaceSetupSteps', () => {
 
   it('bun: setup-bun before setup-node (no bun cache there), then a frozen bun install — all behind the gates', () => {
     const steps = renderWorkspaceSetupSteps('bun');
-    expect(steps).toContain('oven-sh/setup-bun@v2');
-    expect(steps).toContain('actions/setup-node@v4');
+    expect(steps).toContain('oven-sh/setup-bun@');
+    expect(steps).toContain('actions/setup-node@');
     expect(steps.indexOf('oven-sh/setup-bun')).toBeLessThan(steps.indexOf('actions/setup-node'));
     expect(steps).not.toContain('cache:');
     expect(steps).toContain('bun install --frozen-lockfile');

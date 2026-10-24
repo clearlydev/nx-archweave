@@ -19,7 +19,7 @@ describe('composeReviewSetup', () => {
     expect(plan).not.toBeNull();
     expect(plan?.workflowFilePath).toBe('.github/workflows/claude-code-review.yml');
     expect(plan?.requiredSecretName).toBe('CLAUDE_CODE_OAUTH_TOKEN');
-    expect(plan?.workflowYaml).toContain('anthropics/claude-code-action@v1');
+    expect(plan?.workflowYaml).toContain('anthropics/claude-code-action@');
   });
 
   it('config snippet is the flat shape — no nested policy duplication', () => {

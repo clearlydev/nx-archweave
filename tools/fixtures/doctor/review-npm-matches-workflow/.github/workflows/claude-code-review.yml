@@ -35,7 +35,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          counts=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          counts=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
           rounds=$(printf '%s' "$counts" | cut -f1)
           echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
           if [ "$rounds" -ge 3 ]; then
@@ -47,13 +47,14 @@ jobs:
 
       - name: Checkout repository
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Claude review
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -97,7 +98,7 @@ jobs:
 
       - name: Set up Node
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
