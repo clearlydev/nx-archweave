@@ -300,7 +300,7 @@ describe('runAddReview — packageManager threading', () => {
     tree.write('bun.lock', '{}\n');
     const report = runAddReview(tree, {});
     const workflow = tree.read(report.workflowPath, 'utf-8') ?? '';
-    expect(workflow).toContain('oven-sh/setup-bun@v2');
+    expect(workflow).toContain('oven-sh/setup-bun@');
     expect(workflow).toContain('bun install --frozen-lockfile');
     expect(workflow).not.toContain('npm ci');
     expect(report.packageManagerNote).toBeUndefined();
@@ -358,5 +358,51 @@ describe('runAddReview — a bare rerun keeps the recorded review settings', () 
     expect(bare.configAction).toBe('unchanged');
     expect(JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string).review).toMatchObject({ provider: 'gemini', mode: 'fast', maxRounds: 2 });
     expect(runAddReview(createTreeWithEmptyWorkspace(), {}).requiredSecretName).toBe(runAddReview(createTreeWithEmptyWorkspace(), { provider: 'claude' }).requiredSecretName);
+  });
+});
+
+describe('runAddReview — Dependabot keeps the pinned actions moving', () => {
+  const DEPENDABOT_PATH = '.github/dependabot.yml';
+  let tree: Tree;
+  beforeEach(() => {
+    tree = createTreeWithEmptyWorkspace();
+  });
+
+  it('creates .github/dependabot.yml with a github-actions entry when the file is missing', () => {
+    const report = runAddReview(tree, {});
+    expect(report.dependabot).toBe('created');
+    const written = tree.read(DEPENDABOT_PATH, 'utf-8') as string;
+    expect(written).toContain('package-ecosystem: github-actions');
+    expect(renderAddReviewReport(report)).toContain(DEPENDABOT_PATH);
+  });
+
+  it('leaves a file that already updates github-actions alone', () => {
+    const existing = 'version: 2\nupdates:\n  - package-ecosystem: "github-actions"\n    directory: "/"\n    schedule:\n      interval: daily\n';
+    tree.write(DEPENDABOT_PATH, existing);
+    const report = runAddReview(tree, {});
+    expect(report.dependabot).toBe('present');
+    expect(tree.read(DEPENDABOT_PATH, 'utf-8')).toBe(existing);
+  });
+
+  it('only proposes the entry when the file exists without github-actions', () => {
+    const existing = 'version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n';
+    tree.write(DEPENDABOT_PATH, existing);
+    const report = runAddReview(tree, {});
+    expect(report.dependabot).toBe('proposed');
+    expect(tree.read(DEPENDABOT_PATH, 'utf-8')).toBe(existing);
+    expect(renderAddReviewReport(report)).toContain('package-ecosystem: github-actions');
+  });
+
+  it('writes nothing in a dry run', () => {
+    const report = runAddReview(tree, { dryRun: true });
+    expect(report.dependabot).toBe('created');
+    expect(tree.exists(DEPENDABOT_PATH)).toBe(false);
+  });
+
+  it('touches nothing when the run aborts on an unusable config', () => {
+    tree.write('toolkit.config.json', '{ not json');
+    const report = runAddReview(tree, {});
+    expect(report.dependabot).toBe('not-applied');
+    expect(tree.exists(DEPENDABOT_PATH)).toBe(false);
   });
 });

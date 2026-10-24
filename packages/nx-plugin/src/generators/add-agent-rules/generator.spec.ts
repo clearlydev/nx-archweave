@@ -2,6 +2,7 @@ import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
 import type { Tree } from '@nx/devkit';
 import { composeAgentRules, renderAgentRulesBlock } from '@nx-archweave/template-engine';
 import { runAddAgentRules } from './generator.ts';
+import { renderAddAgentRulesReport } from './render.ts';
 
 const CONFIG_PATH = 'toolkit.config.json';
 const NX_BLOCK = '<!-- nx configuration start-->\n# General Guidelines for working with Nx\n<!-- nx configuration end-->\n';
@@ -179,5 +180,65 @@ describe('runAddAgentRules — an explicit --hosts is recorded', () => {
     const first = tree.read('CLAUDE.md', 'utf-8') as string;
     expect(first.replace(/\r\n/g, '')).not.toContain('\n');
     expect(runAddAgentRules(tree, {}).files[0].action).toBe('unchanged');
+  });
+});
+
+describe('runAddAgentRules — a block the user edited', () => {
+  let tree: Tree;
+  beforeEach(() => {
+    tree = createTreeWithEmptyWorkspace();
+  });
+
+  it('keeps the edit, reports it with a diff and the flag that replaces it', () => {
+    const edited = blockFile('en').replace('## ', '## Our domain: coffee beans\n\n## ');
+    tree.write('CLAUDE.md', edited);
+    const report = runAddAgentRules(tree, { teamRules: true });
+    expect(report.files[0].action).toBe('user-modified');
+    expect(report.files[0].diff).toContain('+ ');
+    expect(tree.read('CLAUDE.md', 'utf-8')).toBe(edited);
+    const output = renderAddAgentRulesReport(report);
+    expect(output).toContain('CLAUDE.md: not written — the nx-archweave block was edited by hand');
+    expect(output).toContain('--overwriteBlock');
+  });
+
+  it('replaces it with --overwriteBlock', () => {
+    tree.write('CLAUDE.md', blockFile('en').replace('## ', '## Edited\n\n## '));
+    const report = runAddAgentRules(tree, { teamRules: true, overwriteBlock: true });
+    expect(report.files[0].action).toBe('updated');
+    expect(tree.read('CLAUDE.md', 'utf-8')).toBe(blockFile('en', true));
+  });
+
+  it('updates an untouched block when the rules change', () => {
+    tree.write('CLAUDE.md', blockFile('en', false));
+    const report = runAddAgentRules(tree, { teamRules: true });
+    expect(report.files[0].action).toBe('updated');
+    expect(tree.read('CLAUDE.md', 'utf-8')).toBe(blockFile('en', true));
+  });
+});
+
+describe('runAddAgentRules — the FSD section follows the recorded policy', () => {
+  it('practical: says shared files and test files may be imported directly', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write(CONFIG_PATH, JSON.stringify({ frontend: 'next', fsd: { preset: 'practical' } }));
+    runAddAgentRules(tree, {});
+    const claude = tree.read('CLAUDE.md', 'utf-8') as string;
+    expect(claude).toContain('Inside `shared`, files may be imported directly');
+    expect(claude).toContain('Test files (`*.spec.ts`, `*.test.ts`, `__tests__/`) may import');
+    expect(claude).toContain('A folder that only groups slices');
+  });
+
+  it('component-level shared API in Korean', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write(CONFIG_PATH, JSON.stringify({ frontend: 'react-vite', locale: 'ko', fsd: { sharedPublicApi: 'component' } }));
+    runAddAgentRules(tree, {});
+    expect(tree.read('CLAUDE.md', 'utf-8')).toContain('`shared`는 컴포넌트마다 자기 `index.ts`로 공개한다');
+  });
+
+  it('no policy recorded: the section reads exactly as before', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write(CONFIG_PATH, JSON.stringify({ frontend: 'react-vite' }));
+    runAddAgentRules(tree, {});
+    const expected = composeAgentRules({ files: ['CLAUDE.md'], locale: 'en', teamRules: false, fsdStructure: true })[0].content;
+    expect(tree.read('CLAUDE.md', 'utf-8')).toBe(`${renderAgentRulesBlock(expected)}\n`);
   });
 });

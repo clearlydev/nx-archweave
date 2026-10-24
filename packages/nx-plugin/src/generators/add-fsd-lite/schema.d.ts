@@ -1,5 +1,5 @@
 export interface AddFsdLiteGeneratorSchema {
-  frontend?: 'react-vite' | 'next';
+  frontend?: 'react-vite' | 'next' | 'expo' | 'generic';
   project?: string;
   enforcement?: 'error' | 'warn';
   applyEslint?: boolean;

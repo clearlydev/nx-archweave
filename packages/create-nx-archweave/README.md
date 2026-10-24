@@ -118,6 +118,7 @@ When something goes wrong:
 | `--ai-hosts` | `claude-code`, `codex`, `cursor`, `gemini-cli` |
 | `--plugins` | catalog ids (`ponytail`), or `none` |
 | `--package-manager` | `npm` \| `pnpm` \| `yarn` \| `bun` |
+| `--allow-nested` | create the workspace even inside a git repository or a folder with a `package.json` (refused otherwise) |
 | `-h`, `--help` / `-v`, `--version` | — |
 
 ### `--preset`

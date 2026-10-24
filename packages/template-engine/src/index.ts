@@ -5,6 +5,7 @@ export * from './toolkit-config.ts';
 export * from './presets/index.ts';
 export * from './agent-rules/index.ts';
 export * from './fsd/index.ts';
+export * from './frameworks/profiles.ts';
 export * from './environment/package-manager.ts';
 export * from './backend/compose-backend-wiring.ts';
 export * from './backend/eslint-boundaries.ts';

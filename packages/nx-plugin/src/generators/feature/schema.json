@@ -7,7 +7,8 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Slice name in kebab-case (e.g. \"add-to-cart\") — becomes <app>/src/features/<name>. Invalid values are refused with a report, not thrown"
+      "description": "Slice name in kebab-case (e.g. \"add-to-cart\") — becomes <app>/src/features/<name>. Invalid values are refused with a report, not thrown",
+      "$default": { "$source": "argv", "index": 0 }
     },
     "publicApiName": {
       "type": "string",
@@ -17,6 +18,15 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Extra segments to start the slice with, each as <segment>/index.ts (e.g. ui,api). model always exists — it holds the stub. Names are by purpose: ui, api, lib, config … (components/hooks/utils/types are refused)"
+    },
+    "group": {
+      "type": "string",
+      "description": "A slice group folder to put the slice in: <layer>/<group>/<name>/ (e.g. --group=mypage). The group folder itself gets no files — FSD keeps each slice in it separate"
+    },
+    "unitTestRunner": {
+      "type": "string",
+      "enum": ["auto", "jest", "vitest", "none"],
+      "description": "Whether the stub gets a .spec.ts. auto (default): when the app or workspace has jest or vitest (a test target, a runner config, or the dependency); toolkit.config.json's fsd.unitTestRunner comes before detection"
     },
     "project": {
       "type": "string",

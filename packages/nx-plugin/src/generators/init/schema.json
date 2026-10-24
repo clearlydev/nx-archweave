@@ -19,9 +19,11 @@
       "enum": [
         "react-vite",
         "next",
+        "expo",
+        "generic",
         "none"
       ],
-      "description": "Target frontend; 'none' is a backend-only workspace (needs --backend; FSD is skipped). Recorded in toolkit.config.json; omitted: the recorded one (required when none is recorded)"
+      "description": "Target frontend; 'generic' is a framework nx-archweave does not recognise (common FSD rules, no renamed layers); 'none' is a backend-only workspace (needs --backend; FSD is skipped). Recorded in toolkit.config.json; omitted: the recorded one (required when none is recorded)"
     },
     "backend": {
       "type": "string",
@@ -74,10 +76,19 @@
       "default": false,
       "description": "Preview the full pipeline: zero writes, and the post-run validation callback never runs"
     },
+    "project": {
+      "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+      "description": "The frontend app(s) the FSD section sets up, comma-separated (web,admin). Needed when the workspace has more than one frontend; each gets the rule and is recorded in toolkit.config.json's frontends"
+    },
+    "strict": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fail the run (non-zero exit) when a section aborts or is refused. Files the other sections wrote stay; the report lists them. Without it init always succeeds and reports"
+    },
     "allowDirty": {
       "type": "boolean",
       "default": false,
-      "description": "Run even when the working tree has uncommitted changes. The report then warns that `git restore .` also reverts those pre-existing changes. Used by create-nx-archweave, whose own plugin-install step dirties the fresh workspace right before init runs"
+      "description": "Run even when the working tree has uncommitted changes. The report then warns that restoring the files init modified also reverts those pre-existing changes. Used by create-nx-archweave, whose own plugin-install step dirties the fresh workspace right before init runs"
     },
     "applyEslint": {
       "type": "boolean",

@@ -6,10 +6,12 @@ import {
   isUsableSliceApiName,
   resolveSlicePublicApiName,
   SEGMENT_NAME_PATTERN,
+  profileById,
+  type FsdLayer,
   type FsdSliceLayer,
 } from '@nx-archweave/template-engine';
 import type { SliceAction, SliceRefusalReason, SliceReport } from './render.ts';
-import { readToolkitConfig, RECORDED_FRONTENDS, resolveLocaleOption } from '../shared/toolkit-config-file.ts';
+import { readToolkitConfig, RECORDED_FRONTENDS, recordedFrontends, resolveLocaleOption } from '../shared/toolkit-config-file.ts';
 import { resolveFrontendApp } from '../shared/frontend-app.ts';
 import { generatorFilesDir, renderTemplateFiles, type RenderedFile } from '../shared/template-files.ts';
 
@@ -35,9 +37,13 @@ export function composeSlice(input: {
   sourceRoot: string;
   layerDirName: string;
   segments: string[];
+  /** A slice group folder the slice goes in (`features/<group>/<name>`). */
+  group?: string;
+  /** False leaves out the model's .spec.ts. Default true. */
+  withSpec?: boolean;
 }): SlicePlan {
   const files = generatorFilesDir('slice', import.meta.url);
-  const directory = `${input.sourceRoot}/${input.layerDirName}/${input.name}`;
+  const directory = `${input.sourceRoot}/${input.layerDirName}/${input.group === undefined ? '' : `${input.group}/`}${input.name}`;
   const shared = input.layer === 'shared';
   const values = {
     name: input.name,
@@ -47,6 +53,7 @@ export function composeSlice(input: {
     modulePath: shared ? `./${input.name}` : `./model/${input.name}`,
   };
   const module = renderTemplateFiles(join(files, 'module'), shared ? directory : `${directory}/model`, values)
+    .filter((file) => input.withSpec !== false || !file.filePath.endsWith('.spec.ts'))
     // the stub before its test
     .sort((a, b) => Number(a.filePath.endsWith('.spec.ts')) - Number(b.filePath.endsWith('.spec.ts')));
   const segments = shared
@@ -81,9 +88,14 @@ export interface SliceGeneratorSchema {
    * Refused on `shared` (a segment holds no segments). */
   segments?: string[];
   /** Decides the pages layer's directory (`_pages` on Next.js). Omitted: toolkit.config.json's
-   * frontend, else detected from the app (a next.config file), else react-vite. Only the
+   * frontend, else detected from the app, else generic (layer names unchanged). Only the
    * `page` generator exposes it — every other layer's directory is the layer id. */
   frontend?: ToolkitFrontend;
+  /** A slice group to put the slice in (`features/<group>/<name>`); refused on `shared`. */
+  group?: string;
+  /** Whether the stub gets a .spec.ts: `auto` (default) writes one when the app or workspace
+   * has jest or vitest; toolkit.config.json's `fsd.unitTestRunner` comes before detection. */
+  unitTestRunner?: 'auto' | 'jest' | 'vitest' | 'none';
   /** Preview the files that would be generated without writing anything. */
   dryRun?: boolean;
 }
@@ -92,29 +104,26 @@ export interface SliceGeneratorSchema {
  * start with a letter (so `toCamelCase`/directory names stay valid identifiers). */
 const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
-/** Next.js reads `src/pages` as its Pages Router, so FSD's Next.js guide puts the pages
- * layer in `_pages/` there (as add-fsd-lite's guide says). Every other layer is its id. */
+/** The layer's directory: its id, unless the framework's router owns that name (Next.js reads
+ * `src/pages` as its Pages Router, so FSD's Next.js guide puts the pages layer in `_pages/`). */
 function layerDirNameFor(layer: FsdSliceLayer, frontend: ToolkitFrontend): string {
-  return layer === 'pages' && frontend === 'next' ? '_pages' : layer;
+  return profileById(frontend).layerDirs[layer as FsdLayer] ?? layer;
 }
 
 function layerDirFor(layer: FsdSliceLayer, sourceRoot: string, frontend: ToolkitFrontend = 'react-vite'): string {
   return `${sourceRoot}/${layerDirNameFor(layer, frontend)}`;
 }
 
-const NEXT_CONFIG_FILES = ['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'];
-
-/** option > toolkit.config.json's frontend (init records it) > a next.config file in the app
- * (Nx's Next.js app always has one) > react-vite. Best-effort: it only moves `pages` to
+/** option > toolkit.config.json's frontend (init records it) > what was detected in the app —
+ * `generic` when nothing is recognised. Best-effort: it only decides directory names like
  * `_pages`, so a wrong guess costs a rename, never a broken file. */
-function resolveFrontendForApp(option: ToolkitFrontend | undefined, config: Record<string, unknown> | null, appRoot: string, tree: Tree): ToolkitFrontend {
-  if (option === 'react-vite' || option === 'next') return option;
+function resolveFrontendForApp(option: ToolkitFrontend | undefined, config: Record<string, unknown> | null, detected: ToolkitFrontend): ToolkitFrontend {
+  if (option !== undefined) return option;
   const recorded = config?.['frontend'];
   if (typeof recorded === 'string' && (RECORDED_FRONTENDS as readonly string[]).includes(recorded) && recorded !== 'none') {
     return recorded as ToolkitFrontend;
   }
-  const prefix = appRoot === '' || appRoot === '.' ? '' : `${appRoot}/`;
-  return NEXT_CONFIG_FILES.some((file) => tree.exists(`${prefix}${file}`)) ? 'next' : 'react-vite';
+  return detected;
 }
 
 /** A slice directory is:
@@ -149,7 +158,7 @@ function refusal(
   layer: FsdSliceLayer,
   name: string,
   app: { project: string | null; sourceRoot: string },
-  extra: Pick<SliceReport, 'candidates' | 'detail'> = {},
+  extra: Pick<SliceReport, 'candidates' | 'detail' | 'recordedFrontends'> = {},
 ): SliceReport {
   const layerDir = layerDirFor(layer, app.sourceRoot);
   return {
@@ -210,18 +219,27 @@ export function runFsdSlice(tree: Tree, layer: FsdSliceLayer, options: SliceGene
   const essenceSegment = segments.find((segment) => isEssenceSegmentName(segment));
   if (essenceSegment !== undefined) return refusal('segment-by-essence', dryRun, layer, options.name, unresolved, { detail: essenceSegment });
 
+  if (options.group !== undefined && layer === 'shared') return refusal('group-on-shared', dryRun, layer, options.name, unresolved);
+  if (options.group !== undefined && (!KEBAB_CASE.test(options.group) || SEGMENT_FOLDERS.includes(options.group) || isEssenceSegmentName(options.group))) {
+    return refusal('invalid-group', dryRun, layer, options.name, unresolved, { detail: options.group });
+  }
+
   const app = resolveFrontendApp(tree, options.project);
   if (app.kind === 'not-found') return refusal('project-not-found', dryRun, layer, options.name, { project: app.project, sourceRoot: unresolved.sourceRoot });
-  if (app.kind === 'ambiguous') return refusal('ambiguous-frontend', dryRun, layer, options.name, unresolved, { candidates: app.candidates });
+  if (app.kind === 'ambiguous') {
+    return refusal('ambiguous-frontend', dryRun, layer, options.name, unresolved, { candidates: app.candidates, recordedFrontends: recordedFrontends(readToolkitConfig(tree)) });
+  }
   if (app.kind === 'invalid-project-json') return refusal('invalid-project-json', dryRun, layer, options.name, unresolved, { detail: app.detail });
-  if (app.kind === 'none') return refusal('no-frontend-app', dryRun, layer, options.name, unresolved);
+  if (app.kind === 'none') return refusal('no-frontend-app', dryRun, layer, options.name, unresolved, { candidates: app.otherProjects });
 
   // The layer directory is created with its first slice (canonical FSD) — add-fsd-lite makes
   // no folders. tree.write creates every missing parent.
   const config = readToolkitConfig(tree);
-  const frontend = resolveFrontendForApp(options.frontend, config, app.root, tree);
+  const frontend = resolveFrontendForApp(options.frontend, config, app.framework);
   const layerDir = layerDirFor(layer, app.sourceRoot, frontend);
   const locale = resolveLocaleOption(options.locale, config);
+  const requested = options.unitTestRunner !== undefined && options.unitTestRunner !== 'auto' ? options.unitTestRunner : recordedUnitTestRunner(config);
+  const runner = requested ?? detectUnitTestRunner(tree, app.root);
   const plan = composeSlice({
     layer,
     name: options.name,
@@ -230,6 +248,8 @@ export function runFsdSlice(tree: Tree, layer: FsdSliceLayer, options: SliceGene
     sourceRoot: app.sourceRoot,
     layerDirName: layerDirNameFor(layer, frontend),
     segments,
+    group: options.group,
+    withSpec: runner !== 'none',
   });
 
   const action = computeSliceAction(tree, plan);
@@ -249,5 +269,58 @@ export function runFsdSlice(tree: Tree, layer: FsdSliceLayer, options: SliceGene
     refusalReason: null,
     action,
     files: plan.files,
+    ...(runner === 'none' ? { specSkipped: requested === 'none' ? ('none-requested' as const) : ('no-test-runner' as const) } : {}),
   };
+}
+
+/** Folder names a group may not take: they are segments. */
+const SEGMENT_FOLDERS = ['ui', 'model', 'api', 'lib', 'config'];
+
+function recordedUnitTestRunner(config: Record<string, unknown> | null): 'jest' | 'vitest' | 'none' | undefined {
+  const fsd = config?.['fsd'];
+  const value = typeof fsd === 'object' && fsd !== null ? (fsd as Record<string, unknown>)['unitTestRunner'] : undefined;
+  return value === 'jest' || value === 'vitest' || value === 'none' ? value : undefined;
+}
+
+function hasDependency(tree: Tree, manifest: string, name: string): boolean {
+  const raw = tree.read(manifest, 'utf-8');
+  if (raw === null) return false;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, Record<string, unknown> | undefined>;
+    return parsed['dependencies']?.[name] !== undefined || parsed['devDependencies']?.[name] !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/** jest or vitest, from the app's test target executor, then a runner config in the app or at
+ * the workspace root (a `test` block in a vite config counts), then a dependency; `none` when
+ * nothing says. */
+export function detectUnitTestRunner(tree: Tree, projectRoot: string): 'jest' | 'vitest' | 'none' {
+  const prefix = projectRoot === '' || projectRoot === '.' ? '' : `${projectRoot}/`;
+  const project = tree.read(`${prefix}project.json`, 'utf-8');
+  if (project !== null) {
+    try {
+      const targets = (JSON.parse(project) as { targets?: Record<string, { executor?: string }> }).targets ?? {};
+      for (const target of Object.values(targets)) {
+        if (target?.executor?.startsWith('@nx/jest:')) return 'jest';
+        if (target?.executor?.startsWith('@nx/vite:test') || target?.executor?.startsWith('@nx/vitest:')) return 'vitest';
+      }
+    } catch {
+      // an unreadable project.json says nothing about the runner
+    }
+  }
+  for (const dir of prefix === '' ? [''] : [prefix, '']) {
+    if (['ts', 'mts', 'cts', 'js', 'mjs', 'cjs'].some((ext) => tree.exists(`${dir}jest.config.${ext}`))) return 'jest';
+    if (['ts', 'mts', 'js', 'mjs'].some((ext) => tree.exists(`${dir}vitest.config.${ext}`) || tree.exists(`${dir}vitest.workspace.${ext}`))) return 'vitest';
+    for (const ext of ['ts', 'mts', 'js', 'mjs']) {
+      const vite = tree.read(`${dir}vite.config.${ext}`, 'utf-8');
+      if (vite !== null && /\btest\s*:/.test(vite)) return 'vitest';
+    }
+  }
+  for (const manifest of prefix === '' ? ['package.json'] : [`${prefix}package.json`, 'package.json']) {
+    if (hasDependency(tree, manifest, 'vitest')) return 'vitest';
+    if (hasDependency(tree, manifest, 'jest')) return 'jest';
+  }
+  return 'none';
 }

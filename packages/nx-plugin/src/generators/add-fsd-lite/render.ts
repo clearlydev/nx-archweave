@@ -1,10 +1,10 @@
-import type { FsdEnforcement } from '@nx-archweave/shared';
+import type { FsdEnforcement, ToolkitFrontend } from '@nx-archweave/shared';
 
 /** Why no frontend app could be picked — the rule and the layers live in its source root. */
 export type FsdAppRefusal =
   | { reason: 'project-not-found'; project: string }
   | { reason: 'ambiguous-frontend'; candidates: string[] }
-  | { reason: 'no-frontend-app' }
+  | { reason: 'no-frontend-app'; otherProjects: string[] }
   | { reason: 'invalid-project-json'; detail: string };
 
 /** Same vocabulary as add-backend's ESLint outcome. */
@@ -32,6 +32,8 @@ export interface AddFsdLiteReport {
   sourceRoot: string | null;
   /** The severity the rule reports with — option, then toolkit.config.json, then warn. */
   enforcement: FsdEnforcement;
+  /** The framework the layer names follow; `generic` when nx-archweave does not recognise it. */
+  frontend: ToolkitFrontend;
   eslint: FsdEslintAction;
   /** The app's ESLint config the rule was (or would be) written to; null when none exists. */
   eslintPath: string | null;
@@ -58,8 +60,11 @@ export function renderAddFsdLiteReport(report: AddFsdLiteReport): string {
         for (const name of refusal.candidates) lines.push(`      - ${name}`);
       } else if (refusal.reason === 'invalid-project-json') {
         lines.push(`    a project.json could not be parsed (${refusal.detail}) — fix it, then rerun.`);
+      } else if (refusal.otherProjects.length > 0) {
+        lines.push('    no project was recognised as a frontend app. If one of these is it, rerun with --project=<name>:');
+        for (const name of refusal.otherProjects) lines.push(`      - ${name}`);
       } else {
-        lines.push('    the workspace has no frontend application — create one (e.g. nx g @nx/react:app) or pass --project.');
+        lines.push('    the workspace has no projects — create one (e.g. nx g @nx/react:app or nx g @nx/next:app), then rerun.');
       }
     }
     return lines.join('\n');
@@ -71,6 +76,9 @@ export function renderAddFsdLiteReport(report: AddFsdLiteReport): string {
   }
 
   lines.push(`FSD layers (in ${report.project}, ${report.sourceRoot}):`);
+  if (report.layerGuide !== null && report.frontend === 'generic') {
+    lines.push('Frontend: framework not recognised — the common FSD rules apply, with no framework-specific layer names.');
+  }
   if (report.layerGuide !== null) lines.push(report.layerGuide);
 
   lines.push('');

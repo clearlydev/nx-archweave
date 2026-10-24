@@ -1,6 +1,6 @@
 import type { DoctorReport } from '@nx-archweave/shared';
 import { computeOverallStatus } from '@nx-archweave/shared';
-import { runDoctorChecks } from '@nx-archweave/template-engine';
+import { runDoctorChecks, type DoctorProject } from '@nx-archweave/template-engine';
 import {
   detectIntegrationsDrift,
   readEnabledIntegrationIds,
@@ -25,6 +25,9 @@ const DOCTOR_TARGET_ENVIRONMENT = 'claude-code';
 
 export interface BuildDoctorReportOptions {
   liveIntegrations?: boolean;
+  /** The workspace's projects (from its Nx configuration); without them the base checks scan
+   * the conventional apps/ and libs/ folders. */
+  projects?: DoctorProject[];
 }
 
 export async function buildDoctorReportWithIntegrations(
@@ -33,7 +36,7 @@ export async function buildDoctorReportWithIntegrations(
   deps: { integrationsRoot?: IntegrationsCompositionRoot } = {},
 ): Promise<DoctorReport> {
   const integrationsRoot = deps.integrationsRoot ?? createIntegrationsCompositionRoot();
-  const baseReport = runDoctorChecks(root);
+  const baseReport = runDoctorChecks(root, options.projects);
   const declaredIds = readEnabledIntegrationIds(root);
   const runNx = diskRunNx(root);
   const driftResults = await detectIntegrationsDrift({

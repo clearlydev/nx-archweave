@@ -16,6 +16,8 @@ npx create-nx-archweave my-app
 
 ### 기존 Nx 워크스페이스
 
+아직 Nx 워크스페이스가 아니라면 저장소에서 먼저 `npx nx@latest init`을 실행하세요. 일반 앱 저장소를 Nx 워크스페이스로 바꿔 줘요(`package.json`의 일부 스크립트가 Nx를 거치도록 바뀌어요). 그 저장소 안에서 `create-nx-archweave`를 실행하지는 마세요. 중첩된 두 번째 워크스페이스가 생기기 때문에, `--allow-nested`를 주지 않으면 CLI가 멈춰요.
+
 플러그인을 워크스페이스 루트에 devDependency로 추가하세요. Nx 플러그인은 원래 루트에 둬요. 워크스페이스의 패키지 매니저로 실행하면 돼요.
 
 ```bash
@@ -124,7 +126,8 @@ Nx react 템플릿은 `--aiAgents` 값과 상관없이 모든 도구의 파일�
 
 ### 에이전트 규칙
 
-- nx-archweave는 `CLAUDE.md`나 `AGENTS.md` 안에 표시된 블록 하나(`<!-- nx-archweave:agent-rules start -->` … `end -->`)로 규칙을 넣어요.
+- nx-archweave는 `CLAUDE.md`나 `AGENTS.md` 안에 표시된 블록 하나(`<!-- nx-archweave:agent-rules start hash=… -->` … `end -->`)로 규칙을 넣어요.
+- 시작 마커에는 블록 내용의 해시가 기록돼요. 블록을 직접 고치면(예: TODO 채우기) 다시 실행해도 고친 내용을 그대로 두고, 대신 쓰려던 내용을 보여 줘요. 바꾸려면 `--overwriteBlock`을 주세요.
 - Nx의 블록과, nx-archweave 블록 주변에 직접 쓴 내용은 절대 건드리지 않아요.
 - 고른 도구 중 어느 것도 읽지 않는 파일에 nx-archweave 블록이 남아 있으면, 직접 지울 때까지 그대로 있어요.
 
@@ -252,6 +255,7 @@ Next 워크스페이스는 앱이 `apps/<이름>`에 있고 api가 없어요. �
 | `--review` / `--no-review` | — |
 | `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` |
 | `--plugin-source` | 패키지 스펙·경로·tarball |
+| `--allow-nested` | git 저장소나 `package.json`이 있는 폴더 안에서도 워크스페이스를 만들어요. 없으면 CLI가 거기서 멈추고, 기존 저장소에는 `nx init`을 쓰라고 안내해요 |
 | `--ai-hosts` | `claude-code`, `codex`, `cursor`, `gemini-cli` |
 | `--plugins` | 카탈로그 id(`ponytail`) 또는 `none` |
 | `--package-manager` | `npm` \| `pnpm` \| `yarn` \| `bun` |
@@ -341,5 +345,13 @@ pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --dryRun
 pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
 ```
 
+레이아웃이 Nx 기본값일 필요는 없어요. `init`과 `doctor`는 Nx 설정에서 프로젝트를 읽기 때문에, 프런트가 `web/`에 있거나 워크스페이스 루트에 있거나 `sourceRoot`가 프로젝트 폴더 자체여도 동작해요. 프런트가 둘 이상이면 이름을 지정하세요.
+
+```bash
+pnpm nx g @clearlydev/nx-archweave:init --preset=team --project=web,admin --strict
+```
+
+앱이 이미 자기만의 FSD 관례(`features/mypage/order` 같은 슬라이스 그룹, `shared`의 파일 직접 import, 자체 경계 태그)를 따르고 있다면, 강제를 켜기 전에 `toolkit.config.json`에 적어 주세요. [FSD Lite](fsd-lite.md#정책-트리를-얼마나-엄격하게-읽을지)와 [경계](boundaries.md)를 참고하세요. `doctor`가 import 패턴에 맞는 `sharedPublicApi` 값을 제안해요. 이미 있는 위반은 ESLint의 bulk suppressions(`eslint --suppress-all`)로 묶어 두면, 새 위반만 실패로 잡을 수 있어요.
+
 > [!IMPORTANT]
-> `init`은 깨끗한 git 워킹 트리가 필요해요. 그래야 중간에 멈춘 실행도 `git restore .` 한 번으로 항상 되돌릴 수 있어요. `--allowDirty`를 주면 이 검사를 건너뛸 수 있어요. 이때 리포트는 "`git restore .`가 기존 미커밋 변경까지 되돌린다"고 경고해요.
+> `init`은 깨끗한 git 워킹 트리가 필요해요. 그래야 중간에 멈춘 실행을 정확히 되돌릴 수 있어요. 섹션이 중단되면 리포트가 이번 실행이 쓴 파일을 보여 줘요. 수정한 파일은 `git restore -- <파일들>` 한 줄로, 새로 만든 파일은 목록으로 보여 주고 직접 지우게 해요(`git clean -n`으로 먼저 확인할 수 있어요). `--allowDirty`를 주면 깨끗한 트리 검사를 건너뛰어요. 이때 리포트는 "수정된 파일을 복원하면 그 파일에 있던 기존 미커밋 변경까지 되돌린다"고 경고해요.

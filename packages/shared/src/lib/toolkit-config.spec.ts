@@ -20,6 +20,8 @@ describe('ToolkitConfigBase', () => {
         layerMapping: {
           'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
           next: ['pages', 'features', 'entities', 'shared'],
+          expo: ['app', 'pages', 'features', 'entities', 'shared'],
+          generic: ['app', 'pages', 'features', 'entities', 'shared'],
         },
       },
       aiHosts: ['claude-code', 'codex'],
@@ -52,7 +54,7 @@ describe('ToolkitConfigBase', () => {
       backend: 'none',
       locale: 'en',
       // @ts-expect-error enforcement is the fixed 'error' | 'warn' union
-      fsd: { enabled: true, enforcement: 'off', layerMapping: { 'react-vite': [], next: [] } },
+      fsd: { enabled: true, enforcement: 'off', layerMapping: { 'react-vite': [], next: [], expo: [], generic: [] } },
       aiHosts: ['claude-code'],
       agentRules: { teamRules: false },
       githubTemplates: { issue: false, pr: false, codeowners: false },
@@ -70,7 +72,7 @@ describe('ToolkitConfigBase', () => {
       frontend: 'next',
       backend: 'none',
       locale: 'en',
-      fsd: { enabled: false, enforcement: 'warn', layerMapping: { 'react-vite': [], next: [] } },
+      fsd: { enabled: false, enforcement: 'warn', layerMapping: { 'react-vite': [], next: [], expo: [], generic: [] } },
       aiHosts: ['claude-code'],
       agentRules: { teamRules: false },
       githubTemplates: { issue: false, pr: false, codeowners: false },
@@ -80,7 +82,7 @@ describe('ToolkitConfigBase', () => {
     expect(config.packageManager).toBe('npm');
   });
 
-  it('rejects an app layer in the next layerMapping at compile time', () => {
+  it('a layer list must hold layer names only, at compile time', () => {
     const config: ToolkitConfigBase = {
       preset: 'quick-start',
       packageManager: 'npm',
@@ -92,8 +94,10 @@ describe('ToolkitConfigBase', () => {
         enforcement: 'warn',
         layerMapping: {
           'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
-          // @ts-expect-error next's layerMapping excludes 'app' — Next.js App Router owns that directory
-          next: ['app', 'pages', 'features', 'entities', 'shared'],
+          // @ts-expect-error a router directory is not an FSD layer
+          next: ['_pages', 'features', 'entities', 'shared'],
+          expo: ['app', 'pages', 'features', 'entities', 'shared'],
+          generic: ['app', 'pages', 'features', 'entities', 'shared'],
         },
       },
       aiHosts: ['claude-code'],

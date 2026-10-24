@@ -27,7 +27,8 @@ export function sharedTypesApiTypesContent(): string {
 }
 
 /** @param packageName e.g. `@org/shared-types` — also the import specifier. */
-export function sharedTypesPackageJsonContent(packageName: string): string {
+/** `sharedTag` is the tag the shared role carries (`boundaries.tags.shared`). */
+export function sharedTypesPackageJsonContent(packageName: string, sharedTag = 'scope:shared'): string {
   return `${JSON.stringify(
     {
       name: packageName,
@@ -45,7 +46,7 @@ export function sharedTypesPackageJsonContent(packageName: string): string {
       },
       nx: {
         projectType: 'library',
-        tags: ['scope:shared'],
+        tags: [sharedTag],
         targets: {},
       },
     },

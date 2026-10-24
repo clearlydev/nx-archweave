@@ -15,6 +15,8 @@ describe('ToolkitConfig', () => {
         layerMapping: {
           'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
           next: ['pages', 'features', 'entities', 'shared'],
+          expo: ['app', 'pages', 'features', 'entities', 'shared'],
+          generic: ['app', 'pages', 'features', 'entities', 'shared'],
         },
       },
       aiHosts: ['claude-code'],
@@ -44,7 +46,7 @@ describe('ToolkitConfig', () => {
       fsd: {
         enabled: false,
         enforcement: 'warn',
-        layerMapping: { 'react-vite': [], next: [] },
+        layerMapping: { 'react-vite': [], next: [], expo: [], generic: [] },
       },
       aiHosts: ['claude-code'],
       agentRules: { teamRules: false },
@@ -63,7 +65,7 @@ describe('ToolkitConfig', () => {
       frontend: 'react-vite',
       backend: 'none',
       locale: 'ko',
-      fsd: { enabled: false, enforcement: 'warn', layerMapping: { 'react-vite': [], next: [] } },
+      fsd: { enabled: false, enforcement: 'warn', layerMapping: { 'react-vite': [], next: [], expo: [], generic: [] } },
       aiHosts: ['claude-code'],
       agentRules: { teamRules: false },
       githubTemplates: { issue: false, pr: false, codeowners: false },

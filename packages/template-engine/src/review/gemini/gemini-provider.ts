@@ -8,6 +8,7 @@ import {
 import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts';
 import {
   indentBlock,
+  renderCheckoutStep,
   renderConcurrencyBlock,
   renderPermissionsBlock,
   renderRoundGateStep,
@@ -17,6 +18,7 @@ import {
   renderWorkspaceSetupSteps,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
+import { pinnedUses } from '../action-pins.ts';
 
 const SECRET_NAME = 'GEMINI_API_KEY';
 
@@ -62,17 +64,11 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
   const steps = [
     renderSecretGateStep(SECRET_NAME),
     renderRoundGateStep(input.maxRounds),
-    [
-      '- name: Checkout repository',
-      "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'",
-      '  uses: actions/checkout@v4',
-      '  with:',
-      '    fetch-depth: 1',
-    ].join('\n'),
+    renderCheckoutStep("steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'"),
     [
       '- name: Run Gemini review',
       "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'",
-      '  uses: google-github-actions/run-gemini-cli@v0',
+      `  uses: ${pinnedUses('google-github-actions/run-gemini-cli')}`,
       '  env:',
       '    GITHUB_TOKEN: ${{ github.token }}',
       '  with:',

@@ -2,11 +2,14 @@ import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
 import type { Tree } from '@nx/devkit';
 import { resolveSlicePublicApiName } from '@nx-archweave/template-engine';
 import { composeSlice, runFsdSlice } from './core.ts';
+import { renderSliceReport } from './render.ts';
 
-/** A standalone workspace: the root project is the frontend app, so layers live in src/. */
-function appTree(): Tree {
+/** A standalone workspace: the root project is the frontend app, so layers live in src/. It has
+ * jest, as Nx workspaces do, unless `withTestRunner` is false. */
+function appTree(withTestRunner = true): Tree {
   const tree = createTreeWithEmptyWorkspace();
   tree.write('project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'src' }));
+  if (withTestRunner) tree.write('jest.config.ts', 'export default {};\n');
   return tree;
 }
 
@@ -352,5 +355,92 @@ describe('runFsdSlice — pages / widgets / --segments', () => {
     expect(runFsdSlice(tree, 'shared', { name: 'ui', segments: ['lib'] }).refusalReason).toBe('segments-on-shared');
     expect(tree.exists('src/features')).toBe(false);
     expect(tree.exists('src/shared')).toBe(false);
+  });
+});
+
+describe('slice generators — the framework comes from the app', () => {
+  it('a Next.js app found by its next.config gets _pages; an unrecognised app keeps pages', () => {
+    const next = createTreeWithEmptyWorkspace();
+    next.write('apps/web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'apps/web/src' }));
+    next.write('apps/web/next.config.js', 'module.exports = {};\n');
+    runFsdSlice(next, 'pages', { name: 'home' });
+    expect(next.exists('apps/web/src/_pages/home/index.ts')).toBe(true);
+
+    const other = createTreeWithEmptyWorkspace();
+    other.write('apps/web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'apps/web/src' }));
+    runFsdSlice(other, 'pages', { name: 'home' });
+    expect(other.exists('apps/web/src/pages/home/index.ts')).toBe(true);
+  });
+});
+
+describe('runFsdSlice — --group puts the slice in a slice group', () => {
+  it('writes <layer>/<group>/<name>/ and nothing in the group folder itself', () => {
+    const tree = appTree();
+    const report = runFsdSlice(tree, 'features', { name: 'order', group: 'mypage' });
+    expect(report.directory).toBe('src/features/mypage/order');
+    expect(tree.exists('src/features/mypage/order/index.ts')).toBe(true);
+    expect(tree.children('src/features/mypage')).toEqual(['order']);
+  });
+
+  it('refuses a group on shared, and a group named like a segment', () => {
+    expect(runFsdSlice(appTree(), 'shared', { name: 'ui', group: 'kit' })).toMatchObject({ refused: true, refusalReason: 'group-on-shared' });
+    expect(runFsdSlice(appTree(), 'features', { name: 'order', group: 'model' })).toMatchObject({ refused: true, refusalReason: 'invalid-group' });
+    expect(runFsdSlice(appTree(), 'features', { name: 'order', group: 'My Page' })).toMatchObject({ refused: true, refusalReason: 'invalid-group' });
+  });
+});
+
+describe('runFsdSlice — the spec stub follows the test runner', () => {
+  const specPath = 'src/features/checkout/model/checkout.spec.ts';
+
+  it('no test runner anywhere: no spec, and the report says why', () => {
+    const tree = appTree(false);
+    const report = runFsdSlice(tree, 'features', { name: 'checkout' });
+    expect(tree.exists(specPath)).toBe(false);
+    expect(report.specSkipped).toBe('no-test-runner');
+    expect(renderSliceReport(report)).toContain('no test runner found (jest or vitest) — no .spec.ts was written; pass --unitTestRunner=jest|vitest to add one');
+  });
+
+  it.each([
+    ['jest.config.ts', 'export default {};\n'],
+    ['vitest.config.ts', 'export default {};\n'],
+    ['vite.config.ts', "export default { test: { environment: 'jsdom' } };\n"],
+    ['package.json', JSON.stringify({ name: 'ws', devDependencies: { vitest: '^3.0.0' } })],
+  ])('a runner found through %s gets the spec', (file, content) => {
+    const tree = appTree(false);
+    tree.write(file, content);
+    runFsdSlice(tree, 'features', { name: 'checkout' });
+    expect(tree.exists(specPath)).toBe(true);
+  });
+
+  it("a project's test target executor counts", () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('apps/web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'apps/web/src', targets: { test: { executor: '@nx/jest:jest' } } }));
+    runFsdSlice(tree, 'features', { name: 'checkout' });
+    expect(tree.exists('apps/web/src/features/checkout/model/checkout.spec.ts')).toBe(true);
+  });
+
+  it('--unitTestRunner wins both ways, then toolkit.config.json', () => {
+    const forced = appTree(false);
+    runFsdSlice(forced, 'features', { name: 'checkout', unitTestRunner: 'jest' });
+    expect(forced.exists(specPath)).toBe(true);
+
+    const off = appTree();
+    runFsdSlice(off, 'features', { name: 'checkout', unitTestRunner: 'none' });
+    expect(off.exists(specPath)).toBe(false);
+
+    const recorded = appTree();
+    recorded.write('toolkit.config.json', JSON.stringify({ fsd: { unitTestRunner: 'none' } }));
+    expect(runFsdSlice(recorded, 'features', { name: 'checkout' }).specSkipped).toBe('none-requested');
+  });
+});
+
+describe('runFsdSlice — several frontends recorded', () => {
+  it('the ambiguity names the recorded frontends to pick from', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('apps/web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'apps/web/src' }));
+    tree.write('apps/admin/project.json', JSON.stringify({ name: 'admin', projectType: 'application', sourceRoot: 'apps/admin/src' }));
+    tree.write('toolkit.config.json', JSON.stringify({ frontends: [{ project: 'web', framework: 'react-vite', sourceRoot: 'apps/web/src' }] }));
+    const report = runFsdSlice(tree, 'features', { name: 'checkout' });
+    expect(renderSliceReport(report)).toContain('toolkit.config.json records: web');
   });
 });

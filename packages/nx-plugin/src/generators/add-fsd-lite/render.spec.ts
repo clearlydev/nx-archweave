@@ -8,6 +8,7 @@ function report(overrides: Partial<AddFsdLiteReport> = {}): AddFsdLiteReport {
     project: 'web',
     sourceRoot: 'apps/web/src',
     enforcement: 'warn',
+    frontend: 'react-vite',
     eslint: 'applied',
     eslintPath: 'apps/web/eslint.config.mjs',
     snippet: null,
@@ -51,7 +52,7 @@ describe('renderAddFsdLiteReport', () => {
     expect(ambiguous).toContain('--project');
     expect(ambiguous).toContain('- admin');
     expect(renderAddFsdLiteReport(report({ aborted: true, project: null, eslint: 'not-applied', appRefusal: { reason: 'project-not-found', project: 'nope' } }))).toContain('--project=nope');
-    expect(renderAddFsdLiteReport(report({ aborted: true, project: null, eslint: 'not-applied', appRefusal: { reason: 'no-frontend-app' } }))).toMatch(/no frontend application/);
+    expect(renderAddFsdLiteReport(report({ aborted: true, project: null, eslint: 'not-applied', appRefusal: { reason: 'no-frontend-app', otherProjects: [] } }))).toMatch(/has no projects/);
   });
 
   it('reports the three steiger writes and the install command', () => {

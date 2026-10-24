@@ -10,7 +10,9 @@ export type SliceRefusalReason =
   | 'project-not-found'
   | 'ambiguous-frontend'
   | 'no-frontend-app'
-  | 'invalid-project-json';
+  | 'invalid-project-json'
+  | 'group-on-shared'
+  | 'invalid-group';
 
 export interface SliceFileResult {
   filePath: string;
@@ -27,8 +29,11 @@ export interface SliceReport {
   layerDir: string;
   /** `<layerDir>/<name>`. */
   directory: string;
-  /** ambiguous-frontend only: the frontend apps to choose from with --project. */
+  /** ambiguous-frontend: the frontend apps to choose from with --project; no-frontend-app: the
+   * projects that were not taken for one. */
   candidates?: string[];
+  /** ambiguous-frontend: the apps toolkit.config.json's `frontends` records (init --project). */
+  recordedFrontends?: string[];
   /** invalid-project-json: the file devkit could not parse; invalid-segment / segment-by-essence
    * (from --segments): the offending segment name. */
   detail?: string;
@@ -41,6 +46,9 @@ export interface SliceReport {
   action: SliceAction | null;
   /** Empty when `refused` is true. */
   files: SliceFileResult[];
+  /** Why the slice has no .spec.ts: no jest or vitest was found, or the run (or
+   * toolkit.config.json) asked for none. Absent when the spec was written. */
+  specSkipped?: 'no-test-runner' | 'none-requested';
 }
 
 const ACTION_LINES: Record<SliceAction, string> = {
@@ -68,13 +76,22 @@ export function renderSliceReport(report: SliceReport): string {
     } else if (report.refusalReason === 'ambiguous-frontend') {
       lines.push('  More than one frontend app was found — rerun with --project=<one of them>:');
       for (const name of report.candidates ?? []) lines.push(`    - ${name}`);
+      if ((report.recordedFrontends ?? []).length > 0) lines.push(`  (toolkit.config.json records: ${(report.recordedFrontends ?? []).join(', ')})`);
     } else if (report.refusalReason === 'invalid-project-json') {
       lines.push(`  A project.json could not be parsed (${report.detail ?? 'unknown'}) — fix it, then rerun.`);
+    } else if (report.refusalReason === 'no-frontend-app' && (report.candidates ?? []).length > 0) {
+      lines.push('  No project was recognised as a frontend app. If one of these is it, rerun with --project=<name>:');
+      for (const name of report.candidates ?? []) lines.push(`    - ${name}`);
     } else if (report.refusalReason === 'no-frontend-app') {
-      lines.push('  The workspace has no frontend application to hold FSD layers — create one, or pass --project.');
+      lines.push('  The workspace has no projects to hold FSD layers — create a frontend app first.');
     } else if (report.refusalReason === 'invalid-segment') {
       lines.push(`  --segments: "${report.detail ?? ''}" is not a valid segment name.`);
       lines.push('  Use lowercase letters, digits, and single hyphens, starting with a letter (e.g. ui, api, lib).');
+    } else if (report.refusalReason === 'group-on-shared') {
+      lines.push('  --group does not apply to shared: shared holds segments, not slices.');
+    } else if (report.refusalReason === 'invalid-group') {
+      lines.push(`  --group: "${report.detail ?? ''}" is not a usable group name.`);
+      lines.push('  Use kebab-case (e.g. "mypage"), and not a segment name (ui, model, api, lib, config).');
     } else if (report.refusalReason === 'segments-on-shared') {
       lines.push('  --segments does not apply to shared: a shared segment holds no segments of its own.');
       lines.push('  Run the generator once per segment instead (e.g. --name=ui, then --name=api).');
@@ -99,6 +116,12 @@ export function renderSliceReport(report: SliceReport): string {
     lines.push('  Pick a new slice name (a name collision is a signal to rename, not to merge)');
     lines.push('  — or remove the existing directory manually first if you intended to replace it.');
     return lines.join('\n');
+  }
+
+  if (report.specSkipped === 'no-test-runner') {
+    lines.push('  no test runner found (jest or vitest) — no .spec.ts was written; pass --unitTestRunner=jest|vitest to add one.');
+  } else if (report.specSkipped === 'none-requested') {
+    lines.push('  no .spec.ts was written (unitTestRunner: none).');
   }
 
   if (report.dryRun) {

@@ -16,6 +16,8 @@ details are in [CONTRIBUTING.md](CONTRIBUTING.md).
   — from a clean environment: `create-nx-workspace` builds a different workspace when it sees an
   AI coding agent's environment variables. Do not `git add -A` while it runs: packing rewrites
   `packages/*/package.json` for a moment.
+- Existing-workspace flow: `node tools/e2e-existing.mjs --frontend=expo` — Nx's own preset makes the
+  workspace, then the packed plugin is added; same clean-environment rule.
 
 Always run tasks through `pnpm nx`, never the underlying tool directly.
 
@@ -45,6 +47,9 @@ Always run tasks through `pnpm nx`, never the underlying tool directly.
   CLI. The create CLI runs official tools (`create-nx-workspace`, Nx generators) and never
   re-implements them.
 - Comments explain the code; they don't cite issues, reviews or design notes.
+- Actions in generated workflows are pinned to a commit SHA in
+  `packages/template-engine/src/review/action-pins.ts`, mirrored in `.github/workflows/pinned-actions.yml`
+  for Dependabot; `review/workflow-security.spec.ts` must pass.
 - Versions and `CHANGELOG.md` are written by `pnpm release` (Nx Release) from the commits on `main`;
   never edit them by hand. Pull request titles are Conventional Commits (`feat:`, `fix:`, `docs:` …)
   because the squash-merged title is what the release reads.

@@ -23,6 +23,9 @@
 - `--aiHosts`, `--reviewProvider`
 - `--fsd`, `--agentRules`, `--githubTemplates`, `--review`
 - `--applyEslint`, `--allowDirty`, `--dryRun`
+- `--project=web,admin` — FSD 섹션을 적용할 프런트 앱. 프런트가 둘 이상이면 필요해요. 앱마다 그 앱에서 찾은 프레임워크로 규칙을 적용하고(`--frontend`는 알아보지 못한 앱에만 쓰여요), `toolkit.config.json`의 `frontends`에 기록해요. 하나만 지정하면 `add-backend`가 연결할 프런트로도 쓰여요.
+- `--strict` — 섹션이 중단되거나 거부되면 0이 아닌 코드로 끝나요(CI용). 다른 섹션이 쓴 파일은 그대로 남아요. 이 옵션이 없으면 `init`은 항상 성공으로 끝나고 문제는 리포트에 적어요.
+- `--frontend`가 없으면, 워크스페이스의 프런트 앱이 하나이고 알아볼 수 있는 프레임워크일 때 그 프레임워크를 써요.
 
 `init`은 대체값이 있는 옵션 5개를 이렇게 정해요.
 
@@ -55,6 +58,14 @@
 - 리뷰 설정 정합성
 - 통합 상태
 
+워크스페이스의 프로젝트 목록을 Nx 설정에서 읽기 때문에, 프런트가 워크스페이스 루트나 `web/`에 있어도 `apps/web`과 똑같이 검사해요. 다음도 알려 줘요.
+
+- 찾은 프런트 앱(여럿이면 후보와 `--project` 사용법), 프레임워크, FSD 레이어 위치
+- FSD 규칙이 보게 될 슬라이스 그룹, 슬라이스 제너레이터가 찾을 테스트 러너
+- 세그먼트 index를 넘어 `shared` 안쪽으로 들어가는 import와, 그 코드에 맞는 `sharedPublicApi` 값
+- `cwd` 없이 연결된 FSD 규칙(에디터나 루트에서 실행한 `eslint`는 아무것도 검사하지 않음)
+- nx-archweave가 만들지 않은 리뷰 워크플로, 두 공급자의 리뷰 워크플로가 함께 있는 경우, `packageManager`가 있는데 pnpm 버전을 고정한 경우
+
 ### 배선
 
 | 제너레이터 | 역할 |
@@ -81,8 +92,9 @@
 
 - `--hosts` — 체크박스 질문. 기본값은 `toolkit.config.json`의 `aiHosts`, 없으면 Claude Code
 - `--teamRules`, `--locale`, `--dryRun`
+- `--overwriteBlock` — 직접 고친 블록을 생성 내용으로 바꿔요
 
-`add-agent-rules`는 파일을 새로 만들거나, 블록을 덧붙이거나, 블록만 갱신해요. 블록 주변 내용은 건드리지 않아요.
+`add-agent-rules`는 파일을 새로 만들거나, 블록을 덧붙이거나, 블록만 갱신해요. 블록 주변 내용은 건드리지 않아요. 직접 고친 블록은 그대로 두고, 리포트에 차이를 보여 줘요.
 
 #### `add-github-templates`
 
@@ -92,7 +104,7 @@ GitHub Issue Forms, PR 템플릿, CODEOWNERS를 생성해요.
 
 #### `add-review`
 
-자동 PR 리뷰 워크플로와 `toolkit.config.json`의 `review` 필드를 설치해요.
+자동 PR 리뷰 워크플로와 `toolkit.config.json`의 `review` 필드를 설치해요. `.github/dependabot.yml`이 없으면 워크플로의 고정된 액션을 갱신하도록 이 파일도 만들어요. 이미 있으면 건드리지 않고, 추가할 항목을 리포트에 보여 줘요.
 
 - `--provider`, `--mode`, `--maxRounds` — 생략하면 각각 이미 기록된 값, 없으면 `claude` / `standard` / `3`
 - `--onConflict`, `--locale`, `--dryRun`
@@ -114,6 +126,8 @@ GitHub Issue Forms, PR 템플릿, CODEOWNERS를 생성해요.
 | `feature` | `src/features` 아래 feature 슬라이스 생성 |
 | `entity` | `src/entities` 아래 entity 슬라이스 생성 |
 | `shared` | `src/shared` 아래 shared 세그먼트 생성 |
+
+다섯 제너레이터 모두 이름을 먼저 쓸 수 있고(`nx g @clearlydev/nx-archweave:feature checkout`), `--unitTestRunner=auto|jest|vitest|none`을 받아요(기본 `auto`: 앱이나 워크스페이스에 jest나 vitest가 있을 때만 `.spec.ts`를 만들어요). 슬라이스 제너레이터 4개는 `--group=<이름>`으로 슬라이스 그룹 안에 만들 수 있어요(`src/features/<그룹>/<이름>`). `src`는 앱의 소스 루트를 뜻해요. 자세한 내용은 [FSD Lite](fsd-lite.md#정책-트리를-얼마나-엄격하게-읽을지)를 보세요.
 
 #### `page`
 

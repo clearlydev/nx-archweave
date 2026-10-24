@@ -15,7 +15,7 @@ describe('claudeProvider', () => {
     expect(yaml).toContain('id: secret-gate');
     expect(yaml).toContain('id: round-gate');
     expect(yaml).toContain('-ge 3');
-    expect(yaml).toContain('uses: anthropics/claude-code-action@v1');
+    expect(yaml).toContain('uses: anthropics/claude-code-action@');
     expect(yaml).toContain('claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}');
     expect(yaml).toContain(
       'mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)',
@@ -68,7 +68,7 @@ it('npm workspaces get npm ci before the verdict step', () => {
 
 it('bun workspaces get setup-bun and a frozen bun install before the verdict step', () => {
   const yaml = claudeProvider.buildWorkflowYaml({ mode: 'fast', locale: 'en', maxRounds: 3, packageManager: 'bun' });
-  expect(yaml).toContain('uses: oven-sh/setup-bun@v2');
+  expect(yaml).toContain('uses: oven-sh/setup-bun@');
   expect(yaml).toContain('bun install --frozen-lockfile');
   expect(yaml.indexOf('bun install --frozen-lockfile')).toBeLessThan(yaml.indexOf('Compute review verdict'));
 });

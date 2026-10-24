@@ -17,7 +17,7 @@
 // before esbuild overwrites the plain .js entry files with bundled ones).
 
 import { build } from 'esbuild';
-import { cpSync, existsSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -91,8 +91,9 @@ async function main() {
   const pkgDir = path.join(workspaceRoot, config.dir);
   const entryPoints = config.entryPoints(pkgDir);
 
-  await build({
+  const result = await build({
     absWorkingDir: pkgDir,
+    metafile: true,
     entryPoints,
     outdir: 'dist',
     outbase: 'src',
@@ -100,17 +101,34 @@ async function main() {
     platform: 'node',
     format: 'esm',
     target: 'node20',
+    // ESM entry first: an inlined third-party package (jsonc-parser) otherwise resolves to its
+    // UMD build, whose dynamic require() cannot run inside an ESM bundle.
+    mainFields: ['module', 'main'],
     external: config.external,
     sourcemap: false,
     logLevel: 'info',
   });
+
+  // tsc's per-file .js output is only an input to the bundles: what is left of it still imports
+  // the internal @nx-archweave/* packages, which the tarball does not carry. Only the bundles
+  // stay; the .d.ts files (types for the exported entries) are kept.
+  const bundles = new Set(Object.keys(result.metafile.outputs).map((output) => path.resolve(pkgDir, output)));
+  const distDir = path.join(pkgDir, 'dist');
+  let pruned = 0;
+  for (const entry of readdirSync(distDir, { recursive: true })) {
+    const file = path.join(distDir, String(entry));
+    if (/\.js(\.map)?$/.test(file) && !bundles.has(file.replace(/\.map$/, ''))) {
+      rmSync(file);
+      pruned++;
+    }
+  }
 
   const assets = config.assets?.(pkgDir) ?? [];
   for (const asset of assets) {
     cpSync(path.join(pkgDir, 'src', asset), path.join(pkgDir, 'dist', asset), { recursive: true });
   }
 
-  console.log(`[bundle] ${pkgName}: bundled ${entryPoints.length} entry point(s)${assets.length ? ` and copied ${assets.length} template folder(s)` : ''} into ${config.dir}/dist`);
+  console.log(`[bundle] ${pkgName}: bundled ${entryPoints.length} entry point(s)${assets.length ? ` and copied ${assets.length} template folder(s)` : ''} into ${config.dir}/dist, removed ${pruned} unbundled .js file(s)`);
 }
 
 main().catch((error) => {

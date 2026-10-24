@@ -159,6 +159,51 @@ jobs:
       - run: node tools/e2e-create.mjs --pm=${{ matrix.pm }} --frontend=${{ matrix.frontend }} ${{ matrix.backend && format('--backend={0}', matrix.backend) || '' }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }}
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
+  # A workspace nx-archweave did not create: Nx's own Expo preset makes it, the packed plugin is
+  # added, and init detects the framework. It covers what the create flow cannot reach (the CLI
+  # does not offer Expo). One leg (pnpm, Linux): the package manager matrix is e2e's job. Runs
+  # where the full e2e matrix runs; a private copy's pull requests skip it, and a Windows-only
+  # manual rerun leaves it out.
+  e2e-existing:
+    if: github.event_name != 'push' && inputs.legs != 'windows' && (github.event_name == 'workflow_dispatch' || github.repository == 'clearlydev/nx-archweave')
+    runs-on: ${{ inputs.ubuntu || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        frontend: [expo]
+    name: e2e-existing (${{ matrix.frontend }})
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this PR touches code
+        id: filter
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only "origin/$GITHUB_BASE_REF"...HEAD | grep -qE '^(packages/|tools/e2e-existing\.mjs|tools/bundle\.mjs|\.github/workflows/ci\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "docs-only change — e2e-existing skipped"
+          fi
+
+      - uses: pnpm/action-setup@v6
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - uses: actions/setup-node@v7
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - run: node tools/e2e-existing.mjs --frontend=${{ matrix.frontend }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }}
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
   # Publish rehearsal without credentials: prepack (bundle + pack-sanitize)
   # must survive `npm publish --dry-run` for both publishable packages.
   publish-dry-run:

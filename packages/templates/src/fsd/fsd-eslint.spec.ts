@@ -6,9 +6,13 @@ describe('fsd eslint text', () => {
     expect(buildFsdEslintImportLine()).toMatch(/^import \{ fsdBoundaries \} from '.*';$/);
   });
 
-  it('the entry carries the severity and is a spread element with a trailing comma', () => {
-    expect(buildFsdEslintEntry('warn')).toBe("...fsdBoundaries({ severity: 'warn' }),");
-    expect(buildFsdEslintEntry('error')).toContain("'error'");
+  it('the entry carries the severity, anchors paths to the config file and names the source root', () => {
+    expect(buildFsdEslintEntry('warn')).toBe("...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: 'src' }),");
+    expect(buildFsdEslintEntry('error', '.')).toBe("...fsdBoundaries({ severity: 'error', cwd: import.meta.dirname, root: '.' }),");
+  });
+
+  it('the snippet carries the source root it was built for', () => {
+    expect(buildFsdEslintSnippet({ severity: 'error', locale: 'en', root: '.' })).toContain(buildFsdEslintEntry('error', '.'));
   });
 
   it('the snippet is the import plus the entry with paste instructions, in both locales', () => {

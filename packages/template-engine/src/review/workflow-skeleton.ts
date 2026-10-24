@@ -1,5 +1,6 @@
 import type { SupportedPackageManager } from '../environment/package-manager.ts';
 import { ROUND_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/review-policy';
+import { pinnedUses } from './action-pins.ts';
 
 /** Marker every posted review summary must contain; the round gate counts
  * comments containing it. Owned by review-policy's verdict gate — re-exported here
@@ -32,6 +33,21 @@ export function renderPermissionsBlock(): string {
   return ['permissions:', '  contents: read', '  pull-requests: write', '  id-token: write'].join('\n');
 }
 
+/** The repository checkout every provider starts from. The token stays out of `.git/config`:
+ * the review only reads the tree, and a persisted token would be readable by every later
+ * step, including the AI agent's shell. */
+export function renderCheckoutStep(gateCondition: string, extraWith: string[] = []): string {
+  return [
+    '- name: Checkout repository',
+    `  if: ${gateCondition}`,
+    `  uses: ${pinnedUses('actions/checkout')}`,
+    '  with:',
+    ...extraWith.map((line) => `    ${line}`),
+    '    fetch-depth: 1',
+    '    persist-credentials: false',
+  ].join('\n');
+}
+
 /** Green-skips the whole job when the provider secret is absent:
  * emits enabled=false and exits 0 — never a red check. */
 export function renderSecretGateStep(secretName: string): string {
@@ -51,8 +67,10 @@ export function renderSecretGateStep(secretName: string): string {
 }
 
 /** Counts marker-tagged PR comments BEFORE the provider step runs, so a PR at
- * the cap costs zero tokens. It also outputs the newest comment id as a watermark:
- * the verdict gate judges only a round posted after it — this run's, for this commit. */
+ * the cap costs zero tokens. Only bot-authored comments count: anyone who can comment could
+ * otherwise post the marker until the cap is reached and switch the review off. It also
+ * outputs the newest comment id as a watermark: the verdict gate judges only a round posted
+ * after it — this run's, for this commit. */
 export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
   return [
     '- name: Check review round limit',
@@ -61,7 +79,7 @@ export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
     '  env:',
     '    GH_TOKEN: ${{ github.token }}',
     '  run: |',
-    `    counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("${ROUND_MARKER}"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')`,
+    `    counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("${ROUND_MARKER}"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')`,
     '    rounds=$(printf \'%s\' "$counts" | cut -f1)',
     '    echo "last-comment-id=$(printf \'%s\' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"',
     `    if [ "$rounds" -ge ${maxRounds} ]; then`,
@@ -107,12 +125,13 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
 // Node 22/24 bundle Corepack, which the yarn install step relies on; from Node 25 it is no
 // longer bundled — bumping past 24 needs an explicit `npm i -g corepack` step first.
 const SETUP_NODE_VERSION = '22';
-const SETUP_PNPM_VERSION = '10';
-// Nx workspaces created with bun carry no packageManager field (measured), so setup-bun
-// takes its own default (latest) — the frozen install below still holds the lockfile.
-// Unpinned on purpose: a newer bun reads the lockfiles older ones wrote, while a pin here
-// would break the workflow on the user's first bun upgrade that bumps the lockfile format.
-const SETUP_BUN_ACTION = 'oven-sh/setup-bun@v2';
+// Used only when the workspace's package.json has no packageManager field: action-setup
+// refuses a `version` that differs from that field, so the workflow decides on the runner.
+const FALLBACK_PNPM_VERSION = '10';
+// The bun step passes no bun-version: Nx workspaces created with bun carry no packageManager
+// field (measured), so setup-bun takes its own default (latest) — the frozen install below
+// still holds the lockfile. A newer bun reads the lockfiles older ones wrote, while a pinned
+// bun version would break the workflow on the user's first upgrade that bumps the format.
 
 /** Frozen installs per manager. The yarn flavor is decided on the
  * runner by the yarn Corepack provides for the project (its packageManager field, else
@@ -127,22 +146,48 @@ const INSTALL_LINES: Record<SupportedPackageManager, string[]> = {
   bun: ['    bun install --frozen-lockfile'],
 };
 
+/** Decides the pnpm version on the runner: empty (action-setup then reads packageManager) when
+ * package.json has the field, the fallback otherwise. */
+function renderPnpmVersionStep(gate: string): string {
+  return [
+    '- name: Detect pnpm version',
+    '  id: pnpm-version',
+    gate,
+    '  run: |',
+    `    if [ -n "$(jq -r '.packageManager // empty' package.json)" ]; then`,
+    '      echo "version=" >> "$GITHUB_OUTPUT"',
+    '    else',
+    `      echo "version=${FALLBACK_PNPM_VERSION}" >> "$GITHUB_OUTPUT"`,
+    '    fi',
+  ].join('\n');
+}
+
 export function renderWorkspaceSetupSteps(packageManager: SupportedPackageManager): string {
   const gate = "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'";
   const steps: string[] = [];
   if (packageManager === 'pnpm') {
-    // The generated workspaces carry no "packageManager" field (measured), so
-    // action-setup needs an explicit version.
-    steps.push(['- name: Set up pnpm', gate, '  uses: pnpm/action-setup@v4', '  with:', `    version: ${SETUP_PNPM_VERSION}`].join('\n'));
+    // Workspaces created by Nx carry no packageManager field (measured) and need an explicit
+    // version; one that has the field (or gains it later) must not get one, or action-setup
+    // fails on the mismatch. The check runs on the runner, so the workflow stays right either way.
+    steps.push(renderPnpmVersionStep(gate));
+    steps.push(
+      [
+        '- name: Set up pnpm',
+        gate,
+        `  uses: ${pinnedUses('pnpm/action-setup')}`,
+        '  with:',
+        '    version: ${{ steps.pnpm-version.outputs.version }}',
+      ].join('\n'),
+    );
   }
   if (packageManager === 'bun') {
-    steps.push(['- name: Set up bun', gate, `  uses: ${SETUP_BUN_ACTION}`].join('\n'));
+    steps.push(['- name: Set up bun', gate, `  uses: ${pinnedUses('oven-sh/setup-bun')}`].join('\n'));
   }
   steps.push(
     [
       '- name: Set up Node',
       gate,
-      '  uses: actions/setup-node@v4',
+      `  uses: ${pinnedUses('actions/setup-node')}`,
       '  with:',
       `    node-version: ${SETUP_NODE_VERSION}`,
       // yarn: no setup-node cache — it would query the runner's global yarn 1 even in a

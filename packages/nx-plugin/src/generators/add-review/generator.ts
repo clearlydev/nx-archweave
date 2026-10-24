@@ -2,13 +2,17 @@ import type { Tree } from '@nx/devkit';
 import { composeReviewSetup, judgeReviewFileConflict } from '@nx-archweave/template-engine';
 import type { AddReviewGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
-import { detectIndent, treePackageManager } from '../shared/toolkit-config-file.ts';
+import { generatorFilesDir, renderTemplateFiles } from '../shared/template-files.ts';
+import { treePackageManager } from '../shared/toolkit-config-file.ts';
+import { applyJsonEdits } from '../shared/json-edit.ts';
 import {
   renderAddReviewReport,
   renderLineDiff,
   type AddReviewReport,
   type ConfigAction,
+  type DependabotAction,
   type WorkflowAction,
+  DEPENDABOT_PATH,
 } from './render.ts';
 
 const CONFIG_PATH = 'toolkit.config.json';
@@ -126,6 +130,8 @@ export function runAddReview(tree: Tree, options: AddReviewGeneratorSchema): Add
       workflowYaml: null,
       configSnippetJson: null,
       configError: config.error,
+      dependabot: 'not-applied',
+      dependabotProposal: null,
     };
   }
 
@@ -183,17 +189,20 @@ export function runAddReview(tree: Tree, options: AddReviewGeneratorSchema): Add
       configAction = 'unchanged';
     } else {
       configAction = config.raw === null ? 'created' : 'updated';
-      const indent = config.raw === null ? '  ' : detectIndent(config.raw);
-      const trailingNewline = config.raw === null || config.raw.endsWith('\n');
-      const body = JSON.stringify({ ...(config.parsed ?? {}), review: plan.configSnippet }, null, indent);
-      newConfigContent = trailingNewline ? `${body}\n` : body;
+      newConfigContent = applyJsonEdits(config.raw, [[['review'], plan.configSnippet]]);
     }
   }
+
+  const [dependabotFile] = renderTemplateFiles(generatorFilesDir('add-review', import.meta.url), '.github', {});
+  const existingDependabot = tree.read(DEPENDABOT_PATH, 'utf-8');
+  const dependabot: DependabotAction =
+    existingDependabot === null ? 'created' : /github-actions/.test(existingDependabot) ? 'present' : 'proposed';
 
   const dryRun = options.dryRun ?? false;
   if (!dryRun) {
     if (writeWorkflowTo !== null) tree.write(writeWorkflowTo, plan.workflowYaml);
     if (newConfigContent !== null) tree.write(CONFIG_PATH, newConfigContent);
+    if (dependabot === 'created') tree.write(DEPENDABOT_PATH, dependabotFile.content);
   }
 
   return {
@@ -206,6 +215,8 @@ export function runAddReview(tree: Tree, options: AddReviewGeneratorSchema): Add
     workflowYaml: dryRun ? plan.workflowYaml : null,
     configSnippetJson: dryRun ? JSON.stringify(plan.configSnippet, null, 2) : null,
     configError: null,
+    dependabot,
+    dependabotProposal: dependabot === 'proposed' ? dependabotFile.content : null,
     ...(packageManagerNote !== undefined ? { packageManagerNote } : {}),
   };
 }

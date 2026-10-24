@@ -7,6 +7,10 @@ export type WorkflowAction =
   | 'alternate'
   | 'aborted';
 export type ConfigAction = 'created' | 'updated' | 'unchanged' | 'not-updated' | 'aborted';
+/** `.github/dependabot.yml`: written only when absent; an existing file is the user's and is
+ * only shown what to add. */
+export type DependabotAction = 'created' | 'present' | 'proposed' | 'not-applied';
+export const DEPENDABOT_PATH = '.github/dependabot.yml';
 
 export interface AddReviewReport {
   dryRun: boolean;
@@ -20,6 +24,9 @@ export interface AddReviewReport {
   configError: string | null;
   /** Present only when the package manager was a blind pnpm fallback. */
   packageManagerNote?: string;
+  dependabot: DependabotAction;
+  /** The generated dependabot.yml, shown when the existing file lacks a github-actions entry. */
+  dependabotProposal: string | null;
 }
 
 /** Line-level LCS diff — small generated files, no diff library. */
@@ -109,6 +116,17 @@ export function renderAddReviewReport(report: AddReviewReport): string {
     lines.push('  --onConflict=overwrite            replace the existing file with the generated version');
     lines.push('  --onConflict=skip                 keep the existing file');
     lines.push('  --onConflict=alternate-filename   write the generated version alongside it');
+  }
+
+  if (report.dependabot === 'created') {
+    lines.push(`  ${DEPENDABOT_PATH}: created — Dependabot proposes newer pins for the workflow's actions`);
+  } else if (report.dependabot === 'present') {
+    lines.push(`  ${DEPENDABOT_PATH}: already updates github-actions`);
+  } else if (report.dependabot === 'proposed') {
+    lines.push(`  ${DEPENDABOT_PATH}: NOT changed — it has no github-actions entry. The workflow pins each action`);
+    lines.push('  to a commit SHA; add this entry under `updates:` so those pins get update pull requests:');
+    lines.push('');
+    lines.push(report.dependabotProposal ?? '');
   }
 
   if (report.workflowAction === 'alternate') {

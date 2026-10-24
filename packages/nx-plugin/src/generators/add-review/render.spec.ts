@@ -11,6 +11,8 @@ function report(overrides: Partial<AddReviewReport> = {}): AddReviewReport {
     workflowYaml: null,
     configSnippetJson: null,
     configError: null,
+    dependabot: 'present',
+    dependabotProposal: null,
     ...overrides,
   };
 }

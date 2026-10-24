@@ -653,3 +653,73 @@ describe('runAddBackend — inference never overrides what worked before', () =>
     expect(report.commands?.[1]).toBe('pnpm nx g @nx/nest:application apps/api --frontendProject=standalone');
   });
 });
+
+describe('runAddBackend — edits leave the rest of a JSON file alone', () => {
+  it('adds a tag to a Prettier-style project.json as a one-line change', () => {
+    const tree = fullstackTree();
+    const web = '{\n  "name": "web",\n  "projectType": "application",\n  "tags": ["type:app"],\n  "targets": { "build": { "executor": "@nx/next:build", "options": { "outputPath": "dist/web" } } }\n}\n';
+    tree.write('apps/web/project.json', web);
+    runAddBackend(tree, { backend: 'express' });
+    const after = (tree.read('apps/web/project.json', 'utf-8') as string).split('\n');
+    const before = web.split('\n');
+    expect(after.length).toBe(before.length);
+    expect(after.filter((line, index) => line !== before[index])).toEqual(['  "tags": ["type:app", "scope:frontend"],']);
+  });
+
+  it('adds the shared-types path to tsconfig.base.json without reformatting it', () => {
+    const tree = fullstackTree();
+    const tsconfig = '{\n  "compilerOptions": {\n    "baseUrl": ".",\n    "lib": ["es2022", "dom"],\n    "paths": {}\n  }\n}\n';
+    tree.write('tsconfig.base.json', tsconfig);
+    runAddBackend(tree, { backend: 'express' });
+    const after = tree.read('tsconfig.base.json', 'utf-8') as string;
+    expect(after).toContain('    "lib": ["es2022", "dom"],\n');
+    expect(after).toMatch(/"paths": \{\n {6}"[^"]+": \["libs\/shared-types\/src\/index\.ts"\]\n {4}\}/);
+  });
+});
+
+describe('runAddBackend — tags and the shared-types lib come from toolkit.config.json', () => {
+  it('uses the configured role tags, in the projects and in the ESLint constraints', () => {
+    const tree = fullstackTree();
+    tree.write('toolkit.config.json', JSON.stringify({ boundaries: { tags: { frontend: 'type:web', backend: 'type:api', shared: 'type:shared' } } }));
+    const report = runAddBackend(tree, { backend: 'express', applyEslint: true });
+    expect(JSON.parse(tree.read('apps/web/project.json', 'utf-8')!).tags).toEqual(['type:web']);
+    expect(JSON.parse(tree.read('apps/api/project.json', 'utf-8')!).tags).toEqual(['type:api']);
+    // the lib add-backend creates carries the configured shared tag, not the default
+    expect(JSON.parse(tree.read('libs/shared-types/package.json', 'utf-8')!).nx.tags).toEqual(['type:shared']);
+    expect(report.eslint).toBe('applied');
+    const eslint = tree.read('eslint.config.mjs', 'utf-8')!;
+    expect(eslint).toContain("sourceTag: 'type:web'");
+    expect(eslint).toContain("notDependOnLibsWithTags: ['type:api']");
+    expect(eslint).not.toContain('scope:frontend');
+  });
+
+  it('puts the shared-types lib where sharedTypes says, under its import path', () => {
+    const tree = fullstackTree();
+    tree.write('toolkit.config.json', JSON.stringify({ sharedTypes: { path: 'packages/types', importPath: '@acme/types' } }));
+    const report = runAddBackend(tree, { backend: 'express' });
+    expect(report.sharedTypesPackage).toBe('@acme/types');
+    expect(JSON.parse(tree.read('packages/types/package.json', 'utf-8')!).name).toBe('@acme/types');
+    expect(tree.exists('libs/shared-types')).toBe(false);
+    expect(JSON.parse(tree.read('tsconfig.base.json', 'utf-8')!).compilerOptions.paths['@acme/types']).toEqual(['packages/types/src/index.ts']);
+  });
+
+  it('sharedTypes: false wires the backend without a shared-types lib', () => {
+    const tree = fullstackTree();
+    tree.write('toolkit.config.json', JSON.stringify({ sharedTypes: false }));
+    const report = runAddBackend(tree, { backend: 'express' });
+    expect(report.sharedTypes).toBe('disabled');
+    expect(tree.exists('libs/shared-types')).toBe(false);
+    expect(JSON.parse(tree.read('tsconfig.base.json', 'utf-8')!).compilerOptions.paths).toEqual({});
+    expect(report.tags.map((t) => t.project)).toEqual(['web', 'api']);
+  });
+});
+
+describe('runAddBackend — the api app goes next to a root-level frontend', () => {
+  it('suggests api/ beside web/, not apps/api', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'web/src' }));
+    const report = runAddBackend(tree, { backend: 'express' });
+    expect(report.refused).toBe('missing-api-project');
+    expect(report.commands?.at(-1)).toBe('pnpm nx g @nx/express:application api --frontendProject=web');
+  });
+});

@@ -8,6 +8,7 @@ import {
 import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts';
 import {
   indentBlock,
+  renderCheckoutStep,
   renderConcurrencyBlock,
   renderPermissionsBlock,
   renderRoundGateStep,
@@ -80,13 +81,7 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
   const steps = [
     renderSecretGateStep(SECRET_NAME),
     renderRoundGateStep(input.maxRounds),
-    [
-      '- name: Checkout repository',
-      `  if: ${gateCondition}`,
-      '  uses: actions/checkout@v4',
-      '  with:',
-      '    fetch-depth: 1',
-    ].join('\n'),
+    renderCheckoutStep(gateCondition),
     [
       '- name: Install cursor-agent CLI',
       `  if: ${gateCondition}`,

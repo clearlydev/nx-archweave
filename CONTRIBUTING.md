@@ -108,7 +108,13 @@ node tools/e2e-create.mjs --pm=pnpm
 node tools/e2e-create.mjs --pm=npm --frontend=next --backend=nest
 ```
 
-Run the script from a plain terminal. `create-nx-workspace` builds a different workspace when it finds an AI coding agent's environment variables.
+A second script covers a workspace nx-archweave did not create. Nx's own Expo preset makes the workspace, then the packed plugin is added and `init` detects the framework:
+
+```bash
+node tools/e2e-existing.mjs --frontend=expo
+```
+
+Run the scripts from a plain terminal. `create-nx-workspace` builds a different workspace when it finds an AI coding agent's environment variables.
 
 To try a build by hand:
 
@@ -126,6 +132,7 @@ Every pull request runs:
 - the packed-tarball smoke test
 - `npm publish --dry-run`
 - the real create-flow E2E across npm, pnpm, yarn (berry and classic), bun, Windows and next × nest
+- the existing-workspace E2E on an Expo workspace made by Nx
 
 A failure caused by our code blocks the pull request. A change upstream (Nx's templates, the registry) shows up as a warning instead. A nightly run repeats the matrix strictly. A change that touches only documentation starts no CI.
 

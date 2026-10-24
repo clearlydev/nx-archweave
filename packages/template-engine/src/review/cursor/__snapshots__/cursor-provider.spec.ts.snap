@@ -38,7 +38,7 @@ jobs:
         env:
           GH_TOKEN: \${{ github.token }}
         run: |
-          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
           rounds=$(printf '%s' "$counts" | cut -f1)
           echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
           if [ "$rounds" -ge 5 ]; then
@@ -50,9 +50,10 @@ jobs:
 
       - name: Checkout repository
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Install cursor-agent CLI
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
@@ -127,15 +128,25 @@ jobs:
           ARCHWEAVE_CURSOR_REVIEW_PROMPT
           )"
 
+      - name: Detect pnpm version
+        id: pnpm-version
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          if [ -n "$(jq -r '.packageManager // empty' package.json)" ]; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=10" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up pnpm
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: 10
+          version: \${{ steps.pnpm-version.outputs.version }}
 
       - name: Set up Node
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -202,7 +213,7 @@ jobs:
         env:
           GH_TOKEN: \${{ github.token }}
         run: |
-          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
           rounds=$(printf '%s' "$counts" | cut -f1)
           echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
           if [ "$rounds" -ge 3 ]; then
@@ -214,9 +225,10 @@ jobs:
 
       - name: Checkout repository
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Install cursor-agent CLI
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
@@ -269,15 +281,25 @@ jobs:
           ARCHWEAVE_CURSOR_REVIEW_PROMPT
           )"
 
+      - name: Detect pnpm version
+        id: pnpm-version
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          if [ -n "$(jq -r '.packageManager // empty' package.json)" ]; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=10" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up pnpm
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: 10
+          version: \${{ steps.pnpm-version.outputs.version }}
 
       - name: Set up Node
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -344,7 +366,7 @@ jobs:
         env:
           GH_TOKEN: \${{ github.token }}
         run: |
-          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
           rounds=$(printf '%s' "$counts" | cut -f1)
           echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
           if [ "$rounds" -ge 3 ]; then
@@ -356,9 +378,10 @@ jobs:
 
       - name: Checkout repository
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Install cursor-agent CLI
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
@@ -411,15 +434,25 @@ jobs:
           ARCHWEAVE_CURSOR_REVIEW_PROMPT
           )"
 
+      - name: Detect pnpm version
+        id: pnpm-version
+        if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
+        run: |
+          if [ -n "$(jq -r '.packageManager // empty' package.json)" ]; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=10" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up pnpm
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: 10
+          version: \${{ steps.pnpm-version.outputs.version }}
 
       - name: Set up Node
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm

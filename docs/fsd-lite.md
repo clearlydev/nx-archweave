@@ -11,7 +11,7 @@ Your frontend app follows canonical [Feature-Sliced Design](https://feature-slic
 
 | | Canonical FSD | FSD Lite |
 | --- | --- | --- |
-| Layers | app, pages, widgets, features, entities, shared | 5 on React + Vite, 4 on Next.js |
+| Layers | app, pages, widgets, features, entities, shared | 5 (4 on Next.js, whose own `app/` is the entry point) |
 | Slices | segments (`ui/`, `model/`, `api/`, `lib/`, `config/`) | same |
 | Public API | one `index.ts` per slice; no layer-level barrels | same |
 | Imports | downward only; a slice only through its index | same, as one rule |
@@ -20,7 +20,7 @@ Your frontend app follows canonical [Feature-Sliced Design](https://feature-slic
 
 What the short cells leave out:
 
-- **Layers** — FSD Lite's default scope is five layers on React + Vite and four on Next.js (see Layers below). You get `widgets` only when you ask for it with the `widget` generator. The lint rule knows all six layers.
+- **Layers** — FSD Lite's default scope is five layers, four on Next.js (see Layers below, per framework). You get `widgets` only when you ask for it with the `widget` generator. The lint rule knows all six layers.
 - **Slices** — Each slice holds its segments. The `page`/`widget`/`feature`/`entity` generators scaffold `index.ts` + `model/`, and you can add more with `--segments`.
 - **Imports** — A slice never imports a sibling slice, except through `@x/<consumer>`. In FSD Lite, one lint rule covers all of the import rules.
 - **Enforcement** — The severity is `error` for `team` and `warn` for `solo` and `quick-start`. The severity is the only preset-specific thing.
@@ -33,6 +33,8 @@ Which layers you get depends on the **framework**, never on the preset:
 | --- | --- |
 | `react-vite` | `app`, `pages`, `features`, `entities`, `shared` |
 | `next` | `pages` (in `_pages/`), `features`, `entities`, `shared` |
+| `expo` | `app` (in `_app/` with expo-router), `pages`, `features`, `entities`, `shared`; `index.ios.tsx`-style platform files count as the index |
+| `generic` | `app`, `pages`, `features`, `entities`, `shared` — any framework nx-archweave does not recognise; the report says so |
 
 On Next.js, the pages layer lives in `_pages/`. Next.js owns `app/` and reads `src/pages` as its Pages Router, so FSD's own Next.js guide names the layer `_pages`.
 
@@ -62,12 +64,17 @@ Writing `eslint.config.mjs` follows the same contract as `add-backend`:
 | existing | a paste-ready snippet, unless you pass `--applyEslint` |
 | a config shape it doesn't recognize | never touched |
 
+Recognised shapes: `export default [...]` (Nx's templates) and an array exported by name — `const eslintConfig = [...]` or `defineConfig([...])`, then `export default eslintConfig` (create-next-app).
+
 The change is two lines:
 
 ```js
 import { fsdBoundaries } from '@clearlydev/nx-archweave/eslint';
-export default [...baseConfig, ...fsdBoundaries({ severity: 'error' })];
+export default [...baseConfig, ...fsdBoundaries({ severity: 'error', cwd: import.meta.dirname, root: 'src' })];
 ```
+
+- `root` is the app's source root, relative to the config file: `src` for Nx's templates, `.` when the app keeps its code at its own root (a `sourceRoot` equal to the project root). `add-fsd-lite` writes the right one.
+- `cwd: import.meta.dirname` anchors `root` and the aliases to the config file. Without it they are read from the directory ESLint starts in, so an editor or an `eslint` run from the workspace root would check nothing.
 
 ## The boundary rule
 
@@ -87,6 +94,32 @@ Severity:
 
 - `--enforcement=error|warn` overrides `fsd.enforcement` in `toolkit.config.json`. `init` records that value from the preset.
 
+## Policy: how strictly the tree is read
+
+The rule's defaults are canonical FSD (the `basic` preset). Existing apps often use a few common variants; set them under `fsd` in `toolkit.config.json`. The rule reads that file at or above the app's ESLint config, so editing it changes what the rule reports, with no change to `eslint.config.mjs`. Options passed to `fsdBoundaries({...})` win over the file.
+
+```jsonc
+"fsd": {
+  "preset": "basic",             // basic | practical
+  "sliceGroups": "auto",         // "auto" | false | { "auto": true, "include": [], "exclude": [] }
+  "sharedPublicApi": "segment",  // segment | component | file
+  "testFiles": false,            // false | globs, relative to the source root
+  "segments": [],                // extra folder names that are segments, never slices
+  "unitTestRunner": "auto"       // auto | jest | vitest | none — for the slice generators
+}
+```
+
+| Option | `basic` | `practical` |
+| --- | --- | --- |
+| `sliceGroups` | `auto` | `auto` |
+| `sharedPublicApi` | `segment` | `file` |
+| `testFiles` | `false` | `**/*.{spec,test}.*`, `**/__tests__/**` |
+
+- **Slice groups** — A folder on a sliced layer that only groups slices (`features/mypage/order`, `features/mypage/claims`). The rule treats it as a group when it has no files of its own (so no `index.ts`), none of its folders is a segment (`ui`, `model`, `api`, `lib`, `config`, plus `segments`), and at least one of its folders has an `index.ts`. Slices in one group never import each other, and the group folder itself is not importable. Force a folder with `include`, rule one out with `exclude` (both as `<layer dir>/<name>`), or turn groups off with `false`. A slice generated by nx-archweave always has an `index.ts`, so it is never mistaken for a group.
+- **`sharedPublicApi`** — `segment`: import `shared/ui`, never a file inside it. `component`: each component is its own public API (`shared/ui/button`), as FSD recommends to keep bundles small. `file`: any file inside `shared` may be imported directly; `shared` still may not import a layer above it.
+- **`testFiles`** — Test files may import another slice's internals. Upward imports are reported in them too.
+- **Caching** — The group check reads the app's folders and notices changes while ESLint keeps running (an editor). `eslint --cache` (lint-staged, some editors) caches per file, so a group that appeared in another folder can show up only after that cache is cleared. `nx lint` is not affected.
+
 ## Generators
 
 | Generator | Scaffolds |
@@ -96,13 +129,15 @@ Severity:
 
 The files each generator writes:
 
-- **Slice** — `<src>/<layer>/<name>/index.ts`, `model/<name>.ts` and `model/<name>.spec.ts`. You also get an `index.ts` for each extra segment you ask for with `--segments=ui,api`.
+- **Slice** — `<src>/<layer>/<name>/index.ts`, `model/<name>.ts` and `model/<name>.spec.ts`. You also get an `index.ts` for each extra segment you ask for with `--segments=ui,api`. With `--group=mypage` the slice goes in `<src>/<layer>/mypage/<name>/`.
 - **Segment** — `<src>/shared/<name>/index.ts`, `<name>.ts` and `<name>.spec.ts`.
 
 How the generators behave:
 
 - The slice generators create the layer folder on the way if it's missing.
-- On Next.js, `page` lands in `_pages/`. To tell whether the app is Next.js, `page` uses the recorded frontend, else a `next.config` file in the app, else `--frontend`.
+- The name can come first: `nx g @clearlydev/nx-archweave:feature checkout`.
+- The `.spec.ts` stub is written only when the app or workspace has jest or vitest (a test target, a runner config, a `test` block in a Vite config, or the dependency). Otherwise the report says it was skipped. `--unitTestRunner=jest|vitest|none` decides instead, and `fsd.unitTestRunner` in `toolkit.config.json` does it for every run.
+- On Next.js, `page` lands in `_pages/`. To tell the framework, `page` uses `--frontend`, else the recorded frontend, else what it finds in the app (a `next.config` or Vite config, the targets' executors, the `react` dependency). An app it does not recognise is `generic`: no layer is renamed.
 - Name `shared` segments by purpose: `ui`, `api`, `model`, `lib`, `config`. The `shared` generator refuses names that say what a thing is (`components`, `hooks`, `utils`, `types`, …).
 - If a slice with the same name already exists, the generator skips it instead of overwriting it.
 - The generators check that `--publicApiName` is a usable TypeScript identifier.

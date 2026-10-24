@@ -23,10 +23,11 @@ export function buildFsdCheckTarget(sourceRootName = 'src'): { command: string; 
  * scaffold (both measured 2026-10-16):
  * - `insignificant-slice` reports a slice nothing references yet — every freshly generated
  *   slice — so it stays visible as a warning instead of failing the check;
- * - on Next.js the pages layer is `_pages` (FSD's own Next.js guide), which steiger 0.7 still
- *   flags as a typo, so that rule is off there.
+ * - a framework whose router owns a layer's name renames that layer (`_pages` on Next.js,
+ *   `_app` with Expo Router — FSD's own naming), which steiger 0.7 still flags as a typo, so
+ *   that rule is off wherever `renamedLayerDirs` is not empty.
  */
-export function buildSteigerConfig({ frontend, locale }: { frontend: 'react-vite' | 'next'; locale: FsdLocale }): string {
+export function buildSteigerConfig({ renamedLayerDirs, locale }: { renamedLayerDirs: string[]; locale: FsdLocale }): string {
   const ko = locale === 'ko';
   const lines = [
     "import { defineConfig } from 'steiger';",
@@ -43,11 +44,11 @@ export function buildSteigerConfig({ frontend, locale }: { frontend: 'react-vite
       ? '      // 아무도 참조하지 않는 슬라이스 = 방금 생성한 슬라이스. 경고로 보이되 검사를 막지 않습니다.'
       : '      // a slice nothing references yet is every freshly generated slice: visible, not blocking',
     "      'fsd/insignificant-slice': 'warn',",
-    ...(frontend === 'next'
+    ...(renamedLayerDirs.length > 0
       ? [
           ko
-            ? '      // Next.js: pages 레이어는 _pages/ (FSD 공식 Next.js 가이드) — steiger 0.7은 아직 오타로 봅니다.'
-            : '      // Next.js: the pages layer is _pages/ (FSD\'s own Next.js guide) — steiger 0.7 still reads it as a typo',
+            ? `      // ${renamedLayerDirs.join(', ')}: 프레임워크 라우터와 겹치지 않게 이름을 바꾼 레이어 (FSD 공식 명명) — steiger 0.7은 아직 오타로 봅니다.`
+            : `      // ${renamedLayerDirs.join(', ')}: layers renamed out of the framework router's way (FSD's own naming) — steiger 0.7 still reads them as typos`,
           "      'fsd/typo-in-layer-name': 'off',",
         ]
       : []),

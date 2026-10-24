@@ -97,6 +97,7 @@
   "devDependencies": {
     "@nx-archweave/integrations": "workspace:*",
     "@nx-archweave/shared": "workspace:*",
-    "@nx-archweave/template-engine": "workspace:*"
+    "@nx-archweave/template-engine": "workspace:*",
+    "jsonc-parser": "3.3.1"
   }
 }

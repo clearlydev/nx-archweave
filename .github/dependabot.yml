@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # Covers this repository's workflows and pinned-actions.yml, which mirrors the SHAs the
+  # generated review workflows use (packages/template-engine/src/review/action-pins.ts).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

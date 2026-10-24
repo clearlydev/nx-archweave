@@ -35,7 +35,15 @@ All four providers follow the same contract (`id`, `workflowFileName`, `required
 
 - Each review the workflow posts carries an invisible marker (`<!-- archweave-review-round -->`).
 - The workflow counts the markers on the PR and stops once it reaches `maxRounds`. That way, review can't loop forever on an active PR.
+- Only markers in comments written by a bot account count. Anyone who can comment on the PR could otherwise post the marker until `maxRounds` is reached and switch review off.
 - `maxRounds` accepts `1`–`5` and defaults to `3`.
+
+### Workflow hardening
+
+- Every action is pinned to a commit SHA, with its version in a trailing comment (`actions/checkout@<sha> # v4.4.0`). A version tag can be moved to other code; a commit can't, and the workflow holds your provider secret. `add-review` writes `.github/dependabot.yml` with a `github-actions` entry when the file is missing, and shows the entry to add when the file exists without one, so the pins move forward through pull requests you review.
+- The checkout step sets `persist-credentials: false`, so the repository token is not left in `.git/config` for later steps, including the AI agent's shell.
+- pnpm workspaces: the workflow reads `packageManager` from `package.json` on the runner. With the field, `pnpm/action-setup` uses it; without it, the workflow passes pnpm 10.
+- The `cursor` provider installs `cursor-agent` with `curl https://cursor.com/install -fsS | bash`. That script isn't pinned to a version or checksum, so each run installs whatever Cursor publishes at that moment.
 
 ### Verdict gate
 

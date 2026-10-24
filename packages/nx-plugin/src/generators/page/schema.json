@@ -7,7 +7,8 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Slice name in kebab-case (e.g. \"home\") — becomes <app>/src/pages/<name> (a screen composed from the layers below). Invalid values are refused with a report, not thrown"
+      "description": "Slice name in kebab-case (e.g. \"home\") — becomes <app>/src/pages/<name> (a screen composed from the layers below). Invalid values are refused with a report, not thrown",
+      "$default": { "$source": "argv", "index": 0 }
     },
     "publicApiName": {
       "type": "string",
@@ -20,6 +21,15 @@
       },
       "description": "Extra segments to start the slice with, each as <segment>/index.ts (e.g. ui,api). model always exists — it holds the stub. Names are by purpose: ui, api, lib, config … (components/hooks/utils/types are refused)"
     },
+    "group": {
+      "type": "string",
+      "description": "A slice group folder to put the slice in: <layer>/<group>/<name>/ (e.g. --group=mypage). The group folder itself gets no files — FSD keeps each slice in it separate"
+    },
+    "unitTestRunner": {
+      "type": "string",
+      "enum": ["auto", "jest", "vitest", "none"],
+      "description": "Whether the stub gets a .spec.ts. auto (default): when the app or workspace has jest or vitest (a test target, a runner config, or the dependency); toolkit.config.json's fsd.unitTestRunner comes before detection"
+    },
     "project": {
       "type": "string",
       "description": "The frontend app whose source root holds the FSD layers. Omitted: the workspace's one frontend application; with more than one, the run is refused with the candidates listed"
@@ -28,9 +38,11 @@
       "type": "string",
       "enum": [
         "react-vite",
-        "next"
+        "next",
+        "expo",
+        "generic"
       ],
-      "description": "Decides the layer directory: pages/ on react-vite, _pages/ on next (Next.js reads src/pages as its Pages Router). Omitted: toolkit.config.json's frontend (init records it), else detected from a next.config file in the app, else react-vite"
+      "description": "Decides the layer directory: pages/ on react-vite, _pages/ on next (Next.js reads src/pages as its Pages Router); 'generic' keeps every layer name. Omitted: toolkit.config.json's frontend (init records it), else detected from the app (its next.config / vite config, executors and dependencies), else generic"
     },
     "locale": {
       "type": "string",

@@ -15,7 +15,7 @@ describe('gptProvider', () => {
     expect(yaml).toContain('id: secret-gate');
     expect(yaml).toContain('id: round-gate');
     expect(yaml).toContain('-ge 3');
-    expect(yaml).toContain('uses: openai/codex-action@v1');
+    expect(yaml).toContain('uses: openai/codex-action@');
     expect(yaml).toContain('openai-api-key: ${{ secrets.OPENAI_API_KEY }}');
     expect(yaml).toContain('permission-profile: ":read-only"');
     expect(yaml).toContain('gh pr comment "$PR_NUMBER" --body-file -');

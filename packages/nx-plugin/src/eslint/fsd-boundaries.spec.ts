@@ -1,7 +1,7 @@
 import { Linter } from 'eslint';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { archweavePlugin, fsdBoundaries } from './index.ts';
+import { archweavePlugin, fsdBoundaries, resolveFsdPolicy } from './index.ts';
 import { judge, locate } from './fsd-boundaries.ts';
 import { aliasesFromTsconfig } from './tsconfig-aliases.ts';
 
@@ -104,7 +104,7 @@ describe('fsdBoundaries() flat-config entry', () => {
   it('carries the severity the preset chose and defaults to src with the @/ alias', () => {
     const [entry] = fsdBoundaries({ severity: 'warn' }) as { files: string[]; rules: Record<string, unknown[]> }[];
     expect(entry.files).toEqual(['src/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}']);
-    expect(entry.rules['archweave/fsd-boundaries']).toEqual(['warn', { root: 'src', aliases: { '@/': 'src' } }]);
+    expect(entry.rules['archweave/fsd-boundaries']).toEqual(['warn', { root: 'src', aliases: { '@/': 'src' }, policy: resolveFsdPolicy(undefined) }]);
   });
 });
 
@@ -183,7 +183,8 @@ describe('aliases from tsconfig paths', () => {
       expect(aliasesFromTsconfig({ cwd: '/nonexistent/dir' })).toEqual({});
       expect(aliasesFromTsconfig({ cwd: preset })).toEqual({ '@app/': 'src' });
       const [entry] = fsdBoundaries({ cwd: preset, tsconfig: false }) as { rules: Record<string, unknown[]> }[];
-      expect(entry.rules['archweave/fsd-boundaries'][1]).toEqual({ root: 'src', aliases: { '@/': 'src' } });
+      // an explicit cwd anchors both, so the rule never depends on where ESLint was started
+      expect(entry.rules['archweave/fsd-boundaries'][1]).toEqual({ root: join(preset, 'src'), aliases: { '@/': join(preset, 'src') }, policy: resolveFsdPolicy(undefined) });
     } finally {
       rmSync(broken, { recursive: true, force: true });
       rmSync(preset, { recursive: true, force: true });
@@ -194,4 +195,214 @@ describe('aliases from tsconfig paths', () => {
 it('the ESLint plugin meta.version matches package.json', () => {
   const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-8')) as { version: string };
   expect(archweavePlugin.meta.version).toBe(pkg.version);
+});
+
+describe('archweave/fsd-boundaries — paths resolve from the config directory, not the lint cwd', () => {
+  const WS = '/ws';
+  const WEB = '/ws/web';
+  const CROSS = 'archweave/fsd-boundaries: FSD: "features/a" may not import a sibling slice "features/b" — move the shared part down a layer, or expose it through "features/b/@x/a".';
+
+  /** ESLint started from `lintCwd` (the workspace root, as an editor or a root-level `eslint .`
+   * does) with the app's config, which passes its own directory as `cwd`. */
+  function lintFrom(lintCwd: string, file: string, code: string, options: Parameters<typeof fsdBoundaries>[0]): string[] {
+    const linter = new Linter({ cwd: lintCwd, configType: 'flat' });
+    const config = [
+      { languageOptions: { ecmaVersion: 2022 as const, sourceType: 'module' as const } },
+      // Linter matches `files` against its own cwd; a real run matches them against the config's directory.
+      ...fsdBoundaries({ tsconfig: false, files: ['**/*.ts'], ...options }),
+    ] as Linter.Config[];
+    return linter.verify(code, config, { filename: file }).map((m) => `${m.ruleId}: ${m.message}`);
+  }
+
+  it('reports the same finding from the workspace root as from the app directory (source root = app root)', () => {
+    const options = { cwd: WEB, root: '.' };
+    const file = `${WEB}/features/a/model/a.ts`;
+    const code = "import { b } from '../../b/model/b';";
+    expect(lintFrom(WEB, file, code, options)).toEqual([CROSS]);
+    expect(lintFrom(WS, file, code, options)).toEqual([CROSS]);
+  });
+
+  it('reports the same finding from the workspace root with a src/ source root', () => {
+    const options = { cwd: WEB, root: 'src' };
+    const file = `${WEB}/src/features/a/model/a.ts`;
+    expect(lintFrom(WS, file, "import { b } from '../../b';", options)).toEqual([CROSS]);
+  });
+
+  it('resolves an alias that points above the source root (`@/*` → `./*`)', () => {
+    const options = { cwd: WEB, root: 'src', aliases: { '@/': '.' } };
+    const file = `${WEB}/src/features/a/model/a.ts`;
+    expect(lintFrom(WS, file, "import { b } from '@/src/features/b';", options)).toEqual([CROSS]);
+    expect(lintFrom(WS, file, "import { x } from '@/scripts/x';", options)).toEqual([]);
+  });
+
+  it('keeps build output out of a config whose source root is the app root', () => {
+    const [entry] = fsdBoundaries({ cwd: WEB, root: '.' }) as { files: string[]; ignores?: string[] }[];
+    expect(entry.files).toEqual(['**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}']);
+    expect(entry.ignores).toEqual(expect.arrayContaining(['.next/**', 'dist/**', 'out/**', 'coverage/**']));
+  });
+});
+
+describe('archweave/fsd-boundaries — policy: slice groups, shared public API, test files', () => {
+  const fs = jest.requireActual<typeof import('node:fs')>('node:fs');
+  const os = jest.requireActual<typeof import('node:os')>('node:os');
+  const RULE = 'archweave/fsd-boundaries';
+
+  /** An app directory on disk (group detection reads it), with `files` under src/. */
+  function appOnDisk(files: string[], toolkitConfig?: object): string {
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'fsd-policy-'));
+    for (const file of files) {
+      fs.mkdirSync(join(dir, 'src', file, '..'), { recursive: true });
+      fs.writeFileSync(join(dir, 'src', file), '');
+    }
+    if (toolkitConfig) fs.writeFileSync(join(dir, 'toolkit.config.json'), JSON.stringify(toolkitConfig));
+    return dir;
+  }
+
+  function lintAt(dir: string, file: string, code: string, options: Parameters<typeof fsdBoundaries>[0] = {}): string[] {
+    const linter = new Linter({ cwd: dir, configType: 'flat' });
+    const config = [
+      { languageOptions: { ecmaVersion: 2022 as const, sourceType: 'module' as const } },
+      ...fsdBoundaries({ cwd: dir, tsconfig: false, ...options }),
+    ] as Linter.Config[];
+    return linter.verify(code, config, { filename: join(dir, 'src', file) }).map((m) => `${m.ruleId}: ${m.message}`);
+  }
+
+  const GROUPED = ['features/mypage/order/index.ts', 'features/mypage/order/model/order.ts', 'features/mypage/claims/index.ts', 'features/login/index.ts'];
+
+  it('a group folder (no index, no files, slices with an index under it) holds separate slices', () => {
+    const dir = appOnDisk(GROUPED);
+    try {
+      expect(lintAt(dir, 'features/mypage/order/model/order.ts', "import { c } from '../../claims';")).toEqual([
+        `${RULE}: FSD: "features/mypage/order" may not import a sibling slice "features/mypage/claims" — move the shared part down a layer, or expose it through "features/mypage/claims/@x/order".`,
+      ]);
+      expect(lintAt(dir, 'pages/home/ui/home.ts', "import { o } from '../../../features/mypage/order';")).toEqual([]);
+      expect(lintAt(dir, 'pages/home/ui/home.ts', "import { m } from '../../../features/mypage';")).toEqual([
+        `${RULE}: FSD: "features/mypage" is a group of slices, not a slice — import one of its slices through its index.ts.`,
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a slice with only segment indexes is never mistaken for a group', () => {
+    const dir = appOnDisk(['features/auth/ui/index.ts', 'features/auth/model/index.ts', 'features/auth/model/session.ts']);
+    try {
+      expect(lintAt(dir, 'features/auth/ui/form.ts', "import { s } from '../model';")).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('sliceGroups: false turns groups off; include/exclude override the detection', () => {
+    const dir = appOnDisk(GROUPED);
+    try {
+      const inside = (options: Parameters<typeof fsdBoundaries>[0]) =>
+        lintAt(dir, 'features/mypage/order/model/order.ts', "import { c } from '../../claims';", options);
+      expect(inside({ sliceGroups: false })).toEqual([]);
+      expect(inside({ sliceGroups: { auto: true, include: [], exclude: ['features/mypage'] } })).toEqual([]);
+      expect(inside({ sliceGroups: { auto: false, include: ['features/mypage'], exclude: [] } })).toHaveLength(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('notices a group appearing while the process lives (an editor ESLint server)', () => {
+    const dir = appOnDisk(['features/mypage/order/model/order.ts', 'features/mypage/claims/model/claims.ts']);
+    try {
+      const run = () => lintAt(dir, 'features/mypage/order/model/order.ts', "import { c } from '../../claims';");
+      expect(run()).toEqual([]); // no slice has an index yet: mypage is a slice
+      fs.writeFileSync(join(dir, 'src/features/mypage/claims/index.ts'), '');
+      expect(run()).toHaveLength(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['segment', "import { b } from '../../../shared/ui/button';", 1],
+    ['component', "import { b } from '../../../shared/ui/button';", 0],
+    ['component', "import { b } from '../../../shared/ui/button/ui/button';", 1],
+    ['file', "import { f } from '../../../shared/lib/format/currency';", 0],
+  ] as const)('sharedPublicApi: %s — %s', (sharedPublicApi, code, expected) => {
+    const dir = appOnDisk([]);
+    try {
+      expect(lintAt(dir, 'features/a/model/a.ts', code, { sharedPublicApi })).toHaveLength(expected);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('testFiles: a spec may reach into another slice, but never upward', () => {
+    const dir = appOnDisk([]);
+    try {
+      const options = { testFiles: ['**/*.spec.ts'] };
+      expect(lintAt(dir, 'features/a/model/a.spec.ts', "import { b } from '../../b/model/b';", options)).toEqual([]);
+      expect(lintAt(dir, 'entities/e/model/e.spec.ts', "import { f } from '../../../features/f';", options)).toHaveLength(1);
+      expect(lintAt(dir, 'features/a/model/a.ts', "import { b } from '../../b/model/b';", options)).toHaveLength(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('platform index files (index.ios.tsx) are a public API', () => {
+    const dir = appOnDisk([]);
+    try {
+      expect(lintAt(dir, 'pages/home/ui/home.ts', "import { b } from '../../../features/b/index.ios';", { platformSuffixes: ['ios'] })).toEqual([]);
+      expect(lintAt(dir, 'pages/home/ui/home.ts', "import { b } from '../../../features/b/index.ios';")).toHaveLength(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the policy from toolkit.config.json next to (or above) the config, presets first", () => {
+    const dir = appOnDisk([], { fsd: { preset: 'practical' } });
+    try {
+      // practical: shared files are importable, spec files may cross slices
+      expect(lintAt(dir, 'features/a/model/a.ts', "import { f } from '../../../shared/lib/format/currency';")).toEqual([]);
+      expect(lintAt(dir, 'features/a/model/a.spec.ts', "import { b } from '../../b/model/b';")).toEqual([]);
+      // an explicit option still wins
+      expect(lintAt(dir, 'features/a/model/a.ts', "import { f } from '../../../shared/lib/format/currency';", { sharedPublicApi: 'segment' })).toHaveLength(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('archweave/fsd-boundaries — group detection on existing layouts', () => {
+  const fs = jest.requireActual<typeof import('node:fs')>('node:fs');
+  const os = jest.requireActual<typeof import('node:os')>('node:os');
+
+  function lintOnDisk(files: string[], file: string, code: string): string[] {
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'fsd-groups-'));
+    try {
+      for (const path of files) {
+        fs.mkdirSync(join(dir, 'src', path, '..'), { recursive: true });
+        fs.writeFileSync(join(dir, 'src', path), '');
+      }
+      const linter = new Linter({ cwd: dir, configType: 'flat' });
+      const config = [{ languageOptions: { ecmaVersion: 2022 as const, sourceType: 'module' as const } }, ...fsdBoundaries({ cwd: dir, tsconfig: false })] as Linter.Config[];
+      return linter.verify(code, config, { filename: join(dir, 'src', file) }).map((m) => m.message);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('a slice organised as components/ and hooks/ (each with an index) stays one slice', () => {
+    const files = ['features/auth/components/index.ts', 'features/auth/components/login.tsx', 'features/auth/hooks/index.ts'];
+    expect(lintOnDisk(files, 'features/auth/components/login.tsx', "import { useAuth } from '../hooks';")).toEqual([]);
+  });
+
+  it('a .DS_Store (or another dotfile) in a group folder does not undo the group', () => {
+    const files = ['features/mypage/.DS_Store', 'features/mypage/order/index.ts', 'features/mypage/order/model/order.ts', 'features/mypage/claims/index.ts'];
+    expect(lintOnDisk(files, 'features/mypage/order/model/order.ts', "import { c } from '../../claims';")).toHaveLength(1);
+    expect(lintOnDisk(files, 'pages/home/ui/home.ts', "import { o } from '../../../features/mypage/order';")).toEqual([]);
+  });
+});
+
+describe('archweave/fsd-boundaries — framework router folders', () => {
+  it("a Next.js Pages Router's pages/ is the composition root, re-exporting _pages", () => {
+    const options = { routerDirs: ['pages'] };
+    expect(lint('src/pages/index.tsx', "export { HomePage as default } from '../_pages/home';", options)).toEqual([]);
+    expect(lint('src/_pages/home/ui/home.tsx', "import x from '../../../pages/index';", options)).toHaveLength(1);
+  });
 });

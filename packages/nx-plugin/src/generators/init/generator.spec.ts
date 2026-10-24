@@ -667,7 +667,132 @@ describe('runInit — AI hosts', () => {
     runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
     const claude = tree.read('CLAUDE.md', 'utf-8') as string;
     expect(claude.startsWith(nx)).toBe(true);
-    expect(claude).toContain('<!-- nx-archweave:agent-rules start -->');
+    expect(claude).toMatch(/<!-- nx-archweave:agent-rules start hash=[0-9a-f]{12} -->/);
     expect(tree.exists('CLAUDE.generated.md')).toBe(false);
+  });
+});
+
+describe('runInit — the files this run wrote', () => {
+  it('separates files it created from files it modified, ignoring changes pending before it ran', () => {
+    const tree = appTree();
+    tree.write('apps/admin/package.json', JSON.stringify({ name: 'admin', nx: { projectType: 'application' } }));
+    const pendingBefore = new Set(tree.listChanges().map((change) => change.path));
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    expect(report.written?.created).toContain('toolkit.config.json');
+    expect(report.written?.created).toContain('.github/PULL_REQUEST_TEMPLATE.md');
+    for (const path of report.written?.created ?? []) expect(pendingBefore.has(path)).toBe(false);
+    expect(report.written?.created).toEqual([...(report.written?.created ?? [])].sort());
+    const output = renderInitReport(report);
+    expect(output).toContain('One or more sections aborted.');
+    expect(output).toContain('    toolkit.config.json');
+    expect(output).not.toContain('git restore .');
+  });
+
+  it('lists a file that existed before the run and was changed as modified', () => {
+    const tree = appTree();
+    tree.write('CLAUDE.md', '# Team notes\n');
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    expect(report.written?.modified).toContain('CLAUDE.md');
+    expect(report.written?.created).not.toContain('CLAUDE.md');
+    expect(report.written?.modified).not.toContain('nx.json');
+  });
+});
+
+describe('runInit — the frontend when --frontend is not passed', () => {
+  it('uses the framework found in the one frontend app', () => {
+    const tree = appTree();
+    tree.write('apps/web/next.config.js', 'module.exports = {};\n');
+    expect(runInit(tree, { preset: 'solo' }, CLEAN).frontend).toBe('next');
+  });
+
+  it('still asks when the app is not recognised', () => {
+    expect(() => runInit(appTree(), { preset: 'solo' }, CLEAN)).toThrow('init: pass --frontend=react-vite|next|expo|generic|none');
+  });
+});
+
+describe('runInit — --project picks the frontends', () => {
+  function twoApps(): Tree {
+    const tree = appTree();
+    tree.write('apps/admin/package.json', JSON.stringify({ name: 'admin', nx: { projectType: 'application' } }));
+    tree.write('apps/admin/next.config.js', 'module.exports = {};\n');
+    return tree;
+  }
+
+  it('runs the FSD section once per project and records each frontend with its framework', () => {
+    const tree = twoApps();
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', project: 'web,admin' }, CLEAN);
+    const fsd = report.sections.filter((s) => s.id === 'fsd');
+    expect(fsd.map((s) => s.report?.kind === 'fsd' && s.report.report.project)).toEqual(['web', 'admin']);
+    const config = JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string);
+    expect(config.frontends).toEqual([
+      { project: 'web', framework: 'react-vite', sourceRoot: 'apps/web/src' },
+      { project: 'admin', framework: 'next', sourceRoot: 'apps/admin/src' },
+    ]);
+    expect(config.fsd).toEqual({ enforcement: 'warn' });
+  });
+
+  it('accepts the projects as a list too', () => {
+    const report = runInit(twoApps(), { preset: 'solo', frontend: 'react-vite', project: ['web', 'admin'] }, CLEAN);
+    expect(report.sections.filter((s) => s.id === 'fsd')).toHaveLength(2);
+  });
+
+  it('an add-backend refusal shows in the aborted banner', () => {
+    const tree = twoApps();
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', backend: 'express', project: 'web' }, CLEAN);
+    expect(renderInitReport(report)).toContain('One or more sections aborted.');
+  });
+});
+
+describe('initGenerator — --strict', () => {
+  function ambiguous(): Tree {
+    const tree = appTree();
+    tree.write('apps/admin/package.json', JSON.stringify({ name: 'admin', nx: { projectType: 'application' } }));
+    return tree;
+  }
+  const quiet = () => jest.spyOn(console, 'log').mockImplementation(() => undefined);
+
+  it('fails after writing what succeeded when a section aborted', async () => {
+    const log = quiet();
+    const tree = ambiguous();
+    const callback = await initGenerator(tree, { preset: 'solo', frontend: 'react-vite', strict: true }, CLEAN);
+    log.mockRestore();
+    expect(tree.exists('toolkit.config.json')).toBe(true);
+    expect(typeof callback).toBe('function');
+    expect(() => (callback as () => void)()).toThrow('init --strict: a section aborted (add-fsd-lite)');
+  });
+
+  it('a dry run fails right away, after printing the report', async () => {
+    const log = quiet();
+    await expect(initGenerator(ambiguous(), { preset: 'solo', frontend: 'react-vite', strict: true, dryRun: true }, CLEAN)).rejects.toThrow('init --strict');
+    log.mockRestore();
+  });
+
+  it('without --strict it never fails', async () => {
+    const log = quiet();
+    const callback = await initGenerator(ambiguous(), { preset: 'solo', frontend: 'react-vite', dryRun: true }, CLEAN);
+    log.mockRestore();
+    expect(callback).toBeUndefined();
+  });
+});
+
+describe('runInit — the recorded frontends are read back', () => {
+  it('a bare rerun sets up the frontends the first --project run recorded', () => {
+    const tree = appTree();
+    tree.write('apps/admin/package.json', JSON.stringify({ name: 'admin', nx: { projectType: 'application' } }));
+    runInit(tree, { preset: 'solo', frontend: 'react-vite', project: 'web,admin' }, CLEAN);
+    const rerun = runInit(tree, {}, CLEAN);
+    const fsd = rerun.sections.filter((s) => s.id === 'fsd');
+    expect(fsd.map((s) => s.report?.kind === 'fsd' && !s.report.report.aborted)).toEqual([true, true]);
+  });
+});
+
+describe('runInit — a hand-edited agent-rules block', () => {
+  it('records no agent-rules choice the block does not carry', () => {
+    const tree = appTree();
+    tree.write('CLAUDE.md', `${renderAgentRulesBlock('## My own rules\n')}\n`.replace('## My own rules', '## My own rules, edited'));
+    const report = runInit(tree, { preset: 'team', frontend: 'react-vite' }, CLEAN);
+    const config = JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string);
+    expect(config.agentRules).toBeUndefined();
+    expect(report.config?.notRecorded.map((n) => n.field)).toContain('agentRules.teamRules');
   });
 });

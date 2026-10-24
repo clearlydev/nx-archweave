@@ -33,6 +33,11 @@
       "type": "boolean",
       "description": "Include the Team Rules section (collaboration rules for a shared repository). Defaults to toolkit.config.json's agentRules.teamRules, else false"
     },
+    "overwriteBlock": {
+      "type": "boolean",
+      "default": false,
+      "description": "Replace the nx-archweave block even when it was edited by hand (otherwise an edited block is kept and the report shows the difference)"
+    },
     "dryRun": {
       "type": "boolean",
       "default": false,

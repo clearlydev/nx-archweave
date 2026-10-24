@@ -8,6 +8,7 @@ import {
 import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts';
 import {
   indentBlock,
+  renderCheckoutStep,
   renderConcurrencyBlock,
   renderPermissionsBlock,
   renderRoundGateStep,
@@ -17,6 +18,7 @@ import {
   renderWorkspaceSetupSteps,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
+import { pinnedUses } from '../action-pins.ts';
 
 const SECRET_NAME = 'OPENAI_API_KEY';
 
@@ -71,15 +73,7 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
   const steps = [
     renderSecretGateStep(SECRET_NAME),
     renderRoundGateStep(input.maxRounds),
-    [
-      '- name: Checkout repository',
-      `  if: ${gateCondition}`,
-      '  uses: actions/checkout@v4',
-      '  with:',
-      '    ref: refs/pull/${{ github.event.pull_request.number }}/merge',
-      '    fetch-depth: 1',
-      '    persist-credentials: false',
-    ].join('\n'),
+    renderCheckoutStep(gateCondition, ['ref: refs/pull/${{ github.event.pull_request.number }}/merge']),
     [
       '- name: Fetch base and head refs for the PR',
       `  if: ${gateCondition}`,
@@ -97,7 +91,7 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
       '- name: Run Codex review',
       '  id: codex-review',
       `  if: ${gateCondition}`,
-      '  uses: openai/codex-action@v1',
+      `  uses: ${pinnedUses('openai/codex-action')}`,
       '  with:',
       `    openai-api-key: \${{ secrets.${SECRET_NAME} }}`,
       '    permission-profile: ":read-only"',

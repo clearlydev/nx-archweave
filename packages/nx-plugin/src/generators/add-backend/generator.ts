@@ -9,14 +9,15 @@ import {
   buildBoundarySnippet,
   composeBackendWiring,
   ESLINT_CONFIG_CANDIDATES,
+  readBoundaryTags,
+  readSharedTypesConfig,
 } from '@nx-archweave/template-engine';
 import type { AddBackendGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
-import { detectIndent, readToolkitConfig, readToolkitConfigFile, TOOLKIT_CONFIG_PATH, treePackageManager } from '../shared/toolkit-config-file.ts';
+import { readToolkitConfig, readToolkitConfigFile, TOOLKIT_CONFIG_PATH, treePackageManager } from '../shared/toolkit-config-file.ts';
+import { appendJsonArrayItem, applyJsonEdits, setJsonValue } from '../shared/json-edit.ts';
 import { resolveProjectType } from '../shared/project-type.ts';
 import { renderAddBackendReport, type AddBackendReport, type TagResult } from './render.ts';
-
-const SHARED_TYPES_ROOT = 'libs/shared-types';
 
 export interface AddBackendOptions {
   backend: 'express' | 'nest';
@@ -162,10 +163,12 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
       }
     }
     // Since Nx 20 the generator's positional is a DIRECTORY relative to the
-    // workspace root — a bare `api` lands at the root. Put it beside the
-    // frontend (apps/web → apps/api); the lookup above matches by basename.
-    const frontendParent = (projects.get(frontendProject)?.root ?? '').split('/').slice(0, -1).join('/');
-    const apiDirectory = `${frontendParent === '' || frontendParent === '.' ? 'apps' : frontendParent}/${apiName}`;
+    // workspace root. Put the api beside the frontend (apps/web → apps/api, web → api); a
+    // frontend at the workspace root itself gets apps/api. The lookup above matches by basename.
+    const frontendRoot = projects.get(frontendProject)?.root ?? '';
+    const frontendParent = frontendRoot.split('/').slice(0, -1).join('/');
+    const apiDirectory =
+      frontendRoot === '' || frontendRoot === '.' ? `apps/${apiName}` : `${frontendParent === '' ? '' : `${frontendParent}/`}${apiName}`;
     // @nx/express's init adds express@^5 unless express is already declared, while
     // @nx/react (23.2/23.3) peers on express ^4.21.2 — npm refuses that tree
     // (ERESOLVE). Declaring express in @nx/react's own range first makes the
@@ -188,13 +191,20 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
 
   // --- pre-flight: parse every file this run will touch, BEFORE any write ---
   // package.json is the current shape; project.json covers libs created by older builds
+  // toolkit.config.json may name the role tags (boundaries.tags) and where the shared-types
+  // lib goes (sharedTypes: { path, importPath }) — or that there is none (sharedTypes: false).
+  const recordedConfig = readToolkitConfigFile(tree).parsed;
+  const boundaryTags = readBoundaryTags(recordedConfig);
+  const sharedTypesConfig = readSharedTypesConfig(recordedConfig);
+  const withSharedTypes = sharedTypesConfig !== false;
+  const sharedTypesRoot = sharedTypesConfig === false ? '' : sharedTypesConfig.path;
   const sharedTypesExists =
-    tree.exists(`${SHARED_TYPES_ROOT}/package.json`) || tree.exists(`${SHARED_TYPES_ROOT}/project.json`);
+    withSharedTypes && (tree.exists(`${sharedTypesRoot}/package.json`) || tree.exists(`${sharedTypesRoot}/project.json`));
   const rootPackageJson = tree.read('package.json', 'utf-8');
   const workspaceName = rootPackageJson
     ? ((JSON.parse(rootPackageJson) as { name?: string }).name ?? 'workspace')
     : 'workspace';
-  const wiring = composeBackendWiring({ workspaceName });
+  const wiring = composeBackendWiring({ workspaceName, tags: boundaryTags, ...(sharedTypesConfig === false ? {} : { sharedTypes: sharedTypesConfig }) });
   const [apiProjectName, apiConfig] = apiEntry;
   const tagTargets: { project: string; root: string }[] = [
     ...(frontendProject === undefined
@@ -202,7 +212,7 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
       : [{ project: frontendProject, root: projects.get(frontendProject)?.root ?? `apps/${frontendProject}` }]),
     { project: apiProjectName, root: apiConfig.root },
   ];
-  if (sharedTypesExists) tagTargets.push({ project: wiring.sharedTypesPackageName, root: SHARED_TYPES_ROOT });
+  if (sharedTypesExists) tagTargets.push({ project: wiring.sharedTypesPackageName, root: sharedTypesRoot });
 
   const parsedTargets = new Map<string, ParsedTagFile>();
   const invalidProjects: string[] = [];
@@ -227,7 +237,7 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
   }
 
   // --- wiring (E2E-measured: package-link is the wiring) ---
-  const sharedTypes: AddBackendReport['sharedTypes'] = sharedTypesExists ? 'skipped' : 'created';
+  const sharedTypes: AddBackendReport['sharedTypes'] = !withSharedTypes ? 'disabled' : sharedTypesExists ? 'skipped' : 'created';
   if (sharedTypes === 'created' && write) {
     for (const file of wiring.sharedTypesFiles) tree.write(file.filePath, file.content);
   }
@@ -242,8 +252,7 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
     const existing = configParsed ?? {};
     if (parseOk && existing['backend'] !== backend) {
       configOutcome = configRaw === null ? 'created' : 'updated';
-      const indent = configRaw === null ? '  ' : detectIndent(configRaw);
-      if (write) tree.write(TOOLKIT_CONFIG_PATH, `${JSON.stringify({ ...existing, backend }, null, indent)}\n`);
+      if (write) tree.write(TOOLKIT_CONFIG_PATH, applyJsonEdits(configRaw, [[['backend'], backend]]));
     }
   }
 
@@ -251,17 +260,19 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
   // pnpm file wins when present (detection priority); an npm, yarn
   // or bun workspace registers in the root package.json's workspaces field instead
   // (all three read it; only a detected manager is written for).
-  let workspaceGlob: AddBackendReport['workspaceGlob'] = 'unrecognized';
-  const workspaceYaml = tree.read('pnpm-workspace.yaml', 'utf-8');
-  if (workspaceYaml !== null) {
-    const globResult = addSharedTypesWorkspaceGlob(workspaceYaml);
+  let workspaceGlob: AddBackendReport['workspaceGlob'] = withSharedTypes ? 'unrecognized' : undefined;
+  const workspaceYaml = withSharedTypes ? tree.read('pnpm-workspace.yaml', 'utf-8') : null;
+  if (!withSharedTypes) {
+    // no shared-types lib, nothing to register
+  } else if (workspaceYaml !== null) {
+    const globResult = addSharedTypesWorkspaceGlob(workspaceYaml, sharedTypesRoot);
     workspaceGlob = globResult.status;
     if (globResult.status === 'added' && write) tree.write('pnpm-workspace.yaml', globResult.text);
   } else if ((detectedPm === 'npm' || detectedPm === 'yarn' || detectedPm === 'bun') && rootPackageJson !== null) {
     // yarn 1 refuses workspaces unless the root is "private": true — Nx roots set it;
     // a hand-made root without it is reported, not written.
     const yarnNeedsPrivate = detectedPm === 'yarn' && (JSON.parse(rootPackageJson) as { private?: unknown }).private !== true;
-    const npmResult = yarnNeedsPrivate ? ({ status: 'unrecognized' } as const) : addSharedTypesNpmWorkspace(rootPackageJson);
+    const npmResult = yarnNeedsPrivate ? ({ status: 'unrecognized' } as const) : addSharedTypesNpmWorkspace(rootPackageJson, sharedTypesRoot);
     workspaceGlob = npmResult.status;
     if (npmResult.status === 'added' && write) tree.write('package.json', npmResult.text);
   }
@@ -273,13 +284,14 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
     const tags = holder.tags ?? [];
     if (tags.includes(tag)) return { project, action: 'present' };
     holder.tags = [...tags, tag];
-    if (write) tree.write(target.path, `${JSON.stringify(target.parsed, null, detectIndent(target.raw))}\n`);
+    target.raw = appendJsonArrayItem(target.raw, target.kind === 'project' ? ['tags'] : ['nx', 'tags'], tag);
+    if (write) tree.write(target.path, target.raw);
     return { project, action: 'added' };
   };
   const tags: TagResult[] = [
     ...(frontendProject === undefined ? [] : [mergeTag(frontendProject, wiring.tagByRole.frontend)]),
     mergeTag(apiProjectName, wiring.tagByRole.backend),
-    mergeTag(wiring.sharedTypesPackageName, wiring.tagByRole.shared),
+    ...(withSharedTypes ? [mergeTag(wiring.sharedTypesPackageName, wiring.tagByRole.shared)] : []),
   ];
 
   // tsconfig.base.json path alias — for classic setups that carry a baseUrl, and for
@@ -288,8 +300,8 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
   // target is written relative ("./…"), which TS accepts without a baseUrl. The modern
   // TS setup has neither (a bare non-relative target there is TS5090, E2E-measured), and
   // the workspace link above IS the wiring.
-  let tsconfigPaths: AddBackendReport['tsconfigPaths'] = 'workspace-link';
-  const tsconfigRaw = tree.read('tsconfig.base.json', 'utf-8');
+  let tsconfigPaths: AddBackendReport['tsconfigPaths'] = withSharedTypes ? 'workspace-link' : 'none';
+  const tsconfigRaw = withSharedTypes ? tree.read('tsconfig.base.json', 'utf-8') : null;
   if (tsconfigRaw !== null) {
     try {
       const tsconfig = JSON.parse(tsconfigRaw) as {
@@ -302,9 +314,8 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
           tsconfigPaths = 'present';
         } else {
           tsconfigPaths = 'added';
-          paths[wiring.sharedTypesPackageName] = [`${baseUrl ? '' : './'}${SHARED_TYPES_ROOT}/src/index.ts`];
-          tsconfig.compilerOptions.paths = paths;
-          if (write) tree.write('tsconfig.base.json', `${JSON.stringify(tsconfig, null, detectIndent(tsconfigRaw))}\n`);
+          const entry = [`${baseUrl ? '' : './'}${sharedTypesRoot}/src/index.ts`];
+          if (write) tree.write('tsconfig.base.json', setJsonValue(tsconfigRaw, ['compilerOptions', 'paths', wiring.sharedTypesPackageName], entry));
         }
       }
     } catch {
@@ -317,11 +328,11 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
   let snippet: string | undefined;
   if (!applyEslint) {
     eslint = 'snippet-only';
-    snippet = buildBoundarySnippet();
+    snippet = buildBoundarySnippet(boundaryTags);
   } else {
     const configPath = ESLINT_CONFIG_CANDIDATES.find((candidate) => tree.exists(candidate));
     const configText = configPath ? tree.read(configPath, 'utf-8') : null;
-    const result = configText !== null ? applyBoundaryConstraints(configText) : ({ status: 'unrecognized' } as const);
+    const result = configText !== null ? applyBoundaryConstraints(configText, boundaryTags) : ({ status: 'unrecognized' } as const);
     if (result.status === 'applied') {
       eslint = 'applied';
       if (write && configPath) tree.write(configPath, result.text);
@@ -329,7 +340,7 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
       eslint = 'already-applied';
     } else {
       eslint = 'degraded-unrecognized';
-      snippet = buildBoundarySnippet();
+      snippet = buildBoundarySnippet(boundaryTags);
     }
   }
 
@@ -342,7 +353,8 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
     tsconfigPaths,
     eslint,
     snippet,
-    sharedTypesPackage: wiring.sharedTypesPackageName,
+    sharedTypesPackage: withSharedTypes ? wiring.sharedTypesPackageName : undefined,
+    sharedTypesRoot: withSharedTypes ? sharedTypesRoot : undefined,
     config: configOutcome,
     packageManager,
     ...(packageManagerNote !== undefined ? { packageManagerNote } : {}),

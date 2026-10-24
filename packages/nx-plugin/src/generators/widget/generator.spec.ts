@@ -6,6 +6,7 @@ import widgetGenerator from './generator.ts';
 function appTree(): Tree {
   const tree = createTreeWithEmptyWorkspace();
   tree.write('project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'src' }));
+  tree.write('jest.config.ts', 'export default {};\n'); // a test runner, as Nx workspaces have
   return tree;
 }
 
