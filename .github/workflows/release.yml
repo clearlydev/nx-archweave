@@ -34,7 +34,7 @@ jobs:
       - uses: pnpm/action-setup@v6
 
       # No dependency cache in the publishing job: setup-node advises against it (cache poisoning).
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
           package-manager-cache: false
