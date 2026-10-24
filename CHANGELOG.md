@@ -1,3 +1,9 @@
+## 0.2.2 (2026-10-24)
+
+### 🩹 Fixes
+
+- split the review workflow so dependency code never runs with the provider secret ([#10](https://github.com/clearlydev/nx-archweave/pull/10))
+
 ## 0.2.1 (2026-10-24)
 
 ### 🩹 Fixes
