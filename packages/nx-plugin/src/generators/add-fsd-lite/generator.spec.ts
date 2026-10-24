@@ -290,6 +290,28 @@ describe('runAddFsdLite — Expo', () => {
       "...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: 'src', platformSuffixes: ['ios', 'android', 'native', 'web'] }),",
     );
   });
+
+  // Nx's Expo app has no file-system router: src/app is FSD's app layer itself.
+  it('keeps the app layer in app/ for an Expo app without expo-router', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('apps/mobile/project.json', JSON.stringify({ name: 'mobile', projectType: 'application', sourceRoot: 'apps/mobile/src' }));
+    tree.write('apps/mobile/app.json', JSON.stringify({ expo: { name: 'mobile' } }));
+    tree.write('apps/mobile/package.json', JSON.stringify({ name: 'mobile', dependencies: { expo: '*' } }));
+    const report = runAddFsdLite(tree, { frontend: 'expo', steiger: true });
+    expect(report.layerGuide).toContain('apps/mobile/src/app ');
+    expect(report.layerGuide).not.toContain('_app');
+    expect(tree.read('apps/mobile/steiger.config.mjs', 'utf-8')).not.toContain('_app');
+  });
+
+  it('moves the app layer to _app/ when expo-router owns app/', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('apps/mobile/project.json', JSON.stringify({ name: 'mobile', projectType: 'application', sourceRoot: 'apps/mobile/src' }));
+    tree.write('apps/mobile/app.json', JSON.stringify({ expo: { name: 'mobile' } }));
+    tree.write('apps/mobile/package.json', JSON.stringify({ name: 'mobile', dependencies: { expo: '*', 'expo-router': '*' } }));
+    const report = runAddFsdLite(tree, { frontend: 'expo', steiger: true });
+    expect(report.layerGuide).toContain('apps/mobile/src/_app ');
+    expect(tree.read('apps/mobile/steiger.config.mjs', 'utf-8')).toContain('_app');
+  });
 });
 
 describe('runAddFsdLite — Next.js routers', () => {

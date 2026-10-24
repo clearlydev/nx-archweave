@@ -1,6 +1,5 @@
 import { posix } from 'node:path';
 import type { Tree } from '@nx/devkit';
-import type { ToolkitFrontend } from '@nx-archweave/shared';
 import { readFsdEnforcement, type FsdEnforcement } from '@nx-archweave/shared';
 import {
   applyFsdEslintConfig,
@@ -11,6 +10,7 @@ import {
   detectYarnFlavor,
   ESLINT_CONFIG_CANDIDATES,
   FSD_CHECK_TARGET,
+  type FrameworkProfile,
   packageManagerCommands,
   profileById,
   STEIGER_CONFIG_FILE,
@@ -63,7 +63,10 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
   const appDir = app.root === '' || app.root === '.' ? '' : `${app.root}/`;
   // The source root as the app's eslint config (which lives in the app directory) sees it.
   const eslintRoot = posix.relative(app.root === '' ? '.' : app.root, app.sourceRoot) || '.';
-  const { platformSuffixes, routerDirs } = profileById(frontend);
+  // The app's own profile when it is the framework asked for: only it knows whether a router
+  // owns app/ (Expo with or without expo-router).
+  const profile = app.framework === frontend ? app.profile : profileById(frontend);
+  const { platformSuffixes, routerDirs } = profile;
   const framework = { platformSuffixes, routerDirs };
   const snippet = buildFsdEslintPasteSnippet(enforcement, locale, eslintRoot, framework);
   const eslintPath = ESLINT_CONFIG_CANDIDATES.map((name) => `${appDir}${name}`).find((path) => tree.exists(path)) ?? null;
@@ -81,7 +84,7 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
     if (result.status === 'applied' && !dryRun && eslintPath !== null) tree.write(eslintPath, result.text);
   }
 
-  const steiger = options.steiger ? addSteiger(tree, { appDir, appRoot: app.root, sourceRoot: app.sourceRoot, frontend, locale, write: !dryRun, config }) : null;
+  const steiger = options.steiger ? addSteiger(tree, { appDir, appRoot: app.root, sourceRoot: app.sourceRoot, profile, locale, write: !dryRun, config }) : null;
 
   return {
     dryRun,
@@ -95,7 +98,7 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
     eslint,
     eslintPath,
     snippet: eslint === 'applied' || eslint === 'already-applied' ? null : snippet,
-    layerGuide: composeFsdLayerGuide({ frontend, sourceRoot: app.sourceRoot, locale }),
+    layerGuide: composeFsdLayerGuide({ profile, sourceRoot: app.sourceRoot, locale }),
   };
 }
 
@@ -120,10 +123,10 @@ function readJsonObject(tree: Tree, path: string): { raw: string; parsed: Record
  */
 function addSteiger(
   tree: Tree,
-  input: { appDir: string; appRoot: string; sourceRoot: string; frontend: ToolkitFrontend; locale: 'ko' | 'en'; write: boolean; config: Record<string, unknown> | null },
+  input: { appDir: string; appRoot: string; sourceRoot: string; profile: FrameworkProfile; locale: 'ko' | 'en'; write: boolean; config: Record<string, unknown> | null },
 ): SteigerOutcome {
   const configPath = `${input.appDir}${STEIGER_CONFIG_FILE}`;
-  const configText = buildSteigerConfig({ renamedLayerDirs: Object.values(profileById(input.frontend).layerDirs), locale: input.locale });
+  const configText = buildSteigerConfig({ renamedLayerDirs: Object.values(input.profile.layerDirs), locale: input.locale });
   const existing = tree.read(configPath, 'utf-8');
   let configAction: SteigerOutcome['config'];
   if (existing === null) {

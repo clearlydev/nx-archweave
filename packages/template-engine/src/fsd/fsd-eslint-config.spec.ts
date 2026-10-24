@@ -1,4 +1,5 @@
 import { applyFsdEslintConfig, classifyFsdEslintConfig, composeFsdLayerGuide, fsdLayerDirName, fsdLayersFor } from './fsd-eslint-config.ts';
+import { profileById } from '../frameworks/profiles.ts';
 
 // Nx 23's React app config, verbatim shape.
 const REACT_APP_CONFIG = `import nx from '@nx/eslint-plugin';
@@ -129,7 +130,7 @@ describe('layer guide', () => {
     expect(fsdLayersFor('next')).toEqual(['pages', 'features', 'entities', 'shared']);
     expect(fsdLayerDirName('next', 'pages')).toBe('_pages');
     expect(fsdLayerDirName('react-vite', 'pages')).toBe('pages');
-    const guide = composeFsdLayerGuide({ frontend: 'next', sourceRoot: 'apps/web/src', locale: 'en' });
+    const guide = composeFsdLayerGuide({ profile: profileById('next'), sourceRoot: 'apps/web/src', locale: 'en' });
     expect(guide).toContain('apps/web/src/_pages');
     expect(guide).not.toContain('apps/web/src/app ');
   });

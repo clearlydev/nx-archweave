@@ -1,7 +1,7 @@
 import type { FsdEnforcement, ToolkitFrontend, ToolkitLocale } from '@nx-archweave/shared';
 import { buildFsdEslintEntry, buildFsdEslintImportLine, buildFsdEslintSnippet, buildFsdLayerGuide, FSD_ESLINT_MODULE, type FsdEslintFrameworkOptions } from '@nx-archweave/templates';
 import { maskComments } from '../backend/eslint-boundaries.ts';
-import { profileById } from '../frameworks/profiles.ts';
+import { profileById, type FrameworkProfile } from '../frameworks/profiles.ts';
 
 /**
  * The frontend app's eslint.config.mjs is where the FSD rule lives.
@@ -110,7 +110,9 @@ export function fsdLayersFor(frontend: ToolkitFrontend): FsdLayer[] {
   return [...profileById(frontend).layers];
 }
 
-export function composeFsdLayerGuide({ frontend, sourceRoot, locale }: { frontend: ToolkitFrontend; sourceRoot: string; locale: ToolkitLocale }): string {
-  const layers = fsdLayersFor(frontend);
-  return buildFsdLayerGuide({ layers, directories: layers.map((layer) => fsdLayerDirName(frontend, layer)), sourceRoot, locale });
+/** The guide for one app. `profile` is the framework as found in that app, which can differ from
+ * the id's default (an Expo app without expo-router keeps its app layer in app/). */
+export function composeFsdLayerGuide({ profile, sourceRoot, locale }: { profile: FrameworkProfile; sourceRoot: string; locale: ToolkitLocale }): string {
+  const layers = [...profile.layers];
+  return buildFsdLayerGuide({ layers, directories: layers.map((layer) => profile.layerDirs[layer] ?? layer), sourceRoot, locale });
 }

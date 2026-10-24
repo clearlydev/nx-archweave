@@ -1,6 +1,6 @@
 import { getProjects, type ProjectConfiguration, type Tree } from '@nx/devkit';
 import type { ToolkitFrontend } from '@nx-archweave/shared';
-import { detectFramework, readBoundaryTags } from '@nx-archweave/template-engine';
+import { detectFramework, readBoundaryTags, type FrameworkProfile } from '@nx-archweave/template-engine';
 import { readToolkitConfig } from './toolkit-config-file.ts';
 import { resolveProjectType } from './project-type.ts';
 
@@ -8,8 +8,9 @@ import { resolveProjectType } from './project-type.ts';
  * root's `src/` (which belongs to no project, so nothing lints, type-checks or builds it). */
 export type FrontendAppResolution =
   /** `inferredRoot`: a root package.json Nx itself does not list (no `nx` key), taken because
-   * its framework was recognised at the workspace root. */
-  | { kind: 'found'; project: string; root: string; sourceRoot: string; framework: ToolkitFrontend; inferredRoot?: true }
+   * its framework was recognised at the workspace root. `profile` is the framework as found in
+   * this app (Expo with or without expo-router); `framework` is its id. */
+  | { kind: 'found'; project: string; root: string; sourceRoot: string; framework: ToolkitFrontend; profile: FrameworkProfile; inferredRoot?: true }
   /** `--project` names a project the workspace does not have. */
   | { kind: 'not-found'; project: string }
   /** More than one frontend app — `--project` picks one. */
@@ -74,13 +75,10 @@ export function resolveFrontendApp(tree: Tree, explicitProject: string | undefin
     return { kind: 'invalid-project-json', detail: pathMatch ? pathMatch[1] : message };
   }
 
-  const found = (project: string, config: ProjectConfiguration): FrontendAppResolution => ({
-    kind: 'found',
-    project,
-    root: config.root,
-    sourceRoot: sourceRootOf(tree, config),
-    framework: frameworkOf(tree, config).id,
-  });
+  const found = (project: string, config: ProjectConfiguration): FrontendAppResolution => {
+    const profile = frameworkOf(tree, config);
+    return { kind: 'found', project, root: config.root, sourceRoot: sourceRootOf(tree, config), framework: profile.id, profile };
+  };
 
   if (explicitProject !== undefined) {
     const config = projects.get(explicitProject);
@@ -129,5 +127,5 @@ function inferredRootApp(tree: Tree, projects: Map<string, ProjectConfiguration>
   const config: ProjectConfiguration = { name, root: '.' };
   const framework = frameworkOf(tree, config);
   if (!framework.recognised) return null;
-  return { kind: 'found', project: name, root: '.', sourceRoot: sourceRootOf(tree, config), framework: framework.id, inferredRoot: true };
+  return { kind: 'found', project: name, root: '.', sourceRoot: sourceRootOf(tree, config), framework: framework.id, profile: framework, inferredRoot: true };
 }
