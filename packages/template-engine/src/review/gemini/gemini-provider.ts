@@ -9,13 +9,8 @@ import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts
 import {
   indentBlock,
   renderCheckoutStep,
-  renderConcurrencyBlock,
-  renderPermissionsBlock,
-  renderRoundGateStep,
-  renderSecretGateStep,
-  renderTriggerBlock,
-  renderVerdictGateStep,
-  renderWorkspaceSetupSteps,
+  renderReviewWorkflow,
+  REVIEW_GATE_CONDITION,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
 import { pinnedUses } from '../action-pins.ts';
@@ -61,41 +56,26 @@ function composePrompt(input: ReviewWorkflowInput): string {
 }
 
 function buildWorkflowYaml(input: ReviewWorkflowInput): string {
-  const steps = [
-    renderSecretGateStep(SECRET_NAME),
-    renderRoundGateStep(input.maxRounds),
-    renderCheckoutStep("steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'"),
-    [
-      '- name: Run Gemini review',
-      "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'",
-      `  uses: ${pinnedUses('google-github-actions/run-gemini-cli')}`,
-      '  env:',
-      '    GITHUB_TOKEN: ${{ github.token }}',
-      '  with:',
-      `    gemini_api_key: \${{ secrets.${SECRET_NAME} }}`,
-      '    prompt: |',
-      indentBlock(composePrompt(input), 6),
-    ].join('\n'),
-    renderWorkspaceSetupSteps(input.packageManager),
-    renderVerdictGateStep(input.maxRounds, input.locale)
-  ];
-
-  return [
-    'name: Gemini Code Review',
-    '',
-    renderTriggerBlock(),
-    '',
-    renderConcurrencyBlock(),
-    '',
-    renderPermissionsBlock(),
-    '',
-    'jobs:',
-    '  review:',
-    '    runs-on: ubuntu-latest',
-    '    steps:',
-    indentBlock(steps.join('\n\n'), 6),
-    '',
-  ].join('\n');
+  return renderReviewWorkflow(input, {
+    name: 'Gemini Code Review',
+    secretName: SECRET_NAME,
+    // An API key: run-gemini-cli uses OIDC only for Google Cloud workload identity federation.
+    idToken: false,
+    reviewSteps: [
+      renderCheckoutStep(REVIEW_GATE_CONDITION),
+      [
+        '- name: Run Gemini review',
+        `  if: ${REVIEW_GATE_CONDITION}`,
+        `  uses: ${pinnedUses('google-github-actions/run-gemini-cli')}`,
+        '  env:',
+        '    GITHUB_TOKEN: ${{ github.token }}',
+        '  with:',
+        `    gemini_api_key: \${{ secrets.${SECRET_NAME} }}`,
+        '    prompt: |',
+        indentBlock(composePrompt(input), 6),
+      ].join('\n'),
+    ],
+  });
 }
 
 export const geminiProvider: ReviewWorkflowProvider = {

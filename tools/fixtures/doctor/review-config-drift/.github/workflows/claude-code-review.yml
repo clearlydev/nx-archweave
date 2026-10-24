@@ -4,14 +4,23 @@ on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
 
-permissions:
-  contents: read
-  pull-requests: write
-  id-token: write
+concurrency:
+  group: archweave-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
-  review:
+  ai-review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    outputs:
+      enabled: ${{ steps.secret-gate.outputs.enabled }}
+      allowed: ${{ steps.round-gate.outputs.allowed }}
+      last-comment-id: ${{ steps.round-gate.outputs.last-comment-id }}
     steps:
       - name: Check review secret
         id: secret-gate
@@ -31,7 +40,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          rounds=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --paginate --jq '[.[] | select(.body | contains("<!-- archweave-review-round -->"))] | length' | jq -s 'add // 0')
+          counts=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("<!-- archweave-review-round -->"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')
+          rounds=$(printf '%s' "$counts" | cut -f1)
+          echo "last-comment-id=$(printf '%s' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"
           if [ "$rounds" -ge 3 ]; then
             echo "Automated review round limit (3) reached for this PR; skipping."
             echo "allowed=false" >> "$GITHUB_OUTPUT"
@@ -41,13 +52,14 @@ jobs:
 
       - name: Checkout repository
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Claude review
         if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -62,12 +74,12 @@ jobs:
 
             You are a code reviewer focused on correctness and security.
 
-            Review the provided diff and report findings in two explicitly separated top-level sections: "Correctness" and "Security". Never mix the two.
+            Review the provided diff and report only the most critical problems. Skip minor style and taste remarks entirely — report nothing below P2.
 
-            Only report findings with priority P0, P1, P2, Nit. Do NOT report P3 (over-engineering) findings — they are covered by a separate reviewer and are out of scope here.
+            Only report findings with priority P0, P1, P2. Do NOT report P3 (over-engineering) findings — they are out of scope here.
 
             For every finding, fill in every field of this schema:
-            - priority: P0 | P1 | P2 | Nit
+            - priority: P0 | P1 | P2
             - category: kebab-case category name
             - title: one-line summary
             - file: path of the affected file
@@ -79,5 +91,139 @@ jobs:
             - confidence: confirmed | plausible
 
             If multiple findings share the same root cause, merge them into a single finding instead of reporting duplicates.
+
+            ---
+
+            At the END of the top-level summary comment, append the machine-readable findings block:
+            the literal marker line <!-- archweave-findings-v1 -->, then a fenced ```json block containing
+            { "schema": "archweave/findings@1", "findings": [ ... ] } with one entry per finding,
+            using exactly the finding schema above. If there are no findings, still append the block with an empty findings array.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+  review:
+    needs: ai-review
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      comment-body: ${{ steps.verdict.outputs.comment-body }}
+      previous-comment-id: ${{ steps.verdict.outputs.previous-comment-id }}
+    steps:
+      - name: Check the AI review result
+        id: ai-review-result
+        env:
+          AI_REVIEW_RESULT: ${{ needs.ai-review.result }}
+          REVIEW_ENABLED: ${{ needs.ai-review.outputs.enabled }}
+          REVIEW_ALLOWED: ${{ needs.ai-review.outputs.allowed }}
+          LAST_COMMENT_ID: ${{ needs.ai-review.outputs.last-comment-id }}
+        run: |
+          if [ "$AI_REVIEW_RESULT" != success ]; then
+            echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
+            exit 1
+          fi
+          case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
+            false/* | true/false)
+              echo "The AI review did not run (no secret, or the round limit) - nothing to judge."
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            true/true)
+              case "$LAST_COMMENT_ID" in
+                '' | *[!0-9]*) ;;
+                *)
+                  echo "run=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                  ;;
+              esac
+              ;;
+          esac
+          echo "::error title=Review verdict not computed::The AI review job's results did not reach this job, so no verdict can be computed. Re-run all jobs."
+          exit 1
+
+      - name: Checkout repository
+        if: steps.ai-review-result.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Detect pnpm version
+        id: pnpm-version
+        if: steps.ai-review-result.outputs.run == 'true'
+        run: |
+          if [ -n "$(jq -r '.packageManager // empty' package.json)" ]; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=10" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        if: steps.ai-review-result.outputs.run == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.pnpm-version.outputs.version }}
+
+      - name: Set up Node
+        if: steps.ai-review-result.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        if: steps.ai-review-result.outputs.run == 'true'
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Compute review verdict
+        id: verdict
+        if: steps.ai-review-result.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ARCHWEAVE_PR_NUMBER: ${{ github.event.pull_request.number }}
+          ARCHWEAVE_MAX_ROUNDS: '3'
+          ARCHWEAVE_LOCALE: 'en'
+          ARCHWEAVE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}
+          ARCHWEAVE_VERDICT_OUTPUT: 'github-output'
+        run: |
+          if [ -x node_modules/.bin/archweave-review-verdict ]; then
+            node_modules/.bin/archweave-review-verdict
+          else
+            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+          fi
+
+      - name: Fail on a blocking verdict
+        if: steps.verdict.outputs.blocked == 'true'
+        run: |
+          echo "The review verdict is BLOCK - see the verdict comment on this pull request."
+          exit 1
+
+  review-comment:
+    needs: review
+    if: ${{ !cancelled() && needs.review.outputs.comment-body != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post review verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          VERDICT_BODY: ${{ needs.review.outputs.comment-body }}
+          PREVIOUS_ID: ${{ needs.review.outputs.previous-comment-id }}
+        run: |
+          payload=$(jq -n --arg body "$VERDICT_BODY" '{body: $body}')
+          case "$PREVIOUS_ID" in
+            ''|*[!0-9]*) PREVIOUS_ID= ;;
+          esac
+          if [ -n "$PREVIOUS_ID" ] && printf '%s' "$payload" | gh api -X PATCH "repos/$REPOSITORY/issues/comments/$PREVIOUS_ID" --input - > /dev/null; then
+            exit 0
+          fi
+          printf '%s' "$payload" | gh api -X POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --input - > /dev/null \
+            || echo "Could not post the verdict comment (continuing)."

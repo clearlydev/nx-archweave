@@ -1,6 +1,7 @@
 import type { SupportedPackageManager } from '../environment/package-manager.ts';
 import { ROUND_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/review-policy';
 import { pinnedUses } from './action-pins.ts';
+import type { ReviewWorkflowInput } from './provider.ts';
 
 /** Marker every posted review summary must contain; the round gate counts
  * comments containing it. Owned by review-policy's verdict gate — re-exported here
@@ -29,17 +30,22 @@ export function renderConcurrencyBlock(): string {
   ].join('\n');
 }
 
-export function renderPermissionsBlock(): string {
-  return ['permissions:', '  contents: read', '  pull-requests: write', '  id-token: write'].join('\n');
+/** The step condition every review step after the two gates carries. */
+export const REVIEW_GATE_CONDITION = "steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'";
+
+/** The review job's permissions. `idToken`: the provider's action exchanges a GitHub OIDC token
+ * (Claude's GitHub App sign-in); no other job ever gets one. */
+export function renderReviewPermissions(idToken: boolean): string {
+  return ['permissions:', '  contents: read', '  pull-requests: write', ...(idToken ? ['  id-token: write'] : [])].join('\n');
 }
 
-/** The repository checkout every provider starts from. The token stays out of `.git/config`:
- * the review only reads the tree, and a persisted token would be readable by every later
- * step, including the AI agent's shell. */
-export function renderCheckoutStep(gateCondition: string, extraWith: string[] = []): string {
+/** The repository checkout every job that reads the tree starts from. The token stays out of
+ * `.git/config`: the jobs only read the tree, and a persisted token would be readable by every
+ * later step, including the AI agent's shell. */
+export function renderCheckoutStep(gateCondition?: string, extraWith: string[] = []): string {
   return [
     '- name: Checkout repository',
-    `  if: ${gateCondition}`,
+    ...(gateCondition === undefined ? [] : [`  if: ${gateCondition}`]),
     `  uses: ${pinnedUses('actions/checkout')}`,
     '  with:',
     ...extraWith.map((line) => `    ${line}`),
@@ -91,14 +97,60 @@ export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
   ].join('\n');
 }
 
-/** The verdict gate step: runs after the provider's
- * review step, judges the posted findings block via the plugin's bin, and is
- * the ONLY red path of the pipeline (exit 1 on a parsed BLOCK). A workspace
- * that removed the plugin green-skips — same stance as the secret gate. */
+/** The condition of every step in the `review` job after it checked the AI review's result. */
+export const JUDGE_CONDITION = "steps.ai-review-result.outputs.run == 'true'";
+
+/** First step of the `review` job, which runs whatever the AI review job did (`if: always()`):
+ * the check then ends exactly as the single job did. Only explicit values count. A review the
+ * secret gate (`enabled=false`) or the round gate (`allowed=false`) switched off ends green
+ * without judging; a review that ran must also hand over its watermark (a number, 0 on a PR
+ * with no comments). Anything else — a failed, cancelled or skipped AI review, or results that
+ * did not reach this job — fails, so a BLOCK can never pass as "review switched off". The job's
+ * outputs reach the script through env. */
+export function renderAiReviewResultStep(): string {
+  return [
+    '- name: Check the AI review result',
+    '  id: ai-review-result',
+    '  env:',
+    '    AI_REVIEW_RESULT: ${{ needs.ai-review.result }}',
+    '    REVIEW_ENABLED: ${{ needs.ai-review.outputs.enabled }}',
+    '    REVIEW_ALLOWED: ${{ needs.ai-review.outputs.allowed }}',
+    '    LAST_COMMENT_ID: ${{ needs.ai-review.outputs.last-comment-id }}',
+    '  run: |',
+    '    if [ "$AI_REVIEW_RESULT" != success ]; then',
+    `      echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."`,
+    '      exit 1',
+    '    fi',
+    '    case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in',
+    '      false/* | true/false)',
+    '        echo "The AI review did not run (no secret, or the round limit) - nothing to judge."',
+    '        echo "run=false" >> "$GITHUB_OUTPUT"',
+    '        exit 0',
+    '        ;;',
+    '      true/true)',
+    '        case "$LAST_COMMENT_ID" in',
+    "          '' | *[!0-9]*) ;;",
+    '          *)',
+    '            echo "run=true" >> "$GITHUB_OUTPUT"',
+    '            exit 0',
+    '            ;;',
+    '        esac',
+    '        ;;',
+    '    esac',
+    `    echo "::error title=Review verdict not computed::The AI review job's results did not reach this job, so no verdict can be computed. Re-run all jobs."`,
+    '    exit 1',
+  ].join('\n');
+}
+
+/** The verdict gate step: judges the posted findings block via the plugin's bin, in the `review`
+ * job. The bin hands the verdict comment to the `review-comment` job (step outputs) instead of
+ * posting it, so this job needs no write token. A workspace that removed the plugin green-skips
+ * — same stance as the secret gate. */
 export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: ReviewLocale): string {
   return [
     '- name: Compute review verdict',
-    "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'",
+    '  id: verdict',
+    `  if: ${JUDGE_CONDITION}`,
     '  env:',
     '    GH_TOKEN: ${{ github.token }}',
     '    GITHUB_REPOSITORY: ${{ github.repository }}',
@@ -106,7 +158,8 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
     `    ARCHWEAVE_MAX_ROUNDS: '${maxRounds}'`,
     `    ARCHWEAVE_LOCALE: '${locale}'`,
     '    ARCHWEAVE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
-    '    ARCHWEAVE_ROUND_AFTER_ID: ${{ steps.round-gate.outputs.last-comment-id }}',
+    '    ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}',
+    "    ARCHWEAVE_VERDICT_OUTPUT: 'github-output'",
     '  run: |',
     '    if [ -x node_modules/.bin/archweave-review-verdict ]; then',
     '      node_modules/.bin/archweave-review-verdict',
@@ -116,11 +169,48 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
   ].join('\n');
 }
 
+/** The ONLY red path of the pipeline: a parsed BLOCK. The bin reports it as an output (so the
+ * comment is handed over first) and this step fails the job. */
+export function renderBlockStep(): string {
+  return [
+    '- name: Fail on a blocking verdict',
+    "  if: steps.verdict.outputs.blocked == 'true'",
+    '  run: |',
+    '    echo "The review verdict is BLOCK - see the verdict comment on this pull request."',
+    '    exit 1',
+  ].join('\n');
+}
+
+/** Posts or edits the verdict comment. It checks out nothing and installs nothing: the only
+ * input is the `review` job's outputs, which reach the script through env (never inline, so the
+ * comment text cannot be read as shell), and the earlier comment id must be a number. */
+export function renderVerdictCommentStep(): string {
+  return [
+    '- name: Post review verdict',
+    '  env:',
+    '    GH_TOKEN: ${{ github.token }}',
+    '    REPOSITORY: ${{ github.repository }}',
+    '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+    '    VERDICT_BODY: ${{ needs.review.outputs.comment-body }}',
+    '    PREVIOUS_ID: ${{ needs.review.outputs.previous-comment-id }}',
+    '  run: |',
+    `    payload=$(jq -n --arg body "$VERDICT_BODY" '{body: $body}')`,
+    '    case "$PREVIOUS_ID" in',
+    "      ''|*[!0-9]*) PREVIOUS_ID= ;;",
+    '    esac',
+    '    if [ -n "$PREVIOUS_ID" ] && printf \'%s\' "$payload" | gh api -X PATCH "repos/$REPOSITORY/issues/comments/$PREVIOUS_ID" --input - > /dev/null; then',
+    '      exit 0',
+    '    fi',
+    '    printf \'%s\' "$payload" | gh api -X POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --input - > /dev/null \\',
+    '      || echo "Could not post the verdict comment (continuing)."',
+  ].join('\n');
+}
+
 /** Workspace setup before the verdict gate: the bin lives in
- * node_modules, which a bare checkout does not have. Both steps sit behind the
- * same two gates as the review itself, so token-less or capped repos never pay
- * for an install. An install failure is a genuinely broken workspace (stale
- * lockfile), not a false block — the verdict contract covers only its own step. */
+ * node_modules, which a bare checkout does not have. The steps run only when the AI review's two
+ * gates passed, so token-less or capped repos never pay for an install. An install failure is a
+ * genuinely broken workspace (stale lockfile), not a false block — the verdict contract covers
+ * only its own step. */
 // Pinned toolchain for the setup steps — one place to bump (snapshots follow).
 // Node 22/24 bundle Corepack, which the yarn install step relies on; from Node 25 it is no
 // longer bundled — bumping past 24 needs an explicit `npm i -g corepack` step first.
@@ -133,17 +223,20 @@ const FALLBACK_PNPM_VERSION = '10';
 // still holds the lockfile. A newer bun reads the lockfiles older ones wrote, while a pinned
 // bun version would break the workflow on the user's first upgrade that bumps the format.
 
-/** Frozen installs per manager. The yarn flavor is decided on the
- * runner by the yarn Corepack provides for the project (its packageManager field, else
- * yarn 1) — so the rendered workflow is right for both without threading the flavor. */
+/** Frozen installs per manager, with install scripts off: the tree comes from the pull request,
+ * and the verdict bin is plain JavaScript that needs no build step. The yarn flavor is decided on
+ * the runner by the yarn Corepack provides for the project (its packageManager field, else
+ * yarn 1) — so the rendered workflow is right for both without threading the flavor. Yarn berry
+ * has no --ignore-scripts: enableScripts=false skips the dependencies' scripts but still runs the
+ * project's own postinstall (measured, yarn 4.9), so --mode=skip-build is passed too. */
 const INSTALL_LINES: Record<SupportedPackageManager, string[]> = {
-  pnpm: ['    pnpm install --frozen-lockfile'],
-  npm: ['    npm ci'],
+  pnpm: ['    pnpm install --frozen-lockfile --ignore-scripts'],
+  npm: ['    npm ci --ignore-scripts'],
   yarn: [
     '    corepack enable yarn',
-    '    if [ "$(yarn --version | cut -d. -f1)" -ge 2 ]; then yarn install --immutable; else yarn install --frozen-lockfile; fi',
+    '    if [ "$(yarn --version | cut -d. -f1)" -ge 2 ]; then YARN_ENABLE_SCRIPTS=false yarn install --immutable --mode=skip-build; else yarn install --frozen-lockfile --ignore-scripts; fi',
   ],
-  bun: ['    bun install --frozen-lockfile'],
+  bun: ['    bun install --frozen-lockfile --ignore-scripts'],
 };
 
 /** Decides the pnpm version on the runner: empty (action-setup then reads packageManager) when
@@ -163,7 +256,7 @@ function renderPnpmVersionStep(gate: string): string {
 }
 
 export function renderWorkspaceSetupSteps(packageManager: SupportedPackageManager): string {
-  const gate = "  if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'";
+  const gate = `  if: ${JUDGE_CONDITION}`;
   const steps: string[] = [];
   if (packageManager === 'pnpm') {
     // Workspaces created by Nx carry no packageManager field (measured) and need an explicit
@@ -206,4 +299,77 @@ export function renderWorkspaceSetupSteps(packageManager: SupportedPackageManage
     ].join('\n'),
   );
   return steps.join('\n\n');
+}
+
+export interface ReviewWorkflowParts {
+  /** The workflow's display name. */
+  name: string;
+  secretName: string;
+  /** The provider's steps after the two gates: the checkout and the review itself. */
+  reviewSteps: string[];
+  /** The provider's action exchanges a GitHub OIDC token (see renderReviewPermissions). */
+  idToken: boolean;
+}
+
+/**
+ * Three jobs, each with only the access it needs. `ai-review` holds the provider secret and runs
+ * the AI review; it installs nothing. `review` — the check a branch rule requires, named as the
+ * single job before it was — always runs: it fails when the AI review failed, and otherwise
+ * installs the workspace's dependencies (install scripts off) to run the verdict bin, with a
+ * read-only token and no secret or OIDC token. `review-comment` posts the verdict with a write
+ * token and runs nothing from the pull request.
+ */
+export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWorkflowParts): string {
+  const aiReviewSteps = [renderSecretGateStep(parts.secretName), renderRoundGateStep(input.maxRounds), ...parts.reviewSteps];
+  const reviewSteps = [
+    renderAiReviewResultStep(),
+    renderCheckoutStep(JUDGE_CONDITION),
+    renderWorkspaceSetupSteps(input.packageManager),
+    renderVerdictGateStep(input.maxRounds, input.locale),
+    renderBlockStep(),
+  ];
+  return [
+    `name: ${parts.name}`,
+    '',
+    renderTriggerBlock(),
+    '',
+    renderConcurrencyBlock(),
+    '',
+    'permissions: {}',
+    '',
+    'jobs:',
+    '  ai-review:',
+    '    runs-on: ubuntu-latest',
+    indentBlock(renderReviewPermissions(parts.idToken), 4),
+    '    outputs:',
+    '      enabled: ${{ steps.secret-gate.outputs.enabled }}',
+    '      allowed: ${{ steps.round-gate.outputs.allowed }}',
+    '      last-comment-id: ${{ steps.round-gate.outputs.last-comment-id }}',
+    '    steps:',
+    indentBlock(aiReviewSteps.join('\n\n'), 6),
+    '',
+    '  review:',
+    '    needs: ai-review',
+    '    if: always()',
+    '    runs-on: ubuntu-latest',
+    '    permissions:',
+    '      contents: read',
+    '      pull-requests: read',
+    '    outputs:',
+    '      comment-body: ${{ steps.verdict.outputs.comment-body }}',
+    '      previous-comment-id: ${{ steps.verdict.outputs.previous-comment-id }}',
+    '    steps:',
+    indentBlock(reviewSteps.join('\n\n'), 6),
+    '',
+    '  review-comment:',
+    '    needs: review',
+    // Runs after a BLOCK failed the review job, too: the comment explains the red check.
+    "    if: ${{ !cancelled() && needs.review.outputs.comment-body != '' }}",
+    '    runs-on: ubuntu-latest',
+    '    permissions:',
+    '      pull-requests: write',
+    '    steps:',
+    indentBlock(renderVerdictCommentStep(), 6),
+    '',
+  ].join('\n');
 }
