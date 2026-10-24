@@ -16,6 +16,8 @@ details are in [CONTRIBUTING.md](CONTRIBUTING.md).
   — from a clean environment: `create-nx-workspace` builds a different workspace when it sees an
   AI coding agent's environment variables. Do not `git add -A` while it runs: packing rewrites
   `packages/*/package.json` for a moment.
+- Existing-workspace flow: `node tools/e2e-existing.mjs --frontend=expo` — Nx's own preset makes the
+  workspace, then the packed plugin is added; same clean-environment rule.
 
 Always run tasks through `pnpm nx`, never the underlying tool directly.
 
