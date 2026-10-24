@@ -51,12 +51,17 @@
   "release": {
     "projects": ["@clearlydev/nx-archweave", "create-nx-archweave"],
     "projectsRelationship": "fixed",
+    "conventionalCommits": {
+      "types": {
+        "perf": { "semverBump": "patch" }
+      }
+    },
     "releaseTag": {
       "pattern": "v{version}"
     },
     "version": {
       "conventionalCommits": true,
-      "adjustSemverBumpsForZeroMajorVersion": true,
+      "adjustSemverBumpsForZeroMajorVersion": false,
       "preserveLocalDependencyProtocols": true
     },
     "changelog": {
