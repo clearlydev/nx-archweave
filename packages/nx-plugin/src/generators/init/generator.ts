@@ -9,12 +9,14 @@ import { runAddGithubTemplates } from '../add-github-templates/generator.ts';
 import { recordedReview, runAddReview } from '../add-review/generator.ts';
 import { runAddBackend } from '../add-backend/generator.ts';
 import type { InitGeneratorSchema } from './schema.d.ts';
-import { renderInitReport, type InitConfigOutcome, type InitReport, type InitSection } from './render.ts';
+import { failedSections, renderInitReport, type InitConfigOutcome, type InitReport, type InitSection } from './render.ts';
 import { createProcessExec, runPostInitValidation } from './validation.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
+import { resolveFrontendApp } from '../shared/frontend-app.ts';
+import { applyJsonEdits } from '../shared/json-edit.ts';
 import {
-  detectIndent,
   readToolkitConfigFile,
+  recordedFrontends,
   recordedChoice,
   RECORDED_BACKENDS,
   RECORDED_FRONTENDS,
@@ -49,6 +51,7 @@ function recordPresetChoices(
     enforcement?: string;
     teamRules?: boolean;
     aiHosts?: string[];
+    frontends?: { project: string; framework: string; sourceRoot: string }[];
   },
   notRecorded: InitConfigOutcome['notRecorded'],
   write: boolean,
@@ -59,51 +62,40 @@ function recordPresetChoices(
   if (choices.enforcement !== undefined) fields.push('fsd.enforcement');
   if (choices.teamRules !== undefined) fields.push('agentRules.teamRules');
   if (choices.aiHosts !== undefined) fields.push('aiHosts');
+  if (choices.frontends !== undefined) fields.push('frontends');
   if (fields.length === 0) return { action: 'skipped', fields, notRecorded };
 
   const { raw, parsed } = readToolkitConfigFile(tree);
   if (raw !== null && parsed === null) return { action: 'unrecognized', fields, notRecorded };
   const existing: Record<string, unknown> = parsed ?? {};
 
-  const asObject = (value: unknown): Record<string, unknown> =>
-    typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  const next: Record<string, unknown> = { ...existing };
-  let changed = false;
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  const edits: [string[], unknown][] = [];
   for (const key of topLevel) {
-    if (existing[key] !== choices[key]) {
-      next[key] = choices[key];
-      changed = true;
-    }
+    if (existing[key] !== choices[key]) edits.push([[key], choices[key]]);
   }
-  if (choices.enforcement !== undefined) {
-    const fsd = asObject(existing['fsd']);
-    if (fsd['enforcement'] !== choices.enforcement) {
-      next['fsd'] = { ...fsd, enforcement: choices.enforcement };
-      changed = true;
-    }
-  }
-  if (choices.teamRules !== undefined) {
-    const agentRules = asObject(existing['agentRules']);
-    if (agentRules['teamRules'] !== choices.teamRules) {
-      next['agentRules'] = { ...agentRules, teamRules: choices.teamRules };
-      changed = true;
-    }
-  }
+  // A nested choice goes into the existing object (its sibling keys survive); a value that is
+  // not an object there is replaced by one holding just the choice.
+  const nested = (parent: 'fsd' | 'agentRules', key: string, value: unknown): void => {
+    const holder = existing[parent];
+    if (isObject(holder) && holder[key] === value) return;
+    edits.push(isObject(holder) ? [[parent, key], value] : [[parent], { [key]: value }]);
+  };
+  if (choices.enforcement !== undefined) nested('fsd', 'enforcement', choices.enforcement);
+  if (choices.teamRules !== undefined) nested('agentRules', 'teamRules', choices.teamRules);
   if (choices.aiHosts !== undefined) {
     const recorded = existing['aiHosts'];
     if (!Array.isArray(recorded) || recorded.join('\u0000') !== choices.aiHosts.join('\u0000')) {
-      next['aiHosts'] = [...choices.aiHosts];
-      changed = true;
+      edits.push([['aiHosts'], [...choices.aiHosts]]);
     }
   }
-  if (!changed) return { action: 'unchanged', fields, notRecorded };
-
-  if (write) {
-    const indent = raw === null ? '  ' : detectIndent(raw);
-    const trailingNewline = raw === null || raw.endsWith('\n');
-    const body = JSON.stringify(next, null, indent);
-    tree.write(TOOLKIT_CONFIG_PATH, trailingNewline ? `${body}\n` : body);
+  if (choices.frontends !== undefined && JSON.stringify(existing['frontends']) !== JSON.stringify(choices.frontends)) {
+    edits.push([['frontends'], choices.frontends]);
   }
+  if (edits.length === 0) return { action: 'unchanged', fields, notRecorded };
+
+  if (write) tree.write(TOOLKIT_CONFIG_PATH, applyJsonEdits(raw, edits));
   return { action: raw === null ? 'created' : 'updated', fields, notRecorded };
 }
 
@@ -120,7 +112,30 @@ function keptReviewProvider(option: InitGeneratorSchema['aiHosts'], config: Reco
  * git. Always returns successfully — mirroring the other four `run*` cores, a dirty tree
  * or an aborted sub-section is reported, never thrown.
  */
+/** Content of every file pending in the tree, so the end of the run can tell what it wrote. */
+function pendingContents(tree: Tree): Map<string, string | null> {
+  return new Map(tree.listChanges().map((change) => [change.path, change.content?.toString('utf-8') ?? null]));
+}
+
+/** Files this run created and files it changed that existed before it started. In a real
+ * workspace the latter are UPDATEs of files on disk; a file already pending when init started
+ * (in-memory trees) counts as existing, and only as modified when its content changed. */
+function writtenSince(before: Map<string, string | null>, tree: Tree): { created: string[]; modified: string[] } {
+  const created: string[] = [];
+  const modified: string[] = [];
+  for (const change of tree.listChanges()) {
+    if (change.type === 'DELETE') continue;
+    if (!before.has(change.path)) {
+      (change.type === 'CREATE' ? created : modified).push(change.path);
+    } else if (before.get(change.path) !== (change.content?.toString('utf-8') ?? null)) {
+      modified.push(change.path);
+    }
+  }
+  return { created: created.sort(), modified: modified.sort() };
+}
+
 export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps): InitReport {
+  const before = pendingContents(tree);
   // What init recorded last time fills in what this run does not pass, so a standalone rerun
   // keeps the workspace's choices; everything resolved here is recorded again below.
   const recorded = readToolkitConfigFile(tree).parsed;
@@ -129,7 +144,11 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     // Missing input, like a missing required flag — not a precondition this run reports.
     throw new Error('init: pass --preset=quick-start|solo|team (toolkit.config.json records none).');
   }
-  const frontend = resolveInitFrontend(options.frontend, recorded);
+  // option > recorded > the framework found in the workspace's one frontend app (only a
+  // recognised one — an unknown framework is the user's call: generic or none).
+  const app = options.frontend === undefined && recordedChoice(recorded, 'frontend', RECORDED_FRONTENDS) === undefined ? resolveFrontendApp(tree, undefined) : null;
+  const detected = app?.kind === 'found' && app.framework !== 'generic' ? app.framework : undefined;
+  const frontend = resolveInitFrontend(options.frontend ?? detected, recorded);
   // option > the recorded backend (add-backend records it) > none: a bare rerun keeps it.
   const backend = options.backend ?? recordedChoice(recorded, 'backend', RECORDED_BACKENDS) ?? 'none';
   if (frontend === 'none' && backend === 'none') {
@@ -141,7 +160,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
   const locale = resolveLocaleOption(options.locale, recorded);
 
   // dryRun never writes anything either way, so the clean-tree precondition
-  // (which exists to guarantee a `git restore .` rollback story) doesn't apply to it.
+  // (which exists to keep a partial run's rollback exact) doesn't apply to it.
   // allowDirty is the explicit opt-out for orchestrators whose own preceding step
   // dirties the tree (create-nx-archweave installs this plugin right before init);
   // the report then warns that the rollback command covers more than this run.
@@ -174,21 +193,39 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
 
   // A backend-only workspace has no frontend for FSD to structure, whatever --fsd says.
   const fsdEnabled = frontend !== 'none' && (options.fsd ?? config.fsd.enabled);
+  // --project=web,admin: one FSD section per app, each with the framework found in it (the
+  // workspace --frontend only for an app nx-archweave does not recognise).
+  const passedProjects = (Array.isArray(options.project) ? options.project : (options.project ?? '').split(','))
+    .map((name) => name.trim())
+    .filter((name) => name !== '');
+  // A bare rerun keeps the apps an earlier --project run recorded.
+  const projects = passedProjects.length > 0 ? passedProjects : recordedFrontends(recorded);
   if (fsdEnabled) {
-    // Fold any raw throw into an aborted-style
-    // section instead of letting it kill the rest of the pipeline.
-    try {
-      // The preset's enforcement rides through as the option;
-      // applyEslint as for add-backend: the create CLI passes true on a workspace it just made.
-      const report = runAddFsdLite(tree, { frontend, locale, dryRun, enforcement: config.fsd.enforcement, applyEslint: options.applyEslint ?? false });
-      sections.push({ id: 'fsd', enabled: true, report: { kind: 'fsd', report } });
-    } catch (error) {
-      sections.push({
-        id: 'fsd',
-        enabled: true,
-        report: null,
-        thrownError: error instanceof Error ? error.message : String(error),
-      });
+    for (const project of projects.length === 0 ? [undefined] : projects) {
+      const found = project === undefined ? null : resolveFrontendApp(tree, project);
+      const appFrontend = found?.kind === 'found' && found.framework !== 'generic' ? found.framework : frontend;
+      // Fold any raw throw into an aborted-style
+      // section instead of letting it kill the rest of the pipeline.
+      try {
+        // The preset's enforcement rides through as the option;
+        // applyEslint as for add-backend: the create CLI passes true on a workspace it just made.
+        const report = runAddFsdLite(tree, {
+          frontend: appFrontend,
+          locale,
+          dryRun,
+          enforcement: config.fsd.enforcement,
+          applyEslint: options.applyEslint ?? false,
+          ...(project === undefined ? {} : { project }),
+        });
+        sections.push({ id: 'fsd', enabled: true, report: { kind: 'fsd', report } });
+      } catch (error) {
+        sections.push({
+          id: 'fsd',
+          enabled: true,
+          report: null,
+          thrownError: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   } else {
     sections.push({ id: 'fsd', enabled: false, report: null });
@@ -235,6 +272,8 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
       backend: config.backend,
       applyEslint: options.applyEslint ?? false,
       dryRun,
+      // add-backend wires one frontend: the one --project names, when it names one
+      ...(projects.length === 1 ? { frontendProject: projects[0] } : {}),
     });
     sections.push({ id: 'backend', enabled: true, report: { kind: 'backend', report } });
   } else {
@@ -260,14 +299,15 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
   // Record only what was actually applied: an aborted fsd section or an agent-rules file
   // whose markers could not be placed means the workspace does not carry that choice yet,
   // so the config must not claim it does (same atomicity reading as add-review's config rule).
-  const fsdSection = sections.find((s) => s.id === 'fsd');
-  const fsdRan = fsdSection?.enabled === true;
-  const fsdApplied = fsdSection?.report?.kind === 'fsd' && !fsdSection.report.report.aborted;
+  const fsdSections = sections.filter((s) => s.id === 'fsd');
+  const fsdRan = fsdSections.some((s) => s.enabled);
+  const fsdApplied = fsdRan && fsdSections.every((s) => s.report?.kind === 'fsd' && !s.report.report.aborted);
   const agentRulesSection = sections.find((s) => s.id === 'agentRules');
   const agentRulesRan = agentRulesSection?.enabled === true;
   const agentRulesApplied =
     agentRulesSection?.report?.kind === 'agentRules' &&
-    agentRulesSection.report.report.files.every((f) => f.action !== 'unrecognized');
+    // a block kept because the user edited it does not carry this run's choices either
+    agentRulesSection.report.report.files.every((f) => f.action !== 'unrecognized' && f.action !== 'user-modified');
   const reviewSection = sections.find((s) => s.id === 'review');
   const reviewApplied =
     reviewSection?.report?.kind === 'review' && ['created', 'updated', 'unchanged'].includes(reviewSection.report.report.configAction);
@@ -302,6 +342,15 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
       enforcement: fsdApplied ? config.fsd.enforcement : undefined,
       teamRules: agentRulesApplied ? config.agentRules.teamRules : undefined,
       aiHosts: agentRulesApplied ? config.aiHosts : undefined,
+      // with --project, the apps each FSD section set up
+      frontends:
+        fsdApplied && projects.length > 0
+          ? fsdSections.flatMap((s) =>
+              s.report?.kind === 'fsd' && s.report.report.project !== null && s.report.report.sourceRoot !== null
+                ? [{ project: s.report.report.project, framework: s.report.report.frontend, sourceRoot: s.report.report.sourceRoot }]
+                : [],
+            )
+          : undefined,
     },
     notRecorded,
     !dryRun,
@@ -318,6 +367,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     refused: false,
     sections,
     config: configOutcome,
+    written: dryRun ? undefined : writtenSince(before, tree),
   };
 }
 
@@ -368,8 +418,19 @@ export async function initGenerator(
   const report = runInit(tree, { ...options, dryRun: resolveDryRun(options) }, deps);
   console.log(renderInitReport(report));
 
+  // --strict: `nx g` exits non-zero only when the generator (or its callback) throws. Throwing
+  // here would discard what the other sections wrote, so a real run fails from the callback,
+  // which Nx runs after writing the files; a dry or refused run has nothing to keep.
+  const failed = options.strict === true ? (report.refused ? ['the dirty-tree check'] : failedSections(report)) : [];
+  const strictFailure = failed.length === 0 ? null : new Error(`init --strict: a section aborted (${failed.join(', ')}) — see the report above.`);
+  if (strictFailure !== null && (report.dryRun || report.refused)) throw strictFailure;
+
   if (report.dryRun || report.refused) return;
-  if (tree.listChanges().length === changesBefore) return;
+  const wrote = tree.listChanges().length !== changesBefore;
+  if (!wrote) {
+    if (strictFailure !== null) throw strictFailure;
+    return;
+  }
 
   const workflowPaths = collectWrittenWorkflowPaths(report);
   const root = tree.root;
@@ -377,6 +438,7 @@ export async function initGenerator(
 
   return () => {
     runPostInitValidation({ root, workflowPaths, graphOutputFile }, createProcessExec());
+    if (strictFailure !== null) throw strictFailure;
   };
 }
 

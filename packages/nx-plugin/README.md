@@ -49,7 +49,7 @@ pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
 ```
 
 - `init` runs the content generators below according to the preset (`quick-start` | `solo` | `team`).
-- `init` requires a clean git working tree. That way you can always undo a partial run with a single `git restore .`.
+- `init` requires a clean git working tree, so a partial run can be undone exactly: the report lists the files it modified (`git restore -- …`) and the files it created.
 - `--allowDirty` opts out of the clean-tree check. The report then warns you that the rollback scope is wider.
 - `--locale=ko|en` sets the language of generated content. Reports are always in English.
 

@@ -19,9 +19,9 @@ imported through its index.ts — the archweave/fsd-boundaries ESLint rule repor
 ESLint: report-only (pass --applyEslint to write the rule into web's eslint.config.mjs).
 // nx-archweave FSD layer rules — add these to the frontend app's eslint.config.mjs yourself:
 // 1) the import after the last import,
-// 2) the spread as the last element of the export default [...] array.
+// 2) the spread as the last element of the config array (export default [...], or the array your config exports by name).
 import { fsdBoundaries } from '@clearlydev/nx-archweave/eslint';
-...fsdBoundaries({ severity: 'warn' }),
+...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: 'src' }),
 
 ## add-agent-rules
 add-agent-rules:
@@ -37,6 +37,7 @@ add-agent-rules:
 ## add-review
   .github/workflows/claude-code-review.yml: created
   toolkit.config.json: created with the review field
+  .github/dependabot.yml: created — Dependabot proposes newer pins for the workflow's actions
 
 Note: the review workflow stays green-skipped until you register the CLAUDE_CODE_OAUTH_TOKEN secret.
 Note: this workflow runs with elevated permissions only after it is merged to the default branch —

@@ -40,7 +40,8 @@ describe('renderInitReport — refusal', () => {
     const output = renderInitReport({ ...BASE, cleanTree: false, refused: true, sections: [] });
     expect(output).toContain('Refused');
     expect(output).toContain('uncommitted changes');
-    expect(output).toContain('git restore .');
+    expect(output).toContain('commit or stash your changes, then rerun');
+    expect(output).not.toContain('git restore .');
   });
 });
 
@@ -53,7 +54,7 @@ describe('renderInitReport — allowDirty note', () => {
       sections: [{ id: 'review', enabled: false, report: null }],
     });
     expect(output).toContain('--allowDirty was set');
-    expect(output).toContain('also reverts those pre-existing changes');
+    expect(output).toContain('restoring the files this run modified also reverts your earlier changes to them');
     expect(output).not.toContain('Refused');
   });
 
@@ -93,7 +94,7 @@ describe('renderInitReport — fsd thrown-error folding', () => {
     });
     expect(output).toContain('## add-fsd-lite');
     expect(output).toContain('aborted — unexpected error: boom');
-    expect(output).toContain('git restore .');
+    expect(output).toContain('One or more sections aborted.');
   });
 
   it('omits rollback guidance in dryRun even if a section is flagged aborted', () => {
@@ -101,8 +102,10 @@ describe('renderInitReport — fsd thrown-error folding', () => {
       ...BASE,
       dryRun: true,
       sections: [{ id: 'fsd', enabled: true, report: null, thrownError: 'boom' }],
+      written: { created: ['toolkit.config.json'], modified: ['package.json'] },
     });
-    expect(output).not.toContain('git restore .');
+    expect(output).not.toContain('git restore');
+    expect(output).not.toContain('One or more sections aborted.');
   });
 });
 
@@ -123,6 +126,7 @@ describe('renderInitReport — composes sub-generator renders', () => {
               project: 'web',
               sourceRoot: 'apps/web/src',
               enforcement: 'warn',
+              frontend: 'react-vite',
               eslint: 'snippet-only',
               eslintPath: 'apps/web/eslint.config.mjs',
               snippet: "...fsdBoundaries({ severity: 'warn' }),",
@@ -156,6 +160,8 @@ describe('renderInitReport — composes sub-generator renders', () => {
               workflowYaml: null,
               configSnippetJson: null,
               configError: null,
+              dependabot: 'present',
+              dependabotProposal: null,
             },
           },
         },
@@ -183,12 +189,49 @@ describe('renderInitReport — composes sub-generator renders', () => {
               workflowYaml: null,
               configSnippetJson: null,
               configError: 'toolkit.config.json is not valid JSON',
+              dependabot: 'not-applied',
+              dependabotProposal: null,
             },
           },
         },
       ],
     });
-    expect(output).toContain('git restore .');
+    expect(output).toContain('One or more sections aborted.');
+  });
+});
+
+describe('renderInitReport — rollback names the files this run wrote', () => {
+  const aborted = { id: 'fsd' as const, enabled: true, report: null, thrownError: 'boom' };
+
+  it('restores modified files and lists created ones for the user to delete', () => {
+    const output = renderInitReport({
+      ...BASE,
+      sections: [aborted],
+      written: { created: ['.github/PULL_REQUEST_TEMPLATE.md', 'toolkit.config.json'], modified: ['package.json'] },
+    });
+    expect(output).toContain('  git restore -- package.json');
+    expect(output).toContain('Created by this run (untracked — delete them yourself; `git clean -n` lists them):');
+    expect(output).toContain('    .github/PULL_REQUEST_TEMPLATE.md');
+    expect(output).toContain('    toolkit.config.json');
+    expect(output).not.toContain('git restore .');
+  });
+
+  it('omits the restore line when the run only created files', () => {
+    const output = renderInitReport({ ...BASE, sections: [aborted], written: { created: ['CLAUDE.md'], modified: [] } });
+    expect(output).not.toContain('git restore');
+    expect(output).toContain('    CLAUDE.md');
+  });
+
+  it('warns after an --allowDirty run that restoring also reverts earlier edits', () => {
+    const output = renderInitReport({
+      ...BASE,
+      cleanTree: false,
+      allowDirty: true,
+      sections: [aborted],
+      written: { created: [], modified: ['package.json'] },
+    });
+    expect(output).toContain('  git restore -- package.json');
+    expect(output).toContain('(--allowDirty: this also reverts the uncommitted changes those files already had.)');
   });
 });
 

@@ -56,7 +56,7 @@ export interface InitReport {
    * `allowDirty: true` when the opt-out let a dirty-tree run proceed anyway. */
   cleanTree: boolean;
   /** True when the caller explicitly opted out of the clean-tree refusal (`--allowDirty`).
-   * When the tree was in fact dirty, the report warns that `git restore .` also reverts
+   * When the tree was in fact dirty, the report warns that restoring a modified file also reverts
    * the pre-existing changes. */
   allowDirty?: boolean;
   /** Resolved package manager (option > detection > pnpm) — absent on a
@@ -69,6 +69,8 @@ export interface InitReport {
   sections: InitSection[];
   /** Absent on a refused run. */
   config?: InitConfigOutcome;
+  /** What this run wrote, for the rollback guidance. Absent on a dry or refused run. */
+  written?: { created: string[]; modified: string[] };
 }
 
 const SECTION_TITLES: Record<InitSectionId, string> = {
@@ -94,15 +96,21 @@ function renderSectionReport(report: InitSectionReport): string {
   }
 }
 
-/** Whether a section left the run in a state that only a `git restore .` can cleanly
- * undo — i.e. it aborted outright. Sections that merely proposed/skipped a file (no
+/** Whether a section left the run half applied — i.e. it aborted outright, so the user may
+ * want the rollback guidance. Sections that merely proposed/skipped a file (no
  * write happened) do not count: there is nothing of theirs to roll back. */
 function sectionAborted(section: InitSection): boolean {
   if (section.thrownError !== undefined) return true;
   if (section.report === null) return false;
   if (section.report.kind === 'fsd') return section.report.report.aborted;
   if (section.report.kind === 'review') return section.report.report.workflowAction === 'aborted';
+  if (section.report.kind === 'backend') return section.report.report.refused !== undefined;
   return false;
+}
+
+/** The sections that aborted or were refused, by generator name — what `--strict` fails on. */
+export function failedSections(report: InitReport): string[] {
+  return report.sections.filter(sectionAborted).map((section) => SECTION_TITLES[section.id]);
 }
 
 export function renderInitReport(report: InitReport): string {
@@ -114,8 +122,8 @@ export function renderInitReport(report: InitReport): string {
   if (report.refused) {
     lines.push('');
     lines.push('Refused: the working tree has uncommitted changes.');
-    lines.push('  init only runs against a clean working tree, so a partial run can always be undone');
-    lines.push('  with a single `git restore .` — commit or stash your changes, then rerun.');
+    lines.push('  init only runs against a clean working tree, so a partial run can be rolled back exactly');
+    lines.push('  to what was committed — commit or stash your changes, then rerun.');
     return lines.join('\n');
   }
 
@@ -175,22 +183,21 @@ export function renderInitReport(report: InitReport): string {
   if (ranDirty) {
     lines.push('');
     lines.push('Note: --allowDirty was set and the working tree already had uncommitted changes —');
-    lines.push('`git restore .` also reverts those pre-existing changes, not only what this run wrote.');
+    lines.push('restoring the files this run modified also reverts your earlier changes to them.');
   }
 
   const hadAbort = report.sections.some(sectionAborted);
   if (!report.dryRun && hadAbort) {
     lines.push('');
-    if (ranDirty) {
-      lines.push('One or more sections aborted. Everything this run wrote can be undone with:');
-      lines.push('  git restore .');
-      lines.push('  (--allowDirty: this also reverts the pre-existing uncommitted changes noted above.)');
-    } else {
-      lines.push(
-        'One or more sections aborted. init never runs against a dirty tree (see above), so everything',
-      );
-      lines.push('this run wrote can be undone in one step:');
-      lines.push('  git restore .');
+    lines.push('One or more sections aborted. To undo what this run wrote:');
+    const written = report.written ?? { created: [], modified: [] };
+    if (written.modified.length > 0) {
+      lines.push(`  git restore -- ${written.modified.join(' ')}`);
+      if (ranDirty) lines.push('  (--allowDirty: this also reverts the uncommitted changes those files already had.)');
+    }
+    if (written.created.length > 0) {
+      lines.push('  Created by this run (untracked — delete them yourself; `git clean -n` lists them):');
+      for (const path of written.created) lines.push(`    ${path}`);
     }
   }
 

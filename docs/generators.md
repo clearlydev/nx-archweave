@@ -23,6 +23,9 @@ A preset-driven pipeline. It runs `add-fsd-lite`, `add-agent-rules`, `add-github
 - `--aiHosts`, `--reviewProvider`
 - `--fsd`, `--agentRules`, `--githubTemplates`, `--review`
 - `--applyEslint`, `--allowDirty`, `--dryRun`
+- `--project=web,admin` — the frontend app(s) the FSD section sets up. Needed with more than one frontend. Each app gets the rule with the framework found in it (`--frontend` only for an app nx-archweave does not recognise) and is recorded in `toolkit.config.json`'s `frontends`. With exactly one, it is also the frontend `add-backend` wires.
+- `--strict` — exit non-zero when a section aborts or is refused, for CI. The files the other sections wrote stay. Without it, `init` always succeeds and puts every problem in its report.
+- Without `--frontend`, `init` uses the framework of the workspace's one frontend app when it recognises it.
 
 Here's how `init` resolves the five options that have a fallback:
 
@@ -55,6 +58,14 @@ Runs read-only checks. It never writes anything.
 - review setup consistency
 - integration state
 
+It reads the workspace's projects from its Nx configuration, so a frontend at the workspace root or in `web/` is checked like one in `apps/web`. It also reports:
+
+- the frontend app it found (or the candidates, with `--project`), its framework, and where its FSD layers live
+- the slice groups the FSD rule will see, and the test runner the slice generators will find
+- imports into `shared` that reach past a segment's index, with the `sharedPublicApi` setting that fits them
+- an FSD rule wired without `cwd` (an editor or a root-level `eslint` would check nothing)
+- a review workflow nx-archweave did not generate, review workflows of two providers, and a pinned pnpm version next to a `packageManager` field
+
 ### Wiring
 
 | Generator | What it does |
@@ -81,8 +92,9 @@ Writes nx-archweave's rules as one marked block into the file each AI host reads
 
 - `--hosts` — a checkbox prompt. Default: `aiHosts` in `toolkit.config.json`, else Claude Code
 - `--teamRules`, `--locale`, `--dryRun`
+- `--overwriteBlock` — replace a block you edited by hand
 
-`add-agent-rules` creates the file, appends the block, or updates only the block. It never touches the text around the block.
+`add-agent-rules` creates the file, appends the block, or updates only the block. It never touches the text around the block. A block you edited is kept, and the report shows the difference.
 
 #### `add-github-templates`
 
@@ -92,7 +104,7 @@ Generates GitHub Issue Forms, a PR template and CODEOWNERS.
 
 #### `add-review`
 
-Installs the automated PR review workflow and the `review` field in `toolkit.config.json`.
+Installs the automated PR review workflow and the `review` field in `toolkit.config.json`. It also writes `.github/dependabot.yml` for the workflow's pinned actions when that file doesn't exist yet; an existing file is left alone and the report shows the entry to add.
 
 - `--provider`, `--mode`, `--maxRounds` — when you leave one out: the value already recorded, else `claude` / `standard` / `3`
 - `--onConflict`, `--locale`, `--dryRun`
@@ -114,6 +126,8 @@ Creating the app itself stays with the official tools. If the `api` project is m
 | `feature` | Scaffolds a feature slice under `src/features` |
 | `entity` | Scaffolds an entity slice under `src/entities` |
 | `shared` | Scaffolds a shared segment under `src/shared` |
+
+All five also take the name first (`nx g @clearlydev/nx-archweave:feature checkout`) and `--unitTestRunner=auto|jest|vitest|none` (default `auto`: a `.spec.ts` only when the app or workspace has jest or vitest). The four slice generators take `--group=<name>` to put the slice in a slice group (`src/features/<group>/<name>`). `src` stands for the app's source root. See [FSD Lite](fsd-lite.md#policy-how-strictly-the-tree-is-read).
 
 #### `page`
 

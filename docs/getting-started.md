@@ -16,6 +16,8 @@ npx create-nx-archweave my-app
 
 ### Existing Nx workspace
 
+Not an Nx workspace yet? Run `npx nx@latest init` in the repository first — it turns a plain app repository into one (and rewrites some `package.json` scripts to go through Nx). Don't run `create-nx-archweave` inside it: that makes a second, nested workspace, and the CLI stops unless you pass `--allow-nested`.
+
 Add the plugin as a dev dependency at the workspace root. That's where Nx plugins belong. Use the workspace's package manager:
 
 ```bash
@@ -124,7 +126,8 @@ Nx's react template ships every tool's files anyway, whatever you pass to `--aiA
 
 ### Agent rules
 
-- nx-archweave puts its rules into `CLAUDE.md` and/or `AGENTS.md` as one marked block (`<!-- nx-archweave:agent-rules start -->` … `end -->`).
+- nx-archweave puts its rules into `CLAUDE.md` and/or `AGENTS.md` as one marked block (`<!-- nx-archweave:agent-rules start hash=… -->` … `end -->`).
+- The start marker records a hash of the block. If you edit the block (for example, fill in a TODO), a rerun keeps your version and shows what it would have written. Pass `--overwriteBlock` to replace it.
 - nx-archweave never touches Nx's block or anything you write around the nx-archweave block.
 - If a file still has the block but none of your picked hosts reads that file, the block stays until you remove it.
 
@@ -252,6 +255,7 @@ If you run `add-backend` by hand on such a workspace, you get the same result.
 | `--review` / `--no-review` | — |
 | `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` |
 | `--plugin-source` | Package spec, path, or tarball |
+| `--allow-nested` | Create the workspace even inside a git repository or a folder with a `package.json`. Without it the CLI stops there and points you to `nx init` for an existing repository |
 | `--ai-hosts` | `claude-code`, `codex`, `cursor`, `gemini-cli` |
 | `--plugins` | Catalog ids (`ponytail`), or `none` |
 | `--package-manager` | `npm` \| `pnpm` \| `yarn` \| `bun` |
@@ -341,5 +345,13 @@ pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --dryRun
 pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
 ```
 
+Your layout doesn't need to be Nx's default. `init` and `doctor` read the projects from your Nx configuration: a frontend in `web/`, at the workspace root, or one whose `sourceRoot` is the project folder itself all work. With more than one frontend, name them:
+
+```bash
+pnpm nx g @clearlydev/nx-archweave:init --preset=team --project=web,admin --strict
+```
+
+If the app already follows its own FSD conventions (slice groups like `features/mypage/order`, files imported directly from `shared`, its own boundary tags), describe them in `toolkit.config.json` before you turn on enforcement — see [FSD Lite](fsd-lite.md#policy-how-strictly-the-tree-is-read) and [Boundaries](boundaries.md). `doctor` suggests the `sharedPublicApi` value that fits your imports. For violations that already exist, ESLint's bulk suppressions (`eslint --suppress-all`) keep them out of the way while new ones fail.
+
 > [!IMPORTANT]
-> `init` needs a clean git working tree. That way, you can always undo a partial run with a single `git restore .`. Pass `--allowDirty` to skip that check. The report then warns you that `git restore .` will also revert the changes you had before.
+> `init` needs a clean git working tree, so a partial run can be undone exactly. When a section aborts, the report lists what the run wrote: a `git restore -- <files>` line for the files it modified, and the files it created, which you delete yourself (`git clean -n` lists them first). Pass `--allowDirty` to skip the clean-tree check. The report then warns you that restoring a modified file also reverts the changes you had made to it before.
