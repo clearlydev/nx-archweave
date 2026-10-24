@@ -31,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.0
 
       # No dependency cache in the publishing job: setup-node advises against it (cache poisoning).
       - uses: actions/setup-node@v7
