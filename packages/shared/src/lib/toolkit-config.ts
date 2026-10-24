@@ -9,16 +9,20 @@ import type { ConflictResolution } from './init-plan.ts';
  */
 export type ToolkitPreset = 'quick-start' | 'solo' | 'team';
 export type ToolkitPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
-export type ToolkitFrontend = 'react-vite' | 'next';
+/** A frontend framework nx-archweave knows (its profile lives in template-engine), or `generic`
+ * for any other: the common FSD rules without framework-specific layer names. */
+export type ToolkitFrontend = 'react-vite' | 'next' | 'expo' | 'generic';
 /** The workspace's frontend axis: a framework, or `none` for a backend-only workspace (no FSD). */
 export type ToolkitFrontendChoice = ToolkitFrontend | 'none';
 export type ToolkitBackend = 'express' | 'nest' | 'none';
 /** Review/doc language — a language policy generalized into a config value. */
 export type ToolkitLocale = 'ko' | 'en';
 
-export type ReactViteFsdLayer = 'app' | 'pages' | 'features' | 'entities' | 'shared';
-/** 'app' is excluded — Next.js App Router's own app/ (or src/app/) directory is the entry point. */
-export type NextFsdLayer = Exclude<ReactViteFsdLayer, 'app'>;
+export type FsdLayerName = 'app' | 'pages' | 'features' | 'entities' | 'shared';
+/** @deprecated Use FsdLayerName — which layers a framework gets is its profile's business. */
+export type ReactViteFsdLayer = FsdLayerName;
+/** @deprecated Use FsdLayerName. */
+export type NextFsdLayer = FsdLayerName;
 
 /**
  * How hard the `archweave/fsd-boundaries` ESLint rule reports a violation.
@@ -37,10 +41,8 @@ export function readFsdEnforcement(fsd: unknown): FsdEnforcement | undefined {
 export interface ToolkitFsdConfig {
   enabled: boolean;
   enforcement: FsdEnforcement;
-  layerMapping: {
-    'react-vite': ReactViteFsdLayer[];
-    next: NextFsdLayer[];
-  };
+  /** The layer set per frontend, from the framework profiles (template-engine). */
+  layerMapping: Record<ToolkitFrontend, FsdLayerName[]>;
 }
 
 /** The AI coding tools (hosts) a workspace is set up for.

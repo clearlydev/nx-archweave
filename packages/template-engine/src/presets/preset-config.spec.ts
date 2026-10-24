@@ -23,6 +23,8 @@ describe('buildPresetConfig', () => {
         layerMapping: {
           'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
           next: ['pages', 'features', 'entities', 'shared'],
+          expo: ['app', 'pages', 'features', 'entities', 'shared'],
+          generic: ['app', 'pages', 'features', 'entities', 'shared'],
         },
       },
       review: { enabled: false },
@@ -57,6 +59,8 @@ describe('buildPresetConfig', () => {
         layerMapping: {
           'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
           next: ['pages', 'features', 'entities', 'shared'],
+          expo: ['app', 'pages', 'features', 'entities', 'shared'],
+          generic: ['app', 'pages', 'features', 'entities', 'shared'],
         },
       },
       review: {
@@ -98,6 +102,8 @@ describe('buildPresetConfig', () => {
         layerMapping: {
           'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
           next: ['pages', 'features', 'entities', 'shared'],
+          expo: ['app', 'pages', 'features', 'entities', 'shared'],
+          generic: ['app', 'pages', 'features', 'entities', 'shared'],
         },
       },
       review: {
@@ -270,5 +276,14 @@ describe('buildPresetConfig — reviewProvider', () => {
     const base = { preset: 'solo', frontend: 'next', backend: 'none', locale: 'en', packageManager: 'pnpm', aiHosts: ['codex'] } as const;
     expect(buildPresetConfig({ ...base, aiHosts: ['codex'] }).review).toMatchObject({ provider: 'gpt' });
     expect(buildPresetConfig({ ...base, aiHosts: ['codex'], reviewProvider: 'cursor' }).review).toMatchObject({ provider: 'cursor' });
+  });
+});
+
+describe('buildPresetConfig — layerMapping comes from the framework profiles', () => {
+  it('has a list for every frontend nx-archweave knows, taken from its profile', () => {
+    const config = buildPresetConfig({ preset: 'solo', frontend: 'react-vite', backend: 'none', locale: 'en', packageManager: 'pnpm' });
+    expect(Object.keys(config.fsd.layerMapping).sort()).toEqual(['expo', 'generic', 'next', 'react-vite']);
+    expect(config.fsd.layerMapping.expo).toEqual(['app', 'pages', 'features', 'entities', 'shared']);
+    expect(config.fsd.layerMapping.next).toEqual(['pages', 'features', 'entities', 'shared']);
   });
 });

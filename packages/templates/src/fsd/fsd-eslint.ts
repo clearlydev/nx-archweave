@@ -13,27 +13,37 @@ export function buildFsdEslintImportLine(): string {
   return `import { fsdBoundaries } from '${FSD_ESLINT_MODULE}';`;
 }
 
-/** The flat-config entry add-fsd-lite adds as the last element of `export default [...]`. */
-export function buildFsdEslintEntry(severity: FsdSeverity): string {
-  return `...fsdBoundaries({ severity: '${severity}' }),`;
+/** The flat-config entry add-fsd-lite adds as the last element of `export default [...]`.
+ * `cwd: import.meta.dirname` anchors `root` to the config file, so the rule checks the same files
+ * whichever directory ESLint runs from; `root` is the app's source root relative to that file. */
+/** Framework facts the rule needs, written into the entry only when set. */
+export interface FsdEslintFrameworkOptions {
+  platformSuffixes?: string[];
+  routerDirs?: string[];
+}
+
+export function buildFsdEslintEntry(severity: FsdSeverity, root = 'src', framework: FsdEslintFrameworkOptions = {}): string {
+  const list = (key: string, values: string[] | undefined): string =>
+    values === undefined || values.length === 0 ? '' : `, ${key}: [${values.map((value) => `'${value}'`).join(', ')}]`;
+  return `...fsdBoundaries({ severity: '${severity}', cwd: import.meta.dirname, root: '${root}'${list('platformSuffixes', framework.platformSuffixes)}${list('routerDirs', framework.routerDirs)} }),`;
 }
 
 /** Paste-ready text for the non-write paths (no `--applyEslint`, or a config shape the
  * applier does not recognise). */
-export function buildFsdEslintSnippet({ severity, locale }: { severity: FsdSeverity; locale: FsdLocale }): string {
+export function buildFsdEslintSnippet({ severity, locale, root, framework }: { severity: FsdSeverity; locale: FsdLocale; root?: string; framework?: FsdEslintFrameworkOptions }): string {
   const lines =
     locale === 'ko'
       ? [
           '// nx-archweave FSD 레이어 규칙 — 프론트엔드 앱의 eslint.config.mjs에 직접 넣으세요:',
           '// 1) 마지막 import 뒤에 아래 import를,',
-          '// 2) export default [...] 배열의 마지막 항목으로 아래 spread를 추가합니다.',
+          '// 2) 설정 배열(export default [...], 또는 export default 하는 변수의 배열)의 마지막 항목으로 아래 spread를 추가합니다.',
         ]
       : [
           "// nx-archweave FSD layer rules — add these to the frontend app's eslint.config.mjs yourself:",
           '// 1) the import after the last import,',
-          '// 2) the spread as the last element of the export default [...] array.',
+          '// 2) the spread as the last element of the config array (export default [...], or the array your config exports by name).',
         ];
-  return [...lines, buildFsdEslintImportLine(), buildFsdEslintEntry(severity)].join('\n');
+  return [...lines, buildFsdEslintImportLine(), buildFsdEslintEntry(severity, root, framework)].join('\n');
 }
 
 const LAYER_GUIDE_EN: Record<string, string> = {

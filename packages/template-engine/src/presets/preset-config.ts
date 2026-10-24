@@ -1,7 +1,5 @@
 import type {
   FsdEnforcement,
-  NextFsdLayer,
-  ReactViteFsdLayer,
   ToolkitAiHost,
   ToolkitBackend,
   ToolkitFrontendChoice,
@@ -16,6 +14,7 @@ import type { ToolkitConfig } from '../toolkit-config.ts';
 import { buildReviewConfigSnippet } from '../review/config-snippet.ts';
 import { DEFAULT_AI_HOSTS, reviewProviderFor } from '../ai-hosts/ai-hosts.ts';
 import type { ReviewProviderId } from '../review/provider.ts';
+import { allFrameworkProfiles } from '../frameworks/profiles.ts';
 
 export interface PresetConfigInput {
   preset: ToolkitPreset;
@@ -36,29 +35,20 @@ export interface PresetConfigInput {
 }
 
 /**
- * Layer composition is frontend-specific, not preset-specific —
- * `ToolkitFsdConfig.layerMapping` carries one react-vite list and one next list, and
- * every preset uses the SAME mapping for a given frontend. React Vite gets the full
- * 5-layer FSD stack (app/pages/features/entities/shared); Next.js omits 'app' because
- * the framework's own app/ (or src/app/) directory is already the entry point — this is
- * the only structural difference between the two. Team's stricter module boundaries
- * come from a stricter `depConstraints` SNIPPET from `add-fsd-lite`, not a
- * different layer list — it rides on `ToolkitFsdConfig.enforcement`,
- * which is the one preset-specific field in here.
+ * Layer composition is frontend-specific, not preset-specific — every preset uses the SAME
+ * mapping for a given frontend, and that mapping is the framework profile's (Next.js omits
+ * 'app' because its own app/ directory is already the entry point). Team's stricter module
+ * boundaries come from a stricter `depConstraints` SNIPPET from `add-fsd-lite`, not a
+ * different layer list — it rides on `ToolkitFsdConfig.enforcement`, the one preset-specific
+ * field in here.
  */
-const REACT_VITE_LAYERS: ReactViteFsdLayer[] = ['app', 'pages', 'features', 'entities', 'shared'];
-const NEXT_LAYERS: NextFsdLayer[] = ['pages', 'features', 'entities', 'shared'];
-
-function buildFsdConfig(enforcement: FsdEnforcement, frontend: ToolkitFrontendChoice) {
+function buildFsdConfig(enforcement: FsdEnforcement, frontend: ToolkitFrontendChoice): ToolkitConfig['fsd'] {
   return {
     // All three presets enable FSD — it is on whenever there is a
     // frontend; a backend-only workspace has none to structure.
     enabled: frontend !== 'none',
     enforcement,
-    layerMapping: {
-      'react-vite': REACT_VITE_LAYERS,
-      next: NEXT_LAYERS,
-    },
+    layerMapping: Object.fromEntries(allFrameworkProfiles().map((profile) => [profile.id, [...profile.layers]])) as ToolkitConfig['fsd']['layerMapping'],
   };
 }
 
