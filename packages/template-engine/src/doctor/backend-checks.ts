@@ -1,13 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createDoctorCheck, type DoctorCheck, type ToolkitBackend } from '@nx-archweave/shared';
-import { classifyBoundaryConstraints, ESLINT_CONFIG_CANDIDATES } from '../backend/eslint-boundaries.ts';
+import { classifyBoundaryConstraints, ESLINT_CONFIG_CANDIDATES, readBoundaryTags } from '../backend/eslint-boundaries.ts';
+import { readSharedTypesConfig } from '../backend/compose-backend-wiring.ts';
+import type { DoctorProject } from './doctor-projects.ts';
 
 const CONFIG_PATH = 'toolkit.config.json';
-const SHARED_TYPES_PACKAGE = 'libs/shared-types/package.json';
-/** Earlier releases shipped shared-types as a project.json library —
- * recognized so legacy workspaces never get a false warning. */
-const SHARED_TYPES_LEGACY = 'libs/shared-types/project.json';
 
 export const BACKEND_CHECK_IDS = [
   'backend-framework',
@@ -29,7 +27,8 @@ const CHECK_LABELS: Record<(typeof BACKEND_CHECK_IDS)[number], string> = {
  * and libs/, and one or two levels under packages/, reading project.json
  * tags and package.json nx.tags. Unparseable files are skipped: a broken
  * file is another check's finding, never a false boundary verdict. */
-function collectScopeTags(root: string): Set<string> {
+function collectScopeTags(root: string, projects?: DoctorProject[]): Set<string> {
+  if (projects !== undefined) return new Set(projects.flatMap((project) => project.tags));
   const tags = new Set<string>();
   const dirsIn = (rel: string): string[] => {
     try {
@@ -76,6 +75,15 @@ function notApplicable(message: string): DoctorCheck[] {
   );
 }
 
+function readConfigObject(root: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(root, CONFIG_PATH), 'utf-8'));
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** toolkit.config.json says `frontend: none` — a backend-only workspace. */
 function readsBackendOnly(root: string): boolean {
   try {
@@ -105,7 +113,7 @@ function readConfiguredBackend(root: string): ToolkitBackend | 'invalid' | null 
 
 /** The four backend-axis checks. Read-only, root-level files only —
  * the same root-only caveat as the frontend framework checks. */
-export function buildBackendChecks(root: string): DoctorCheck[] {
+export function buildBackendChecks(root: string, projects?: DoctorProject[]): DoctorCheck[] {
   const backend = readConfiguredBackend(root);
   if (backend === null) {
     return notApplicable('Skipped — no backend configured in toolkit.config.json');
@@ -165,26 +173,44 @@ export function buildBackendChecks(root: string): DoctorCheck[] {
     );
   }
 
-  const sharedTypesCurrent = existsSync(join(root, SHARED_TYPES_PACKAGE));
-  const sharedTypesLegacy = !sharedTypesCurrent && existsSync(join(root, SHARED_TYPES_LEGACY));
-  const sharedTypesExists = sharedTypesCurrent || sharedTypesLegacy;
-  checks.push(
-    createDoctorCheck({
-      id: 'shared-types-lib',
-      label: CHECK_LABELS['shared-types-lib'],
-      status: sharedTypesExists ? 'pass' : 'warning',
-      message: sharedTypesCurrent
-        ? 'libs/shared-types present'
-        : sharedTypesLegacy
-          ? 'libs/shared-types present (legacy project.json shape)'
-          : 'libs/shared-types not found — run add-backend to wire it',
-      evidence: sharedTypesCurrent ? [SHARED_TYPES_PACKAGE] : sharedTypesLegacy ? [SHARED_TYPES_LEGACY] : [],
-    }),
-  );
+  const config = readConfigObject(root);
+  const sharedTypesConfig = readSharedTypesConfig(config);
+  if (sharedTypesConfig === false) {
+    checks.push(
+      createDoctorCheck({
+        id: 'shared-types-lib',
+        label: CHECK_LABELS['shared-types-lib'],
+        status: 'not-applicable',
+        message: 'no shared-types lib (sharedTypes: false in toolkit.config.json)',
+        evidence: [CONFIG_PATH],
+      }),
+    );
+  } else {
+    // Earlier releases shipped shared-types as a project.json library — recognized so
+    // those workspaces never get a false warning.
+    const current = `${sharedTypesConfig.path}/package.json`;
+    const legacy = `${sharedTypesConfig.path}/project.json`;
+    const sharedTypesCurrent = existsSync(join(root, current));
+    const sharedTypesLegacy = !sharedTypesCurrent && existsSync(join(root, legacy));
+    checks.push(
+      createDoctorCheck({
+        id: 'shared-types-lib',
+        label: CHECK_LABELS['shared-types-lib'],
+        status: sharedTypesCurrent || sharedTypesLegacy ? 'pass' : 'warning',
+        message: sharedTypesCurrent
+          ? `${sharedTypesConfig.path} present`
+          : sharedTypesLegacy
+            ? `${sharedTypesConfig.path} present (legacy project.json shape)`
+            : `${sharedTypesConfig.path} not found — run add-backend to wire it`,
+        evidence: sharedTypesCurrent ? [current] : sharedTypesLegacy ? [legacy] : [],
+      }),
+    );
+  }
+  const boundaryTags = readBoundaryTags(config);
 
   const eslintPath = ESLINT_CONFIG_CANDIDATES.find((candidate) => existsSync(join(root, candidate)));
   const classification = eslintPath
-    ? classifyBoundaryConstraints(readFileSync(join(root, eslintPath), 'utf-8'))
+    ? classifyBoundaryConstraints(readFileSync(join(root, eslintPath), 'utf-8'), boundaryTags)
     : 'unknown';
   checks.push(
     createDoctorCheck({
@@ -193,7 +219,7 @@ export function buildBackendChecks(root: string): DoctorCheck[] {
       status: classification === 'enforced' ? 'pass' : 'warning',
       message:
         classification === 'enforced'
-          ? 'scope depConstraints are enforced'
+          ? `${boundaryTags.frontend} / ${boundaryTags.backend} depConstraints are enforced`
           : classification === 'allow-all'
             ? 'ESLint still has the allow-all default — boundaries are NOT enforced'
             : 'could not verify the ESLint config (missing or unrecognized shape)',
@@ -216,10 +242,10 @@ export function buildBackendChecks(root: string): DoctorCheck[] {
       }),
     );
   } else {
-    const tags = collectScopeTags(root);
+    const tags = collectScopeTags(root, projects);
     // A backend-only workspace (frontend: none) has no frontend to tag yet — the frontend
     // deny rule waits for one; only the backend tag must be carried.
-    const required = readsBackendOnly(root) ? (['scope:backend'] as const) : (['scope:frontend', 'scope:backend'] as const);
+    const required = readsBackendOnly(root) ? [boundaryTags.backend] : [boundaryTags.frontend, boundaryTags.backend];
     const missing = required.filter((tag) => !tags.has(tag));
     checks.push(
       createDoctorCheck({
@@ -229,14 +255,14 @@ export function buildBackendChecks(root: string): DoctorCheck[] {
         message:
           missing.length === 0
             ? required.length === 1
-              ? 'scope:backend is carried by at least one project (backend-only workspace — no frontend to tag)'
-              : 'both scope:frontend and scope:backend are carried by at least one project'
-            : `the toolkit's enforced deny rules reference ${missing.join(' and ')}, but no project in the scanned directories (apps/, libs/, packages/) carries ${missing.length === 1 ? 'it' : 'them'} — the boundary is a dead letter`,
+              ? `${boundaryTags.backend} is carried by at least one project (backend-only workspace — no frontend to tag)`
+              : `both ${boundaryTags.frontend} and ${boundaryTags.backend} are carried by at least one project`
+            : `the toolkit's enforced deny rules reference ${missing.join(' and ')}, but no project ${projects === undefined ? 'in the scanned directories (apps/, libs/, packages/) ' : ''}carries ${missing.length === 1 ? 'it' : 'them'} — the boundary is a dead letter`,
         evidence: missing.length === 0 ? [] : missing,
         suggestedAction:
           missing.length === 0
             ? undefined
-            : 'Add the missing scope tag(s) to the app project.json tags or package.json nx.tags (add-backend does this for the two apps).',
+            : 'Add the missing tag(s) to the app project.json tags or package.json nx.tags (add-backend does this for the two apps).',
       }),
     );
   }

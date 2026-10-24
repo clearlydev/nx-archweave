@@ -1,11 +1,12 @@
 import { detectWorkspacePackageManager } from '../environment/package-manager.ts';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createDoctorCheck, type DoctorCheck } from '@nx-archweave/shared';
 import { REVIEW_MODES, type ReviewLocale, type ReviewMaxRounds, type ReviewMode } from '@nx-archweave/review-policy';
 import {
   judgeReviewFileConflict,
   REVIEW_PROVIDERS,
+  ROUND_MARKER,
   type ReviewProviderId,
   type ReviewWorkflowInput,
 } from '../review/index.ts';
@@ -107,7 +108,78 @@ export const REVIEW_CHECK_IDS = [
   'review-workflow-present',
   'review-alt-file-coexistence',
   'review-config-consistency',
+  'review-workflow-providers',
+  'review-workflow-pnpm',
 ] as const;
+
+const WORKFLOWS_DIR = '.github/workflows';
+
+/** The workflows nx-archweave generated: they carry the review round marker. */
+function archweaveWorkflows(root: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(join(root, WORKFLOWS_DIR));
+  } catch {
+    return [];
+  }
+  return names
+    .filter((name) => /\.ya?ml$/.test(name))
+    .map((name) => `${WORKFLOWS_DIR}/${name}`)
+    .filter((path) => readFileSync(join(root, path), 'utf-8').includes(ROUND_MARKER))
+    .sort();
+}
+
+/** The provider an nx-archweave workflow file belongs to (its own file name, or the
+ * alternate-filename copy of it); null for any other name. */
+function providerOfWorkflow(path: string): ReviewProviderId | null {
+  const main = path.replace(/\.archweave\.yml$/, '.yml');
+  return (Object.values(REVIEW_PROVIDERS).find((provider) => provider.workflowFileName === main)?.id as ReviewProviderId | undefined) ?? null;
+}
+
+/** Switching providers leaves the previous provider's workflow behind: both then run on
+ * every pull request. */
+function buildReviewProvidersCheck(workflows: string[]): DoctorCheck {
+  const id = 'review-workflow-providers';
+  const label = 'One review provider';
+  const providers = new Set(workflows.map(providerOfWorkflow).filter((provider) => provider !== null));
+  if (workflows.length === 0) return createDoctorCheck({ id, label, status: 'not-applicable', message: 'no nx-archweave review workflow', evidence: [] });
+  if (providers.size <= 1) return createDoctorCheck({ id, label, status: 'pass', message: 'one provider\'s review workflow', evidence: workflows });
+  return createDoctorCheck({
+    id,
+    label,
+    status: 'warning',
+    message: `review workflows of ${providers.size} providers (${[...providers].join(', ')}) — each runs on every pull request`,
+    evidence: workflows,
+    suggestedAction: 'Delete the workflow of the provider you no longer use.',
+  });
+}
+
+/** pnpm/action-setup fails when its `version` differs from package.json's packageManager
+ * (it compares the two as strings, so `10` never equals `pnpm@10.12.1`). Workflows generated
+ * since 0.2.0 read packageManager on the runner; earlier ones passed a fixed version. */
+function buildReviewPnpmCheck(root: string, workflows: string[]): DoctorCheck {
+  const id = 'review-workflow-pnpm';
+  const label = 'Review workflow pnpm setup';
+  const fixed = workflows.filter((path) => /pnpm\/action-setup@[^\n]*\n\s*with:\s*\n\s*version:\s*['"]?\d/.test(readFileSync(join(root, path), 'utf-8')));
+  if (fixed.length === 0) return createDoctorCheck({ id, label, status: 'not-applicable', message: 'no review workflow pins a pnpm version', evidence: [] });
+  let packageManager: unknown;
+  try {
+    packageManager = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as Record<string, unknown>)['packageManager'];
+  } catch {
+    packageManager = undefined;
+  }
+  if (typeof packageManager !== 'string') {
+    return createDoctorCheck({ id, label, status: 'pass', message: 'the workflow pins pnpm and package.json has no packageManager field', evidence: fixed });
+  }
+  return createDoctorCheck({
+    id,
+    label,
+    status: 'warning',
+    message: `the review workflow pins a pnpm version while package.json says "${packageManager}" — pnpm/action-setup fails on the mismatch`,
+    evidence: fixed,
+    suggestedAction: 'Regenerate the workflow: nx g @clearlydev/nx-archweave:add-review --onConflict=overwrite.',
+  });
+}
 
 /** Read-only review-state diagnostics: whether the main review workflow is installed,
  * whether an alternate-filename file coexists with (or is orphaned without) it, and whether
@@ -120,16 +192,21 @@ export function buildReviewChecks(root: string): DoctorCheck[] {
   const mainExists = existsSync(join(root, mainWorkflowPath));
   const altExists = existsSync(join(root, altWorkflowPath));
 
+  const workflows = archweaveWorkflows(root);
+  const mainIsOurs = workflows.includes(mainWorkflowPath);
   return [
-    buildReviewWorkflowPresentCheck(mainWorkflowPath, mainExists, config),
+    buildReviewWorkflowPresentCheck(mainWorkflowPath, mainExists, mainIsOurs, config),
     buildReviewAltFileCoexistenceCheck(mainWorkflowPath, altWorkflowPath, mainExists, altExists),
     buildReviewConfigConsistencyCheck(root, mainWorkflowPath, mainExists, config),
+    buildReviewProvidersCheck(workflows),
+    buildReviewPnpmCheck(root, workflows),
   ];
 }
 
 function buildReviewWorkflowPresentCheck(
   mainWorkflowPath: string,
   mainExists: boolean,
+  mainIsOurs: boolean,
   config: ToolkitConfigState,
 ): DoctorCheck {
   if (mainExists) {
@@ -137,7 +214,9 @@ function buildReviewWorkflowPresentCheck(
       id: 'review-workflow-present',
       label: 'Review workflow installed',
       status: 'pass',
-      message: `${mainWorkflowPath} found`,
+      message: mainIsOurs
+        ? `${mainWorkflowPath} found (generated by nx-archweave)`
+        : `${mainWorkflowPath} found, but not generated by nx-archweave (it has no review round marker) — doctor reports on it, add-review proposes changes to it but never overwrites it`,
       evidence: [mainWorkflowPath],
     });
   }

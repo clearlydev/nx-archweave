@@ -5,11 +5,13 @@ import { detectEnvironment, type EnvironmentDetection } from './detect-environme
 import { buildReviewChecks, REVIEW_CHECK_IDS } from './review-checks.ts';
 import { buildBackendChecks, BACKEND_CHECK_IDS } from './backend-checks.ts';
 import { buildFsdLikeCheck } from './fsd-like-check.ts';
-import { buildFsdEnforcementCheck } from './fsd-enforcement-check.ts';
+import { buildFsdEnforcementCheck, buildFsdRuleAnchoredCheck } from './fsd-enforcement-check.ts';
+import type { DoctorProject } from './doctor-projects.ts';
 
 const NOT_APPLICABLE_IDS = [
   'fsd-like-structure',
   'fsd-enforcement-applied',
+  'fsd-rule-anchored',
   'nx-version',
   'package-manager',
   'workspace-root',
@@ -23,7 +25,9 @@ const NOT_APPLICABLE_IDS = [
   ...BACKEND_CHECK_IDS,
 ];
 
-export function runDoctorChecks(root: string): DoctorReport {
+/** `projects`: the workspace's projects as Nx lists them (the plugin's doctor passes them);
+ * without them the checks scan the conventional apps/ and libs/ folders. */
+export function runDoctorChecks(root: string, projects?: DoctorProject[]): DoctorReport {
   const env = detectEnvironment(root);
 
   if (!env.hasNxWorkspace) {
@@ -58,8 +62,9 @@ export function runDoctorChecks(root: string): DoctorReport {
       evidence: ['nx.json'],
     }),
     buildNxVersionCheck(env),
-    buildFsdLikeCheck(root),
-    buildFsdEnforcementCheck(root),
+    buildFsdLikeCheck(root, projects),
+    buildFsdEnforcementCheck(root, projects),
+    buildFsdRuleAnchoredCheck(root, projects),
     createDoctorCheck({
       id: 'package-manager',
       label: 'Package manager',
@@ -80,7 +85,7 @@ export function runDoctorChecks(root: string): DoctorReport {
     buildGithubTemplatesCheck(root),
     buildIntegrationManifestCheck(root),
     ...buildReviewChecks(root),
-    ...buildBackendChecks(root),
+    ...buildBackendChecks(root, projects),
   ];
 
   const overallStatus = computeOverallStatus(checks);
