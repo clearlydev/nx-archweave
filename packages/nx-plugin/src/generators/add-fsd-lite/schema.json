@@ -7,8 +7,8 @@
   "properties": {
     "frontend": {
       "type": "string",
-      "enum": ["react-vite", "next"],
-      "description": "Target frontend — decides the layer set the guide prints. Next.js has no FSD 'app' layer (its App Router directory is it) and its pages layer is the _pages/ directory (FSD's Next.js guide: Next.js reads src/pages as its Pages Router). Omitted: toolkit.config.json's frontend (init records it); required when none is recorded"
+      "enum": ["react-vite", "next", "expo", "generic"],
+      "description": "Target frontend — decides the layer set the guide prints. Next.js has no FSD 'app' layer (its App Router directory is it) and its pages layer is the _pages/ directory (FSD's Next.js guide: Next.js reads src/pages as its Pages Router). 'generic' is any other framework: the common FSD rules, no renamed layers. Omitted: toolkit.config.json's frontend (init records it); required when none is recorded"
     },
     "project": {
       "type": "string",

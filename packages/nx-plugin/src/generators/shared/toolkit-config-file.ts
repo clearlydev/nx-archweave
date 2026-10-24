@@ -1,19 +1,11 @@
 import type { Tree } from '@nx/devkit';
-import type { ToolkitAiHost } from '@nx-archweave/shared';
+import type { ToolkitAiHost, ToolkitFrontend } from '@nx-archweave/shared';
 import { DEFAULT_AI_HOSTS, detectWorkspacePackageManager, isAiHost } from '@nx-archweave/template-engine';
+import { applyJsonEdits } from './json-edit.ts';
 
 export const TOOLKIT_CONFIG_PATH = 'toolkit.config.json';
 
-/** The indentation unit an existing JSON file uses, so an update preserves the
- * author's formatting: the first indented line's leading run of tabs or spaces,
- * else two spaces (e.g. minified JSON or no file). */
-export function detectIndent(raw: string): string {
-  for (const line of raw.split('\n')) {
-    const match = /^(\t+| +)/.exec(line);
-    if (match) return match[1];
-  }
-  return '  ';
-}
+export { detectIndent } from './json-edit.ts';
 
 export interface ToolkitConfigFile {
   /** null = the file is absent. */
@@ -60,7 +52,7 @@ export function recordedChoice<T extends string>(config: Record<string, unknown>
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
 }
 
-export const RECORDED_FRONTENDS = ['react-vite', 'next', 'none'] as const;
+export const RECORDED_FRONTENDS = ['react-vite', 'next', 'expo', 'generic', 'none'] as const;
 export const RECORDED_BACKENDS = ['express', 'nest', 'none'] as const;
 export const RECORDED_PRESETS = ['quick-start', 'solo', 'team'] as const;
 export const RECORDED_PACKAGE_MANAGERS = ['pnpm', 'npm', 'yarn', 'bun'] as const;
@@ -69,17 +61,17 @@ export const RECORDED_PACKAGE_MANAGERS = ['pnpm', 'npm', 'yarn', 'bun'] as const
  * pick the layer set, so it stops with the flag to pass. A backend-only workspace
  * (`frontend: none`) has no frontend to structure, which stops the FSD generators too. */
 export function resolveFrontendOption(
-  option: 'react-vite' | 'next' | undefined,
+  option: ToolkitFrontend | undefined,
   config: Record<string, unknown> | null,
   generator: string,
-): 'react-vite' | 'next' {
+): ToolkitFrontend {
   const frontend = option ?? recordedChoice(config, 'frontend', RECORDED_FRONTENDS);
   if (frontend === undefined) {
-    throw new Error(`${generator}: pass --frontend=react-vite|next (toolkit.config.json records none — init writes it).`);
+    throw new Error(`${generator}: pass --frontend=react-vite|next|expo|generic (toolkit.config.json records none — init writes it).`);
   }
   if (frontend === 'none') {
     throw new Error(
-      `${generator}: this is a backend-only workspace (toolkit.config.json frontend: none) — FSD structures a frontend app. Pass --frontend=react-vite|next if you added one.`,
+      `${generator}: this is a backend-only workspace (toolkit.config.json frontend: none) — FSD structures a frontend app. Pass --frontend=react-vite|next|expo|generic if you added one.`,
     );
   }
   return frontend;
@@ -92,7 +84,7 @@ export function resolveInitFrontend(
 ): (typeof RECORDED_FRONTENDS)[number] {
   const frontend = option ?? recordedChoice(config, 'frontend', RECORDED_FRONTENDS);
   if (frontend === undefined) {
-    throw new Error('init: pass --frontend=react-vite|next|none (toolkit.config.json records none — init writes it).');
+    throw new Error('init: pass --frontend=react-vite|next|expo|generic|none (toolkit.config.json records none — init writes it).');
   }
   return frontend;
 }
@@ -136,10 +128,15 @@ export function recordAiHosts(tree: Tree, hosts: readonly ToolkitAiHost[], write
   if (Array.isArray(recorded) && recorded.length === hosts.length && recorded.every((id, index) => id === hosts[index])) {
     return 'unchanged';
   }
-  if (write) {
-    const indent = raw === null ? '  ' : detectIndent(raw);
-    const body = JSON.stringify({ ...existing, aiHosts: [...hosts] }, null, indent);
-    tree.write(TOOLKIT_CONFIG_PATH, raw === null || raw.endsWith('\n') ? `${body}\n` : body);
-  }
+  if (write) tree.write(TOOLKIT_CONFIG_PATH, applyJsonEdits(raw, [[['aiHosts'], [...hosts]]]));
   return raw === null ? 'created' : 'updated';
+}
+
+/** The projects `init --project` recorded in toolkit.config.json's `frontends`. */
+export function recordedFrontends(config: Record<string, unknown> | null): string[] {
+  const frontends = config?.['frontends'];
+  if (!Array.isArray(frontends)) return [];
+  return frontends.flatMap((entry) =>
+    typeof entry === 'object' && entry !== null && typeof (entry as Record<string, unknown>)['project'] === 'string' ? [(entry as { project: string }).project] : [],
+  );
 }

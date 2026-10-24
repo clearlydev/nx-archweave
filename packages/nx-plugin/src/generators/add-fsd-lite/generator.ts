@@ -1,4 +1,6 @@
+import { posix } from 'node:path';
 import type { Tree } from '@nx/devkit';
+import type { ToolkitFrontend } from '@nx-archweave/shared';
 import { readFsdEnforcement, type FsdEnforcement } from '@nx-archweave/shared';
 import {
   applyFsdEslintConfig,
@@ -10,13 +12,15 @@ import {
   ESLINT_CONFIG_CANDIDATES,
   FSD_CHECK_TARGET,
   packageManagerCommands,
+  profileById,
   STEIGER_CONFIG_FILE,
   STEIGER_DEPENDENCIES,
 } from '@nx-archweave/template-engine';
 import type { AddFsdLiteGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
 import { resolveFrontendApp } from '../shared/frontend-app.ts';
-import { detectIndent, readToolkitConfig, resolveFrontendOption, resolveLocaleOption, treePackageManager } from '../shared/toolkit-config-file.ts';
+import { readToolkitConfig, resolveFrontendOption, resolveLocaleOption, treePackageManager } from '../shared/toolkit-config-file.ts';
+import { applyJsonEdits, setJsonValue } from '../shared/json-edit.ts';
 import { renderAddFsdLiteReport, type AddFsdLiteReport, type FsdAppRefusal, type SteigerOutcome } from './render.ts';
 
 /** Option > toolkit.config.json `fsd.enforcement` > 'warn'. An unrecognized value from either
@@ -42,10 +46,9 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
   const frontend = resolveFrontendOption(options.frontend, config, 'add-fsd-lite');
   const dryRun = options.dryRun ?? false;
   const applyEslint = options.applyEslint ?? false;
-  const snippet = buildFsdEslintPasteSnippet(enforcement, locale);
-
   const app = resolveFrontendApp(tree, options.project);
   if (app.kind !== 'found') {
+    const snippet = buildFsdEslintPasteSnippet(enforcement, locale);
     const appRefusal: FsdAppRefusal =
       app.kind === 'not-found'
         ? { reason: 'project-not-found', project: app.project }
@@ -53,22 +56,27 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
           ? { reason: 'ambiguous-frontend', candidates: app.candidates }
           : app.kind === 'invalid-project-json'
             ? { reason: 'invalid-project-json', detail: app.detail }
-            : { reason: 'no-frontend-app' };
-    return { dryRun, aborted: true, appRefusal, project: null, sourceRoot: null, enforcement, eslint: 'not-applied', eslintPath: null, snippet, layerGuide: null, steiger: null };
+            : { reason: 'no-frontend-app', otherProjects: app.otherProjects };
+    return { dryRun, aborted: true, appRefusal, project: null, sourceRoot: null, enforcement, frontend, eslint: 'not-applied', eslintPath: null, snippet, layerGuide: null, steiger: null };
   }
 
   const appDir = app.root === '' || app.root === '.' ? '' : `${app.root}/`;
+  // The source root as the app's eslint config (which lives in the app directory) sees it.
+  const eslintRoot = posix.relative(app.root === '' ? '.' : app.root, app.sourceRoot) || '.';
+  const { platformSuffixes, routerDirs } = profileById(frontend);
+  const framework = { platformSuffixes, routerDirs };
+  const snippet = buildFsdEslintPasteSnippet(enforcement, locale, eslintRoot, framework);
   const eslintPath = ESLINT_CONFIG_CANDIDATES.map((name) => `${appDir}${name}`).find((path) => tree.exists(path)) ?? null;
   const configText = eslintPath === null ? null : tree.read(eslintPath, 'utf-8');
 
   let eslint: AddFsdLiteReport['eslint'];
   if (!applyEslint) {
     // report-only: the user pastes the snippet — unless the rule is already there
-    eslint = configText !== null && applyFsdEslintConfig(configText, enforcement).status === 'already-applied' ? 'already-applied' : 'snippet-only';
+    eslint = configText !== null && applyFsdEslintConfig(configText, enforcement, eslintRoot, framework).status === 'already-applied' ? 'already-applied' : 'snippet-only';
   } else if (configText === null) {
     eslint = 'degraded-unrecognized';
   } else {
-    const result = applyFsdEslintConfig(configText, enforcement);
+    const result = applyFsdEslintConfig(configText, enforcement, eslintRoot, framework);
     eslint = result.status === 'applied' ? 'applied' : result.status === 'already-applied' ? 'already-applied' : 'degraded-unrecognized';
     if (result.status === 'applied' && !dryRun && eslintPath !== null) tree.write(eslintPath, result.text);
   }
@@ -83,6 +91,7 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
     sourceRoot: app.sourceRoot,
     steiger,
     enforcement,
+    frontend,
     eslint,
     eslintPath,
     snippet: eslint === 'applied' || eslint === 'already-applied' ? null : snippet,
@@ -111,10 +120,10 @@ function readJsonObject(tree: Tree, path: string): { raw: string; parsed: Record
  */
 function addSteiger(
   tree: Tree,
-  input: { appDir: string; appRoot: string; sourceRoot: string; frontend: 'react-vite' | 'next'; locale: 'ko' | 'en'; write: boolean; config: Record<string, unknown> | null },
+  input: { appDir: string; appRoot: string; sourceRoot: string; frontend: ToolkitFrontend; locale: 'ko' | 'en'; write: boolean; config: Record<string, unknown> | null },
 ): SteigerOutcome {
   const configPath = `${input.appDir}${STEIGER_CONFIG_FILE}`;
-  const configText = buildSteigerConfig({ frontend: input.frontend, locale: input.locale });
+  const configText = buildSteigerConfig({ renamedLayerDirs: Object.values(profileById(input.frontend).layerDirs), locale: input.locale });
   const existing = tree.read(configPath, 'utf-8');
   let configAction: SteigerOutcome['config'];
   if (existing === null) {
@@ -143,7 +152,8 @@ function addSteiger(
     } else {
       targets[FSD_CHECK_TARGET] = target;
       targetAction = 'added';
-      if (input.write) tree.write(candidate, `${JSON.stringify(file.parsed, null, detectIndent(file.raw))}\n`);
+      const path = candidate.endsWith('project.json') ? ['targets', FSD_CHECK_TARGET] : ['nx', 'targets', FSD_CHECK_TARGET];
+      if (input.write) tree.write(candidate, setJsonValue(file.raw, path, target));
     }
     break;
   }
@@ -159,7 +169,8 @@ function addSteiger(
     } else {
       for (const [name, range] of missing) devDependencies[name] = range;
       dependenciesAction = 'added';
-      if (input.write) tree.write('package.json', `${JSON.stringify(rootPackage.parsed, null, detectIndent(rootPackage.raw))}\n`);
+      const edited = applyJsonEdits(rootPackage.raw, missing.map(([name, range]) => [['devDependencies', name], range]));
+      if (input.write) tree.write('package.json', edited);
     }
   }
 

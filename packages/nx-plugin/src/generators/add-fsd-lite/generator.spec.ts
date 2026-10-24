@@ -3,6 +3,7 @@ import type { Tree } from '@nx/devkit';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAddFsdLite } from './generator.ts';
+import { renderAddFsdLiteReport } from './render.ts';
 
 const FIXTURES = join(__dirname, '../../../../../tools/fixtures/eslint-configs');
 const REACT_APP_CONFIG = readFileSync(join(FIXTURES, 'nx-react-app.config.mjs'), 'utf-8');
@@ -37,7 +38,7 @@ describe('runAddFsdLite — no folders, a rule', () => {
     expect(report.eslint).toBe('snippet-only');
     expect(report.eslintPath).toBe(ESLINT);
     expect(report.snippet).toContain("import { fsdBoundaries } from '@clearlydev/nx-archweave/eslint';");
-    expect(report.snippet).toContain("...fsdBoundaries({ severity: 'warn' }),");
+    expect(report.snippet).toContain("...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: 'src' }),");
     expect(tree.read(ESLINT, 'utf-8')).toBe(REACT_APP_CONFIG);
   });
 
@@ -48,7 +49,7 @@ describe('runAddFsdLite — no folders, a rule', () => {
     expect(first.snippet).toBeNull();
     const written = tree.read(ESLINT, 'utf-8') as string;
     expect(written).toContain("import { fsdBoundaries } from '@clearlydev/nx-archweave/eslint';");
-    expect(written).toContain("  ...fsdBoundaries({ severity: 'error' }),\n];");
+    expect(written).toContain("  ...fsdBoundaries({ severity: 'error', cwd: import.meta.dirname, root: 'src' }),\n];");
     const second = runAddFsdLite(tree, { frontend: 'react-vite', applyEslint: true, enforcement: 'error' });
     expect(second.eslint).toBe('already-applied');
     expect(tree.read(ESLINT, 'utf-8')).toBe(written);
@@ -58,11 +59,11 @@ describe('runAddFsdLite — no folders, a rule', () => {
 
   it('never touches a config shape it does not own, and says so with the snippet', () => {
     const tree = appTree();
-    tree.write(ESLINT, "const config = [];\nexport default config;\n");
+    tree.write(ESLINT, "const config = buildConfig();\nexport default config;\n");
     const report = runAddFsdLite(tree, { frontend: 'react-vite', applyEslint: true });
     expect(report.eslint).toBe('degraded-unrecognized');
     expect(report.snippet).toContain('fsdBoundaries');
-    expect(tree.read(ESLINT, 'utf-8')).toBe("const config = [];\nexport default config;\n");
+    expect(tree.read(ESLINT, 'utf-8')).toBe("const config = buildConfig();\nexport default config;\n");
   });
 
   it('an app without an ESLint config degrades to the snippet', () => {
@@ -135,6 +136,21 @@ describe('runAddFsdLite — which app', () => {
     expect(report.layerGuide).toContain('src/features');
   });
 
+  it('a root-level app whose source root is the app itself gets root: "." in its config', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'web' }));
+    tree.write('web/eslint.config.mjs', REACT_APP_CONFIG);
+    const report = runAddFsdLite(tree, { frontend: 'react-vite', applyEslint: true });
+    expect(report.eslint).toBe('applied');
+    expect(tree.read('web/eslint.config.mjs', 'utf-8')).toContain("...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: '.' }),");
+  });
+
+  it('the paste snippet names the app source root too', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'web/app' }));
+    expect(runAddFsdLite(tree, { frontend: 'react-vite' }).snippet).toContain("root: 'app'");
+  });
+
   it('refuses, writing nothing, with more than one frontend app — and --project picks one', () => {
     const tree = createTreeWithEmptyWorkspace();
     app(tree, 'apps/web');
@@ -151,7 +167,7 @@ describe('runAddFsdLite — which app', () => {
 
   it('refuses an unknown --project and a workspace without a frontend app', () => {
     const tree = createTreeWithEmptyWorkspace();
-    expect(runAddFsdLite(tree, { frontend: 'react-vite' }).appRefusal).toEqual({ reason: 'no-frontend-app' });
+    expect(runAddFsdLite(tree, { frontend: 'react-vite' }).appRefusal).toEqual({ reason: 'no-frontend-app', otherProjects: [] });
     app(tree, 'apps/web');
     expect(runAddFsdLite(tree, { frontend: 'react-vite', project: 'nope' }).appRefusal).toEqual({ reason: 'project-not-found', project: 'nope' });
   });
@@ -224,5 +240,65 @@ describe('runAddFsdLite — --steiger', () => {
     expect(report.steiger?.dependencies).toBe('unrecognized');
     expect(report.steiger?.target).toBe('added');
     expect(tree.read('package.json', 'utf-8')).toBe('{ not json');
+  });
+});
+
+describe('runAddFsdLite — a framework nx-archweave does not recognise', () => {
+  it('--frontend=generic applies the common rules and says the framework was not recognised', () => {
+    const report = runAddFsdLite(appTree(), { frontend: 'generic', applyEslint: true });
+    expect(report.eslint).toBe('applied');
+    expect(report.frontend).toBe('generic');
+    expect(report.layerGuide).toContain('pages');
+    expect(renderAddFsdLiteReport(report)).toContain('framework not recognised — the common FSD rules apply, with no framework-specific layer names');
+  });
+});
+
+describe('runAddFsdLite — when no frontend app is found', () => {
+  it('lists the projects it passed over and how to pick one', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('web/project.json', JSON.stringify({ name: 'web', projectType: 'library' }));
+    const report = runAddFsdLite(tree, { frontend: 'react-vite' });
+    expect(report.appRefusal).toEqual({ reason: 'no-frontend-app', otherProjects: ['web'] });
+    const output = renderAddFsdLiteReport(report);
+    expect(output).toContain('--project=<name>');
+    expect(output).toContain('      - web');
+    expect(output).not.toContain('@nx/react:app');
+  });
+
+  it('suggests creating an app only when the workspace has no project at all', () => {
+    const output = renderAddFsdLiteReport(runAddFsdLite(createTreeWithEmptyWorkspace(), { frontend: 'react-vite' }));
+    expect(output).toContain('create one');
+  });
+
+  it('accepts --project for a root app Nx does not list', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('package.json', JSON.stringify({ name: 'shop', private: true, dependencies: { next: '15.0.0' } }));
+    tree.write('next.config.mjs', 'export default {};\n');
+    expect(runAddFsdLite(tree, { frontend: 'next', project: 'shop' })).toMatchObject({ aborted: false, project: 'shop', sourceRoot: 'src' });
+  });
+});
+
+describe('runAddFsdLite — Expo', () => {
+  it('names the platform suffixes, so index.ios.tsx counts as a public API', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('apps/mobile/project.json', JSON.stringify({ name: 'mobile', projectType: 'application', sourceRoot: 'apps/mobile/src' }));
+    tree.write('apps/mobile/app.json', JSON.stringify({ expo: { name: 'mobile' } }));
+    tree.write('apps/mobile/eslint.config.mjs', REACT_APP_CONFIG);
+    const report = runAddFsdLite(tree, { frontend: 'expo', applyEslint: true });
+    expect(report.eslint).toBe('applied');
+    expect(tree.read('apps/mobile/eslint.config.mjs', 'utf-8')).toContain(
+      "...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: 'src', platformSuffixes: ['ios', 'android', 'native', 'web'] }),",
+    );
+  });
+});
+
+describe('runAddFsdLite — Next.js routers', () => {
+  it("tells the rule that pages/ is Next.js's router, not the FSD layer", () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'web/src' }));
+    tree.write('web/next.config.js', 'module.exports = {};\n');
+    tree.write('web/eslint.config.mjs', REACT_APP_CONFIG);
+    runAddFsdLite(tree, { frontend: 'next', applyEslint: true });
+    expect(tree.read('web/eslint.config.mjs', 'utf-8')).toContain("root: 'src', routerDirs: ['pages'] }),");
   });
 });

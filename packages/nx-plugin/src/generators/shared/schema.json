@@ -7,11 +7,17 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Slice name in kebab-case (e.g. \"date-format\") — becomes <app>/src/shared/<name>. Invalid values are refused with a report, not thrown"
+      "description": "Slice name in kebab-case (e.g. \"date-format\") — becomes <app>/src/shared/<name>. Invalid values are refused with a report, not thrown",
+      "$default": { "$source": "argv", "index": 0 }
     },
     "publicApiName": {
       "type": "string",
       "description": "Exported stub function name. Defaults to the camelCase form of name"
+    },
+    "unitTestRunner": {
+      "type": "string",
+      "enum": ["auto", "jest", "vitest", "none"],
+      "description": "Whether the stub gets a .spec.ts. auto (default): when the app or workspace has jest or vitest (a test target, a runner config, or the dependency); toolkit.config.json's fsd.unitTestRunner comes before detection"
     },
     "project": {
       "type": "string",
