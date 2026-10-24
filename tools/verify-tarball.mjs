@@ -17,7 +17,7 @@
 // at the end (unless KEEP_TMP=1 is set, for debugging).
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -85,6 +85,38 @@ try {
     log(`  OK  ${name} -> ${factory}.js (exports: ${exportNames.join(', ')})`);
   }
 
+  // Only bundles ship: each generator factory, each migration, every exports target and the bin.
+  // tsc's per-file output of everything else still imports the internal @nx-archweave/* packages
+  // (and bundled libraries) the tarball does not carry.
+  log('checking that every shipped .js file is a bundle entry');
+  const installedManifest = JSON.parse(readFileSync(path.join(installedPkgDir, 'package.json'), 'utf8'));
+  const migrationsPath = path.join(installedPkgDir, 'migrations.json');
+  const installedMigrations = existsSync(migrationsPath) ? JSON.parse(readFileSync(migrationsPath, 'utf8')) : {};
+  const entries = new Set(
+    [
+      ...Object.values(generatorsJson.generators ?? {}).map(({ factory }) => `${factory}.js`),
+      ...Object.values(installedMigrations.generators ?? {}).map(({ implementation }) => `${implementation}.js`),
+      ...Object.values(installedManifest.exports ?? {}).flatMap((target) => (typeof target === 'string' ? [target] : [target.import])),
+      ...Object.values(installedManifest.bin ?? {}),
+    ]
+      .filter((file) => typeof file === 'string' && file.endsWith('.js'))
+      .map((file) => path.posix.normalize(file.replace(/^\.\//, ''))),
+  );
+  const stray = readdirSync(path.join(installedPkgDir, 'dist'), { recursive: true })
+    .map((entry) => `dist/${String(entry).split(path.sep).join('/')}`)
+    .filter((file) => file.endsWith('.js') && !entries.has(file));
+  if (stray.length > 0) throw new Error(`shipped .js files that are not bundle entries:\n  ${stray.join('\n  ')}`);
+  log(`  OK  ${entries.size} bundle entries, nothing else`);
+
+  // `nx migrate` loads each migration from the installed package the same way.
+  for (const [name, { implementation }] of Object.entries(installedMigrations.generators ?? {})) {
+    const mod = await import(pathToFileURL(path.join(installedPkgDir, `${implementation}.js`)).href);
+    if (typeof mod.default !== 'function') {
+      throw new Error(`migration "${name}" ${implementation}.js has no default export function`);
+    }
+    log(`  OK  migration ${name} -> ${implementation}.js`);
+  }
+
   // The `@clearlydev/nx-archweave/eslint` entry a workspace's eslint.config.mjs imports —
   // resolved through the package's exports map, as ESLint would.
   log('importing @clearlydev/nx-archweave/eslint through the exports map');
@@ -110,6 +142,8 @@ try {
       'const tree = createTreeWithEmptyWorkspace();',
       "runAddGithubTemplates(tree, { issue: true, pr: true, codeowners: true, locale: 'ko' });",
       "tree.write('project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'src' }));",
+      // a test runner, as Nx workspaces have — the page generator writes its spec stub then
+      "tree.write('jest.config.ts', 'export default {};');",
       'const log = console.log; console.log = () => {};',
       "await page(tree, { name: 'home', segments: ['ui'] });",
       'console.log = log;',
