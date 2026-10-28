@@ -1,5 +1,13 @@
 import type { SupportedPackageManager } from '../environment/package-manager.ts';
-import { ROUND_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/review-policy';
+import {
+  renderCommitLine,
+  renderNotRunNotice,
+  ROUND_MARKER,
+  VERDICT_MARKER,
+  type NotRunReason,
+  type ReviewLocale,
+  type ReviewMaxRounds,
+} from '@nx-archweave/review-policy';
 import { pinnedUses } from './action-pins.ts';
 import type { ReviewWorkflowInput } from './provider.ts';
 
@@ -97,17 +105,58 @@ export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
   ].join('\n');
 }
 
+/** A literal for a single-quoted shell word: the text is static, so quoting it whole keeps every
+ * character literal (`'` itself is closed, escaped and reopened). */
+export function shellQuote(text: string): string {
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+/** The shell function the `review` job's first step calls when the AI review did not run but the
+ * check ends green: the color stays, and an annotation, the job summary and the verdict comment
+ * (handed to the review-comment job, which posts it where the token may write) say that this green
+ * is not a review. Every text is rendered here; at run time only the abbreviated head SHA, checked
+ * to be hex, is filled in. */
+function renderNotRunFunction(secretName: string, maxRounds: ReviewMaxRounds, locale: ReviewLocale): string[] {
+  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot', 'rounds'];
+  const [commitBefore, commitAfter] = renderCommitLine(locale, '\u0000').split('\u0000');
+  return [
+    'not_run() {',
+    '  case "$1" in',
+    ...reasons.map(
+      (reason) =>
+        `    ${reason}) annotation=${shellQuote(renderNotRunNotice('en', reason, secretName, maxRounds))}; notice=${shellQuote(renderNotRunNotice(locale, reason, secretName, maxRounds))} ;;`,
+    ),
+    '  esac',
+    '  echo "::notice title=AI review did not run::$annotation"',
+    '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
+    '  short_sha=$(printf \'%s\' "$HEAD_SHA" | cut -c1-7)',
+    '  case "$short_sha" in',
+    "    '' | *[!0-9a-f]*) short_sha= ;;",
+    '  esac',
+    '  {',
+    '    echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"',
+    `    printf '%s\\n' ${shellQuote(VERDICT_MARKER)} "ℹ️ $notice"`,
+    `    if [ -n "$short_sha" ]; then printf '\\n%s\\n' ${shellQuote(commitBefore)}"$short_sha"${shellQuote(commitAfter)}; fi`,
+    '    echo "ARCHWEAVE_NOT_RUN_EOF"',
+    '    echo "run=false"',
+    '  } >> "$GITHUB_OUTPUT"',
+    '}',
+  ];
+}
+
 /** The condition of every step in the `review` job after it checked the AI review's result. */
 export const JUDGE_CONDITION = "steps.ai-review-result.outputs.run == 'true'";
 
 /** First step of the `review` job, which runs whatever the AI review job did (`if: always()`):
  * the check then ends exactly as the single job did. Only explicit values count. A review the
  * secret gate (`enabled=false`) or the round gate (`allowed=false`) switched off ends green
- * without judging; a review that ran must also hand over its watermark (a number, 0 on a PR
- * with no comments). Anything else — a failed, cancelled or skipped AI review, or results that
- * did not reach this job — fails, so a BLOCK can never pass as "review switched off". The job's
- * outputs reach the script through env. */
-export function renderAiReviewResultStep(): string {
+ * without judging, and says so (renderNotRunFunction): a missing secret is named as a fork run
+ * or a Dependabot run when it is one, since those never receive the Actions secret. A review that
+ * ran must also hand over its watermark (a number, 0 on a PR with no comments). Anything else — a
+ * failed, cancelled or skipped AI review, or results that did not reach this job — fails, so a
+ * BLOCK can never pass as "review switched off". The job's outputs and the event's fields reach
+ * the script through env. */
+export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMaxRounds, locale: ReviewLocale): string {
   return [
     '- name: Check the AI review result',
     '  id: ai-review-result',
@@ -116,15 +165,26 @@ export function renderAiReviewResultStep(): string {
     '    REVIEW_ENABLED: ${{ needs.ai-review.outputs.enabled }}',
     '    REVIEW_ALLOWED: ${{ needs.ai-review.outputs.allowed }}',
     '    LAST_COMMENT_ID: ${{ needs.ai-review.outputs.last-comment-id }}',
+    '    HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
+    '    HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}',
+    '    REPOSITORY: ${{ github.repository }}',
+    '    PR_AUTHOR: ${{ github.event.pull_request.user.login }}',
     '  run: |',
+    ...renderNotRunFunction(secretName, maxRounds, locale).map((line) => `    ${line}`),
     '    if [ "$AI_REVIEW_RESULT" != success ]; then',
     `      echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."`,
     '      exit 1',
     '    fi',
     '    case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in',
-    '      false/* | true/false)',
-    '        echo "The AI review did not run (no secret, or the round limit) - nothing to judge."',
-    '        echo "run=false" >> "$GITHUB_OUTPUT"',
+    '      false/*)',
+    '        if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork',
+    "        elif [ \"$PR_AUTHOR\" = 'dependabot[bot]' ]; then not_run dependabot",
+    '        else not_run secret',
+    '        fi',
+    '        exit 0',
+    '        ;;',
+    '      true/false)',
+    '        not_run rounds',
     '        exit 0',
     '        ;;',
     '      true/true)',
@@ -176,14 +236,16 @@ export function renderBlockStep(): string {
     '- name: Fail on a blocking verdict',
     "  if: steps.verdict.outputs.blocked == 'true'",
     '  run: |',
-    '    echo "The review verdict is BLOCK - see the verdict comment on this pull request."',
+    '    echo "The review check failed: the verdict is BLOCK, or the AI review left no readable summary. See the verdict comment on this pull request."',
     '    exit 1',
   ].join('\n');
 }
 
 /** Posts or edits the verdict comment. It checks out nothing and installs nothing: the only
  * input is the `review` job's outputs, which reach the script through env (never inline, so the
- * comment text cannot be read as shell), and the earlier comment id must be a number. */
+ * comment text cannot be read as shell), and the earlier comment id must be a number. When the
+ * verdict bin didn't run (a review that didn't run hands over only its notice), the earlier
+ * comment is looked up among this workflow's own: one verdict comment per PR either way. */
 export function renderVerdictCommentStep(): string {
   return [
     '- name: Post review verdict',
@@ -195,6 +257,9 @@ export function renderVerdictCommentStep(): string {
     '    PREVIOUS_ID: ${{ needs.review.outputs.previous-comment-id }}',
     '  run: |',
     `    payload=$(jq -n --arg body "$VERDICT_BODY" '{body: $body}')`,
+    '    if [ -z "$PREVIOUS_ID" ]; then',
+    `      PREVIOUS_ID=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("${VERDICT_MARKER}")) | .id' | tail -n 1) || PREVIOUS_ID=`,
+    '    fi',
     '    case "$PREVIOUS_ID" in',
     "      ''|*[!0-9]*) PREVIOUS_ID= ;;",
     '    esac',
@@ -319,10 +384,16 @@ export interface ReviewWorkflowParts {
  * read-only token and no secret or OIDC token. `review-comment` posts the verdict with a write
  * token and runs nothing from the pull request.
  */
+/** Every job stops after this long. Without it GitHub allows 360 minutes, and a provider CLI that
+ * hangs (cursor-agent sat silent for 8.5 minutes before a usage-limit error, measured 2026-10-25)
+ * would hold the PR's review queue and bill the time. A stopped ai-review doesn't end in success,
+ * which the review job reads as a failed AI review: the check goes red, never green. */
+export const REVIEW_JOB_TIMEOUT_MINUTES = 15;
+
 export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWorkflowParts): string {
   const aiReviewSteps = [renderSecretGateStep(parts.secretName), renderRoundGateStep(input.maxRounds), ...parts.reviewSteps];
   const reviewSteps = [
-    renderAiReviewResultStep(),
+    renderAiReviewResultStep(parts.secretName, input.maxRounds, input.locale),
     renderCheckoutStep(JUDGE_CONDITION),
     renderWorkspaceSetupSteps(input.packageManager),
     renderVerdictGateStep(input.maxRounds, input.locale),
@@ -340,6 +411,7 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     'jobs:',
     '  ai-review:',
     '    runs-on: ubuntu-latest',
+    `    timeout-minutes: ${REVIEW_JOB_TIMEOUT_MINUTES}`,
     indentBlock(renderReviewPermissions(parts.idToken), 4),
     '    outputs:',
     '      enabled: ${{ steps.secret-gate.outputs.enabled }}',
@@ -352,11 +424,12 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     '    needs: ai-review',
     '    if: always()',
     '    runs-on: ubuntu-latest',
+    `    timeout-minutes: ${REVIEW_JOB_TIMEOUT_MINUTES}`,
     '    permissions:',
     '      contents: read',
     '      pull-requests: read',
     '    outputs:',
-    '      comment-body: ${{ steps.verdict.outputs.comment-body }}',
+    '      comment-body: ${{ steps.verdict.outputs.comment-body || steps.ai-review-result.outputs.notice-body }}',
     '      previous-comment-id: ${{ steps.verdict.outputs.previous-comment-id }}',
     '    steps:',
     indentBlock(reviewSteps.join('\n\n'), 6),
@@ -366,6 +439,7 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     // Runs after a BLOCK failed the review job, too: the comment explains the red check.
     "    if: ${{ !cancelled() && needs.review.outputs.comment-body != '' }}",
     '    runs-on: ubuntu-latest',
+    `    timeout-minutes: ${REVIEW_JOB_TIMEOUT_MINUTES}`,
     '    permissions:',
     '      pull-requests: write',
     '    steps:',
