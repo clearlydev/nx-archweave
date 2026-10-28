@@ -1,3 +1,5 @@
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildReviewChecks } from './review-checks.ts';
 
@@ -108,6 +110,39 @@ describe('buildReviewChecks', () => {
       const check = checkFor(join(FIXTURES, 'review-gemini-matches-workflow'), 'review-config-consistency');
       expect(check?.status).toBe('pass');
       expect(check?.evidence).toContain('.github/workflows/gemini-code-review.yml');
+    });
+  });
+
+  describe('review-workflow-fail-open', () => {
+    it('errors on a workflow generated before 0.2.2, whose verdict step has no fail-closed output mode', () => {
+      const check = checkFor(join(FIXTURES, 'review-workflow-earlier-version'), 'review-workflow-fail-open');
+      expect(check?.status).toBe('error');
+      expect(check?.message).toMatch(/^fail-open workflow/);
+      expect(check?.evidence).toEqual(['.github/workflows/claude-code-review.yml']);
+      expect(check?.suggestedAction).toMatch(/add-review --onConflict=overwrite/);
+    });
+
+    it.each(['review-config-matches-workflow', 'review-npm-matches-workflow', 'review-gemini-matches-workflow'])('passes for a current workflow (%s)', (fixture) => {
+      expect(checkFor(join(FIXTURES, fixture), 'review-workflow-fail-open')?.status).toBe('pass');
+    });
+
+    it('also catches an earlier alternate-filename copy next to a current workflow', () => {
+      const root = mkdtempSync(join(tmpdir(), 'fail-open-'));
+      try {
+        const workflows = join(root, '.github/workflows');
+        mkdirSync(workflows, { recursive: true });
+        copyFileSync(join(FIXTURES, 'review-config-matches-workflow/.github/workflows/claude-code-review.yml'), join(workflows, 'claude-code-review.yml'));
+        copyFileSync(join(FIXTURES, 'review-workflow-earlier-version/.github/workflows/claude-code-review.yml'), join(workflows, 'claude-code-review.archweave.yml'));
+        const check = checkFor(root, 'review-workflow-fail-open');
+        expect(check?.status).toBe('error');
+        expect(check?.evidence).toEqual(['.github/workflows/claude-code-review.archweave.yml']);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('is not-applicable without an nx-archweave review workflow', () => {
+      expect(checkFor(join(FIXTURES, 'review-nothing-installed'), 'review-workflow-fail-open')?.status).toBe('not-applicable');
     });
   });
 
