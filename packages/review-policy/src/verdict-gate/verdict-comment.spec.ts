@@ -1,4 +1,4 @@
-import { renderNoRoundNotice, renderUnparseableNotice, renderVerdictComment, VERDICT_MARKER } from './verdict-comment.ts';
+import { renderNoRoundNotice, renderNotRunNotice, renderUnparseableNotice, renderVerdictComment, VERDICT_MARKER } from './verdict-comment.ts';
 
 describe('renderVerdictComment', () => {
   const history = [
@@ -45,5 +45,18 @@ describe('the head commit line (the verdict comment is edited in place)', () => 
     expect(renderUnparseableNotice(locale, '0123456789')).toContain('`0123456`');
     expect(renderNoRoundNotice(locale, '0123456789')).toContain('`0123456`');
     expect(renderNoRoundNotice(locale)).not.toContain('`');
+  });
+});
+
+describe('renderNotRunNotice', () => {
+  it.each(['secret', 'fork', 'dependabot', 'rounds'] as const)('%s: names the reason and says green is not a review (en, ko)', (reason) => {
+    const en = renderNotRunNotice('en', reason, 'MY_SECRET', 3);
+    expect(en).toMatch(/^AI review did not run for this commit \(.+\)\. A green check here does not mean the change was reviewed\.$/);
+    expect(renderNotRunNotice('ko', reason, 'MY_SECRET', 3)).toContain('리뷰되었다는 뜻이 아닙니다');
+  });
+
+  it('names the secret and the round limit', () => {
+    expect(renderNotRunNotice('en', 'secret', 'MY_SECRET', 3)).toContain('the MY_SECRET secret is not registered');
+    expect(renderNotRunNotice('en', 'rounds', 'MY_SECRET', 5)).toContain('round limit (5)');
   });
 });
