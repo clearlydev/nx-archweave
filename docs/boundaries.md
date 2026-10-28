@@ -2,11 +2,11 @@
 
 English | [한국어](ko-KR/boundaries.md)
 
-When you pick a backend, the workspace comes out in this shape. The arrows aren't just documentation. They're enforced as lint errors:
+When you pick a backend, the workspace comes out in this shape. The arrows aren't just documentation: between the projects nx-archweave tags, they're enforced as lint errors (`@nx/enforce-module-boundaries`):
 
 ```
 apps/
-  <web>  (React/Next, FSD Lite inside)  ──┐
+  web    (React/Next, FSD Lite rule)    ──┐
                                           ├──▶  libs/shared-types (scope:shared)
   api    (Express/Nest, official shape) ──┘
 ```
@@ -21,9 +21,10 @@ The rules work as a deny list:
 | `scope:backend` | may never depend on `scope:frontend` |
 | `scope:shared` | stays side-free |
 
-- **Your graph keeps working.** Nx generates an allow-all baseline, and these three rules sit on top of it. A dependency has to pass both. So your existing project graph keeps working untouched, including the fullstack template's own tagged libraries. Only cross-side imports become lint errors.
+- **Your graph keeps working.** Nx generates an allow-all baseline, and these three rules sit on top of it. A dependency has to pass both. So your existing project graph keeps working untouched. Only imports between tagged frontend and backend projects become lint errors. A project with none of the three tags isn't covered, so tag the libraries you add (see below).
 - **The apps are tagged for you.** To extend the net, tag backend-only libraries `scope:backend` and frontend-only libraries `scope:frontend`. The same rules then cover those libraries too.
-- **`doctor` keeps watching.** If your config is still on the bare allow-all default, the `boundary-constraints-applied` check reports "boundaries are NOT enforced".
+- **Your AI agents know the tags.** With a backend, the agent-rules block gets a "Module Boundaries" section. It names these three tags (or the ones you set in `toolkit.config.json`) and tells the agent to tag a new library right away, for example `nx g @nx/js:lib libs/<name> --tags=scope:shared`.
+- **`doctor` keeps watching.** If your config is still on the bare allow-all default, the `boundary-constraints-applied` check reports "boundaries are NOT enforced". The `boundary-untagged-projects` check lists every project (e2e projects aside) that carries none of the three tags, because the rules don't cover it.
 
 > [!NOTE]
 > **nx-archweave never rewrites your ESLint config blindly.** If it doesn't recognize something in your ESLint config, it leaves that part byte-for-byte untouched and gives you a paste-ready snippet instead.

@@ -2,7 +2,7 @@
 
 English | [한국어](ko-KR/fsd-lite.md)
 
-Your frontend app follows canonical [Feature-Sliced Design](https://feature-sliced.design). This page covers the layers, the `add-fsd-lite` setup, the boundary lint rule, the slice generators and the optional steiger check.
+nx-archweave checks your frontend app against canonical [Feature-Sliced Design](https://feature-sliced.design): a lint rule that knows the FSD layers reports imports that break FSD's rules, and generators add slices when you need them. It creates no layer folders up front. This page covers the layers, the `add-fsd-lite` setup, the boundary lint rule, the slice generators and the optional steiger check.
 
 > [!NOTE]
 > **"Lite" means a subset, never a variant.** The rules, the folder shape and the public-API convention are the canonical ones. Only the default scope is smaller.
@@ -11,7 +11,7 @@ Your frontend app follows canonical [Feature-Sliced Design](https://feature-slic
 
 | | Canonical FSD | FSD Lite |
 | --- | --- | --- |
-| Layers | app, pages, widgets, features, entities, shared | 5 (4 on Next.js, whose own `app/` is the entry point) |
+| Layers the rule knows | app, pages, widgets, features, entities, shared | 5 (4 on Next.js, whose own `app/` is the entry point) |
 | Slices | segments (`ui/`, `model/`, `api/`, `lib/`, `config/`) | same |
 | Public API | one `index.ts` per slice; no layer-level barrels | same |
 | Imports | downward only; a slice only through its index | same, as one rule |
@@ -22,12 +22,12 @@ What the short cells leave out:
 
 - **Layers** — FSD Lite's default scope is five layers, four on Next.js (see Layers below, per framework). You get `widgets` only when you ask for it with the `widget` generator. The lint rule knows all six layers.
 - **Slices** — Each slice holds its segments. The `page`/`widget`/`feature`/`entity` generators scaffold `index.ts` + `model/`, and you can add more with `--segments`.
-- **Imports** — A slice never imports a sibling slice, except through `@x/<consumer>`. In FSD Lite, one lint rule covers all of the import rules.
+- **Imports** — A slice never imports a sibling slice, except through `@x/<consumer>`. One lint rule checks all of these import rules inside the frontend app's source root. Imports of other workspace projects are left to Nx's module boundaries.
 - **Enforcement** — The severity is `error` for `team` and `warn` for `solo` and `quick-start`. The severity is the only preset-specific thing.
 
 ## Layers
 
-Which layers you get depends on the **framework**, never on the preset:
+Which layers the rule knows, and the generators create, depends on the **framework**, never on the preset:
 
 | Framework | Layers |
 | --- | --- |
@@ -43,7 +43,7 @@ Where the layers live:
 - **Folder** — the frontend app's source root (`apps/<app>/src`, or the project's `sourceRoot`).
 - **Which app** — the workspace's one frontend application, or the app that `--project` names. E2e projects and the backend `api` aren't candidates.
 - **More than one candidate** — the run stops and lists the candidates.
-- **React + Vite** — Nx's own `src/app` (where the template puts `app.tsx`) is the app layer.
+- **React + Vite** — `src/app`, where Nx's React generator puts `app.tsx`, is the app layer. `src/main.tsx` sits outside every layer and isn't checked.
 
 ## Setup: `add-fsd-lite`
 
@@ -149,7 +149,7 @@ How the generators behave:
 
 ## Optional: steiger
 
-[steiger](https://github.com/feature-sliced/steiger) is the official FSD linter. Because the scaffold is canonical, steiger fits as is. Run `add-fsd-lite --steiger` to opt in. It adds three things:
+[steiger](https://github.com/feature-sliced/steiger) is the official FSD linter. The slice generators write canonical FSD, so steiger's recommended rules apply to them as is. Run `add-fsd-lite --steiger` to opt in. It adds three things:
 
 - the app's `steiger.config.mjs` with the recommended rules. It sets `insignificant-slice` to a warning, because a fresh slice has no references yet. On Next.js, it also turns off the `_pages` typo rule.
 - an `fsd-check` target on the app

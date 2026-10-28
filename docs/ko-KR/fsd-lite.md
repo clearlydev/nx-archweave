@@ -2,7 +2,7 @@
 
 [English](../fsd-lite.md) | 한국어
 
-프론트엔드 앱은 정식 [Feature-Sliced Design](https://feature-sliced.design)을 따라요. 이 문서는 레이어, `add-fsd-lite` 설정, 경계 린트 규칙, 슬라이스 제너레이터, 선택형 steiger 검사를 다뤄요.
+nx-archweave는 프론트엔드 앱을 정식 [Feature-Sliced Design](https://feature-sliced.design) 기준으로 검사해요. FSD 레이어를 알아보는 린트 규칙이 FSD 규칙을 어기는 import를 보고하고, 슬라이스는 필요할 때 제너레이터로 만들어요. 레이어 폴더를 미리 만들지는 않아요. 이 문서는 레이어, `add-fsd-lite` 설정, 경계 린트 규칙, 슬라이스 제너레이터, 선택형 steiger 검사를 다뤄요.
 
 > [!NOTE]
 > **"Lite"는 부분집합이지 변형이 아니에요.** 규칙, 폴더 모양, public API 관례는 정식 FSD 그대로예요. 기본으로 켜는 범위만 작아요.
@@ -11,7 +11,7 @@
 
 | | 정식 FSD | FSD Lite |
 | --- | --- | --- |
-| 레이어 | app, pages, widgets, features, entities, shared | 5개 (Next.js는 자체 `app/`이 진입점이라 4개) |
+| 규칙이 아는 레이어 | app, pages, widgets, features, entities, shared | 5개 (Next.js는 자체 `app/`이 진입점이라 4개) |
 | 슬라이스 | 세그먼트(`ui/`, `model/`, `api/`, `lib/`, `config/`) | 같음 |
 | public API | 슬라이스당 `index.ts` 하나, 레이어 단위 배럴 없음 | 같음 |
 | import | 아래 레이어로만, 슬라이스는 index로만 | 같음, 규칙 1개 |
@@ -22,12 +22,12 @@
 
 - **레이어** — FSD Lite의 기본 범위는 레이어 5개, Next.js에서는 4개예요(프레임워크별 목록은 아래 '레이어' 참고). `widgets`는 `widget` 제너레이터로 요청할 때만 생겨요. 린트 규칙은 레이어 6개를 모두 알아요.
 - **슬라이스** — 슬라이스 안에 세그먼트가 들어가요. `page`/`widget`/`feature`/`entity` 제너레이터가 `index.ts` + `model/`을 만들고, `--segments`로 더 추가할 수 있어요.
-- **import** — 같은 레이어의 슬라이스끼리는 import하지 않아요. 예외는 `@x/<consumer>`를 거치는 경우예요. FSD Lite에서는 린트 규칙 1개가 이 import 규칙을 모두 검사해요.
+- **import** — 같은 레이어의 슬라이스끼리는 import하지 않아요. 예외는 `@x/<consumer>`를 거치는 경우예요. 린트 규칙 1개가 프론트엔드 앱의 소스 루트 안에서 이 import 규칙을 모두 검사해요. 다른 워크스페이스 프로젝트를 가져오는 import는 Nx의 모듈 경계 규칙이 맡아요.
 - **강제 수준** — `team`은 `error`, `solo`와 `quick-start`는 `warn`이에요. 프리셋별로 다른 건 심각도뿐이에요.
 
 ## 레이어
 
-어떤 레이어를 쓰는지는 **프레임워크**에 따라 정해져요. 프리셋과는 상관없어요.
+규칙이 알아보고 제너레이터가 만드는 레이어는 **프레임워크**에 따라 정해져요. 프리셋과는 상관없어요.
 
 | 프레임워크 | 레이어 |
 | --- | --- |
@@ -43,7 +43,7 @@ Next.js에서는 pages 레이어가 `_pages/`에 있어요. Next.js가 `app/`을
 - **폴더** — 프론트엔드 앱의 소스 루트(`apps/<app>/src`, 또는 프로젝트의 `sourceRoot`).
 - **대상 앱** — 워크스페이스에 하나뿐인 프론트엔드 애플리케이션, 또는 `--project`로 지정한 앱. e2e 프로젝트와 백엔드 `api`는 후보가 아님.
 - **후보가 2개 이상** — 실행을 멈추고 후보 목록을 보여 줌.
-- **React + Vite** — Nx 템플릿의 `src/app`(`app.tsx`가 있는 곳)이 곧 app 레이어.
+- **React + Vite** — Nx React 제너레이터가 `app.tsx`를 두는 `src/app`이 곧 app 레이어. `src/main.tsx`는 어느 레이어에도 속하지 않아 검사하지 않음.
 
 ## 설정: `add-fsd-lite`
 
@@ -149,7 +149,7 @@ export default [...baseConfig, ...fsdBoundaries({ severity: 'error', cwd: import
 
 ## 선택: steiger
 
-[steiger](https://github.com/feature-sliced/steiger)는 FSD 공식 린터예요. 구조가 정식 FSD라서 steiger를 그대로 쓸 수 있어요. `add-fsd-lite --steiger`로 켜면 다음 3가지가 추가돼요.
+[steiger](https://github.com/feature-sliced/steiger)는 FSD 공식 린터예요. 슬라이스 제너레이터가 정식 FSD 모양으로 만들기 때문에, steiger의 권장 규칙을 그대로 적용할 수 있어요. `add-fsd-lite --steiger`로 켜면 다음 3가지가 추가돼요.
 
 - 앱의 `steiger.config.mjs` — recommended 규칙. 갓 만든 슬라이스는 참조가 없어서 `insignificant-slice`는 경고. Next.js에선 `_pages` 오타 규칙 끔
 - 앱의 `fsd-check` 타깃
