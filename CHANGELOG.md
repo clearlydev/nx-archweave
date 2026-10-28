@@ -1,3 +1,9 @@
+## 0.3.0 (2026-10-28)
+
+### 🚀 Features
+
+- fail-closed review check, Nx 24 workspaces, and beta labels for gemini, gpt and cursor ([#11](https://github.com/clearlydev/nx-archweave/pull/11))
+
 ## 0.2.2 (2026-10-24)
 
 ### 🩹 Fixes
