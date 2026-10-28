@@ -72,6 +72,9 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 const PROVIDERS = ['claude', 'gemini', 'gpt', 'cursor'] as const;
+/** Providers whose workflow hasn't finished a review end to end on GitHub Actions yet
+ * (docs/pr-review.md's provider status). */
+const BETA_PROVIDERS: readonly string[] = ['gemini', 'gpt', 'cursor'];
 const MODES = ['fast', 'standard', 'thorough'] as const;
 
 /** The review settings add-review / init recorded, each only when it is a known value. */
@@ -108,9 +111,10 @@ export function runAddReview(tree: Tree, options: AddReviewGeneratorSchema): Add
   // option > the recorded review settings > defaults: a bare rerun keeps the workspace's
   // provider, mode and rounds instead of resetting them (no schema defaults, for that reason).
   const recorded = recordedReview(config.parsed);
+  const provider = options.provider ?? recorded.provider ?? 'claude';
   const plan = composeReviewSetup({
     enabled: true,
-    provider: options.provider ?? recorded.provider ?? 'claude',
+    provider,
     mode: options.mode ?? recorded.mode ?? 'standard',
     locale: resolveLocale(options.locale, config),
     maxRounds: options.maxRounds ?? recorded.maxRounds ?? 3,
@@ -218,6 +222,7 @@ export function runAddReview(tree: Tree, options: AddReviewGeneratorSchema): Add
     dependabot,
     dependabotProposal: dependabot === 'proposed' ? dependabotFile.content : null,
     ...(packageManagerNote !== undefined ? { packageManagerNote } : {}),
+    ...(BETA_PROVIDERS.includes(provider) ? { betaProvider: provider } : {}),
   };
 }
 

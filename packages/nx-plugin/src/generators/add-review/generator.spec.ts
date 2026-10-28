@@ -406,3 +406,21 @@ describe('runAddReview — Dependabot keeps the pinned actions moving', () => {
     expect(tree.exists(DEPENDABOT_PATH)).toBe(false);
   });
 });
+
+describe('runAddReview — providers still in beta', () => {
+  it.each(['gemini', 'gpt', 'cursor'] as const)('%s: the report says it is in beta and links the provider status', (provider) => {
+    const tree = createTreeWithEmptyWorkspace();
+    const report = runAddReview(tree, { provider });
+    expect(report.betaProvider).toBe(provider);
+    const text = renderAddReviewReport(report);
+    expect(text).toContain(`Note: the ${provider} provider is in beta`);
+    expect(text).toContain('docs/pr-review.md#provider-status');
+  });
+
+  it('claude (the default): no beta note', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    const report = runAddReview(tree, {});
+    expect(report.betaProvider).toBeUndefined();
+    expect(renderAddReviewReport(report)).not.toContain('is in beta');
+  });
+});
