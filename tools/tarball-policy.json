@@ -1,0 +1,8 @@
+{
+  "@clearlydev/nx-archweave": {
+    "dependencies": ["@nx/devkit", "jsonc-parser"]
+  },
+  "create-nx-archweave": {
+    "dependencies": []
+  }
+}

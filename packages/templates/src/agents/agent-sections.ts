@@ -33,8 +33,12 @@ export type AgentSectionId =
   | 'project-goal'
   | 'architecture-boundary';
 
+/** Sections whose text depends on the workspace (built by a function, never in the static
+ * library below). */
+export type DynamicAgentSectionId = 'module-boundaries';
+
 export interface AgentRuleSection {
-  readonly id: AgentSectionId;
+  readonly id: AgentSectionId | DynamicAgentSectionId;
   readonly heading: string;
   readonly body: string;
 }

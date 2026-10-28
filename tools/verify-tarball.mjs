@@ -12,6 +12,11 @@
 //      dist/generators/<name>/generator.js paths generators.json points at
 //      are exactly where tools/bundle.mjs wrote them)
 //
+// Before that, it also packs create-nx-archweave and checks both packed
+// manifests against tools/tarball-policy.json: no install scripts, no
+// `workspace:` range, no bundleDependencies, and no runtime dependency the
+// policy doesn't list.
+//
 // Usage: node tools/verify-tarball.mjs
 // Nothing is published; everything happens under a temp dir that's removed
 // at the end (unless KEEP_TMP=1 is set, for debugging).
@@ -24,6 +29,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginDir = path.join(workspaceRoot, 'packages', 'nx-plugin');
+const cliDir = path.join(workspaceRoot, 'packages', 'create-nx-archweave');
+const policyPath = path.join(workspaceRoot, 'tools', 'tarball-policy.json');
+
+// The scripts npm runs on the consumer's machine when the package is installed. prepack and
+// postpack stay in the packed manifest but only ever run where the package is packed.
+const INSTALL_SCRIPTS = ['preinstall', 'install', 'postinstall'];
+// The fields npm installs alongside the package; everything in them is checked against the policy.
+const RUNTIME_DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies'];
+const DEPENDENCY_FIELDS = [...RUNTIME_DEPENDENCY_FIELDS, 'peerDependencies', 'devDependencies'];
+// Packages listed here ship inside the tarball whole, past the policy; both packages are esbuild
+// bundles and never need them. npm reads either spelling.
+const BUNDLED_DEPENDENCY_FIELDS = ['bundleDependencies', 'bundledDependencies'];
 
 function log(msg) {
   console.log(`[verify-tarball] ${msg}`);
@@ -33,26 +50,73 @@ function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: 'utf8', ...options });
 }
 
+function pack(packageDir, destination) {
+  mkdirSync(destination, { recursive: true });
+  // No --json: the prepack lifecycle (nx bundle) writes to stdout, which npm merges
+  // into pack's own output and would corrupt JSON parsing. The tarball lands alone
+  // in a dedicated destination directory, so locating it by extension is exact.
+  run('npm', ['pack', '--pack-destination', destination], { cwd: packageDir });
+  const tarballs = readdirSync(destination).filter((file) => file.endsWith('.tgz'));
+  if (tarballs.length !== 1) {
+    throw new Error(`expected exactly one packed tarball, found: ${tarballs.join(', ') || '(none)'}`);
+  }
+  return path.join(destination, tarballs[0]);
+}
+
+// Lists every way the packed manifest breaks the policy; an empty list means it complies.
+function policyViolations(manifest, policy) {
+  const allowed = policy[manifest.name]?.dependencies;
+  if (!Array.isArray(allowed)) {
+    return [`${path.relative(workspaceRoot, policyPath)} has no "dependencies" list for ${manifest.name}`];
+  }
+  const violations = [];
+  for (const script of INSTALL_SCRIPTS) {
+    if (manifest.scripts?.[script] !== undefined) violations.push(`install script "${script}": ${manifest.scripts[script]}`);
+  }
+  for (const field of BUNDLED_DEPENDENCY_FIELDS) {
+    if (manifest[field] !== undefined) violations.push(`${field} is set: ${JSON.stringify(manifest[field])}`);
+  }
+  for (const field of DEPENDENCY_FIELDS) {
+    for (const [name, range] of Object.entries(manifest[field] ?? {})) {
+      if (typeof range === 'string' && range.startsWith('workspace:')) violations.push(`${field}.${name} is ${range}`);
+      if (RUNTIME_DEPENDENCY_FIELDS.includes(field) && !allowed.includes(name)) {
+        violations.push(`${field}.${name} is not in the policy's allowed dependencies`);
+      }
+    }
+  }
+  return violations;
+}
+
 const tmpRoot = mkdtempSync(path.join(tmpdir(), 'nx-archweave-verify-tarball-'));
-const packDestination = path.join(tmpRoot, 'pack');
 const installDir = path.join(tmpRoot, 'install');
-mkdirSync(packDestination, { recursive: true });
 mkdirSync(installDir, { recursive: true });
 
 let exitCode = 0;
 
 try {
-  log(`packing @clearlydev/nx-archweave -> ${packDestination}`);
-  // No --json: the prepack lifecycle (nx bundle) writes to stdout, which npm merges
-  // into pack's own output and would corrupt JSON parsing. The tarball lands alone
-  // in a dedicated destination directory, so locating it by extension is exact.
-  run('npm', ['pack', '--pack-destination', packDestination], { cwd: pluginDir });
-  const tarballs = readdirSync(packDestination).filter((file) => file.endsWith('.tgz'));
-  if (tarballs.length !== 1) {
-    throw new Error(`expected exactly one packed tarball, found: ${tarballs.join(', ') || '(none)'}`);
+  const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+  const tarballs = [];
+  for (const packageDir of [pluginDir, cliDir]) {
+    log(`packing ${path.relative(workspaceRoot, packageDir)}`);
+    tarballs.push(pack(packageDir, path.join(tmpRoot, 'pack', path.basename(packageDir))));
   }
-  const tarballPath = path.join(packDestination, tarballs[0]);
+  const [tarballPath] = tarballs;
   log(`tarball: ${tarballPath}`);
+
+  log(`checking the packed manifests against ${path.relative(workspaceRoot, policyPath)}`);
+  const broken = [];
+  for (const tarball of tarballs) {
+    const manifest = JSON.parse(run('tar', ['-xOzf', tarball, 'package/package.json']));
+    const violations = policyViolations(manifest, policy);
+    if (violations.length > 0) broken.push(`${manifest.name}@${manifest.version}:\n    ${violations.join('\n    ')}`);
+    else log(`  OK  ${manifest.name}@${manifest.version}`);
+  }
+  if (broken.length > 0) {
+    const hint = broken.some((entry) => entry.includes('not in the policy'))
+      ? '\nA dependency the package really needs is added to tools/tarball-policy.json in the same pull request.'
+      : '';
+    throw new Error(`packed manifests break the tarball policy:\n  ${broken.join('\n  ')}${hint}`);
+  }
 
   writeFileSync(
     path.join(installDir, 'package.json'),
@@ -107,6 +171,19 @@ try {
     .filter((file) => file.endsWith('.js') && !entries.has(file));
   if (stray.length > 0) throw new Error(`shipped .js files that are not bundle entries:\n  ${stray.join('\n  ')}`);
   log(`  OK  ${entries.size} bundle entries, nothing else`);
+
+  // Third-party code is never inlined: an audit can't see a bundled copy, and esbuild drops its
+  // license notice. esbuild marks every module it inlines with a `// <path>` comment, so a path
+  // into node_modules means one slipped in (an import of a package bundle.mjs doesn't list
+  // as external).
+  log('checking that no bundle inlines a node_modules package');
+  const inlined = [...entries].flatMap((file) => {
+    const source = readFileSync(path.join(installedPkgDir, file), 'utf8');
+    const packages = [...source.matchAll(/^\/\/ (?:\.\.\/)*node_modules\/(?:\.pnpm\/)?(@[^/\s]+\/[^/\s]+|[^/\s]+)/gm)].map((match) => match[1]);
+    return [...new Set(packages)].map((name) => `${file}: ${name}`);
+  });
+  if (inlined.length > 0) throw new Error(`bundles that inline third-party packages (make them external in tools/bundle.mjs):\n  ${inlined.join('\n  ')}`);
+  log('  OK  no third-party package inlined');
 
   // `nx migrate` loads each migration from the installed package the same way.
   for (const [name, { implementation }] of Object.entries(installedMigrations.generators ?? {})) {

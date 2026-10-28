@@ -2,7 +2,6 @@ import {
   choosePackageManager,
   describeResolution,
   listInstalledManagers,
-  managerIncompatibility,
   parseUserAgent,
   type ChooseInput,
   type CliPackageManager,
@@ -39,7 +38,6 @@ function probeOf(versions: Partial<Record<CliPackageManager, string>>): Probe {
 const base: ChooseInput = {
   flag: undefined,
   userAgent: undefined,
-  frontend: 'react-vite',
   interactive: true,
   probe: probeOf({}),
 };
@@ -94,28 +92,6 @@ describe('listInstalledManagers', () => {
   });
 });
 
-describe('managerIncompatibility', () => {
-  it.each([
-    [{ name: 'npm', version: '10.9.4' }, 'react-vite', /react-vite needs npm 11/],
-    [{ name: 'yarn', version: '1.22.22' }, 'react-vite', /react-vite needs yarn 2\+ — yarn 1 cannot resolve the template's workspace:\* packages/],
-  ] as const)('%j + %s is not allowed', (manager, frontend, reason) => {
-    expect(managerIncompatibility(manager, frontend)).toMatch(reason);
-  });
-
-  it.each([
-    [{ name: 'npm', version: '10.9.4' }, 'next'],
-    [{ name: 'yarn', version: '1.22.22' }, 'next'],
-    [{ name: 'npm', version: '11.0.0' }, 'react-vite'],
-    [{ name: 'yarn', version: '4.18.1' }, 'react-vite'],
-    [{ name: 'npm', version: undefined }, 'react-vite'],
-    [{ name: 'pnpm', version: '9.0.0' }, 'react-vite'],
-    [{ name: 'bun', version: '1.4.2' }, 'react-vite'],
-    [{ name: 'bun', version: '1.4.2' }, 'next'],
-  ] as const)('%j + %s is fine', (manager, frontend) => {
-    expect(managerIncompatibility(manager, frontend)).toBeUndefined();
-  });
-});
-
 describe('choosePackageManager — no question', () => {
   it('the flag always wins and nothing is asked; the version comes from a matching launcher', async () => {
     const io = scripted([]);
@@ -147,7 +123,7 @@ describe('choosePackageManager — no question', () => {
     });
   });
 
-  it('a flag whose version cannot be read is not held against it (react-vite allowed; the create step keeps its hint)', async () => {
+  it('a flag whose version cannot be read is taken as is', async () => {
     const io = scripted([]);
     expect(await choosePackageManager({ ...base, flag: 'yarn', userAgent: undefined, probe: probeOf({}) }, io.ask, io.tell)).toEqual({
       packageManager: 'yarn',
@@ -157,13 +133,11 @@ describe('choosePackageManager — no question', () => {
   });
 
   it.each([
-    ['npm', NPM_10, probeOf({}), /npm 10\.9\.4 cannot create this workspace — react-vite needs npm 11/],
-    ['yarn', YARN_1, probeOf({}), /yarn 1\.22\.22 cannot create this workspace — react-vite needs yarn 2\+/],
-  ] as const)('a flag naming an incompatible %s stops before anything is created', async (flag, userAgent, probe, reason) => {
+    ['npm', NPM_10, '10.9.4'],
+    ['yarn', YARN_1, '1.22.22'],
+  ] as const)('a flag naming %s at its oldest supported major is taken (npm 10, yarn 1)', async (flag, userAgent, version) => {
     const io = scripted([]);
-    const result = await choosePackageManager({ ...base, flag, userAgent, probe }, io.ask, io.tell);
-    expect(result).toEqual({ error: expect.stringMatching(reason) });
-    expect('error' in result && result.error).toMatch(/Nothing was created\.$/);
+    expect(await choosePackageManager({ ...base, flag, userAgent }, io.ask, io.tell)).toEqual({ packageManager: flag, source: 'flag', version });
   });
 
   it.each([
@@ -178,15 +152,9 @@ describe('choosePackageManager — no question', () => {
     expect(io.asked).toEqual([]);
   });
 
-  it('non-interactive, launched by yarn 1 for react-vite: stopped before anything is created', async () => {
+  it('non-interactive, launched by yarn 1: taken', async () => {
     const io = scripted([]);
-    const result = await choosePackageManager({ ...base, interactive: false, userAgent: YARN_1 }, io.ask, io.tell);
-    expect(result).toEqual({ error: expect.stringMatching(/yarn 1\.22\.22 cannot create this workspace.*Nothing was created/s) });
-  });
-
-  it('non-interactive, launched by yarn 1 for next: fine', async () => {
-    const io = scripted([]);
-    expect(await choosePackageManager({ ...base, frontend: 'next', interactive: false, userAgent: YARN_1 }, io.ask, io.tell)).toEqual({
+    expect(await choosePackageManager({ ...base, interactive: false, userAgent: YARN_1 }, io.ask, io.tell)).toEqual({
       packageManager: 'yarn',
       source: 'launcher',
       version: '1.22.22',
@@ -201,37 +169,21 @@ describe('choosePackageManager — no question', () => {
     });
   });
 
-  it('one installed manager that fits: no question and nothing printed (the plan print names it)', async () => {
+  it('one installed manager: no question and nothing printed (the plan print names it)', async () => {
     const io = scripted([]);
-    const result = await choosePackageManager({ ...base, frontend: 'next', userAgent: NPM_11 }, io.ask, io.tell);
+    const result = await choosePackageManager({ ...base, userAgent: NPM_11 }, io.ask, io.tell);
     expect(result).toEqual({ packageManager: 'npm', source: 'only-installed', version: '11.6.2' });
     expect(io.asked).toEqual([]);
     expect(io.told).toEqual([]);
   });
 
-  it('one manager fits among several: no question; the ones that do not fit are listed with their reason', async () => {
-    const io = scripted([]);
-    const result = await choosePackageManager({ ...base, userAgent: NPM_10, probe: probeOf({ yarn: '1.22.22', pnpm: '11.9.0' }) }, io.ask, io.tell);
-    expect(result).toEqual({ packageManager: 'pnpm', source: 'only-compatible', version: '11.9.0' });
-    expect(io.asked).toEqual([]);
-    expect(io.told.join('\n')).toMatch(/npm {3}10\.9\.4 {2}— not available: react-vite needs npm 11[\s\S]*yarn {2}1\.22\.22 {2}— not available: react-vite needs yarn 2\+/);
-  });
-
-  it('no installed manager fits: stopped before anything is created, saying what to install', async () => {
-    const io = scripted([]);
-    const result = await choosePackageManager({ ...base, userAgent: NPM_10, probe: probeOf({ yarn: '1.22.22' }) }, io.ask, io.tell);
-    expect(result).toEqual({
-      error: expect.stringMatching(/no installed package manager can create this workspace[\s\S]*npm {3}10\.9\.4[\s\S]*yarn {2}1\.22\.22[\s\S]*npm 11\+, pnpm, yarn 2\+ \(Corepack: corepack enable\) or bun[\s\S]*Nothing was created\./),
-    });
-    expect(io.asked).toEqual([]);
-  });
 });
 
 describe('choosePackageManager — the question', () => {
-  it('numbers the installed managers that fit and defaults to the launcher', async () => {
+  it('numbers the installed managers and defaults to the launcher', async () => {
     const io = scripted(['']);
     const result = await choosePackageManager(
-      { ...base, frontend: 'next', userAgent: PNPM, probe: probeOf({ npm: '11.6.2', yarn: '4.18.1' }) },
+      { ...base, userAgent: PNPM, probe: probeOf({ npm: '11.6.2', yarn: '4.18.1' }) },
       io.ask,
       io.tell,
     );
@@ -240,41 +192,17 @@ describe('choosePackageManager — the question', () => {
     expect(result).toEqual({ packageManager: 'pnpm', source: 'asked', version: '11.9.0' });
   });
 
-  it('shows a manager that does not fit, unnumbered with its reason, and defaults to one that fits', async () => {
+  it('lists npm 10 and yarn 1 like any other manager, defaulting to the launcher', async () => {
     const io = scripted(['']);
-    const result = await choosePackageManager({ ...base, userAgent: NPM_10, probe: probeOf({ pnpm: '11.9.0', yarn: '4.18.1' }) }, io.ask, io.tell);
-    expect(io.told).toEqual([
-      '? Package manager',
-      '  1) pnpm  11.9.0  (default)',
-      '  2) yarn  4.18.1',
-      expect.stringMatching(/^ {5}npm {3}10\.9\.4 {2}— not available: react-vite needs npm 11/),
-    ]);
-    expect(result).toMatchObject({ packageManager: 'pnpm', source: 'asked' });
-  });
-
-  it('launched by yarn 1 for react-vite: the default moves to a manager that fits', async () => {
-    const io = scripted(['']);
-    const result = await choosePackageManager({ ...base, userAgent: YARN_1, probe: probeOf({ npm: '11.6.2', pnpm: '11.9.0' }) }, io.ask, io.tell);
-    expect(io.told).toEqual([
-      '? Package manager',
-      '  1) npm   11.6.2  (default)',
-      '  2) pnpm  11.9.0',
-      expect.stringMatching(/^ {5}yarn {2}1\.22\.22 {2}— not available: react-vite needs yarn 2\+/),
-    ]);
-    expect(result).toMatchObject({ packageManager: 'npm', source: 'asked' });
-  });
-
-  it('naming a manager that does not fit explains why and asks again', async () => {
-    const io = scripted(['npm', '2']);
-    const result = await choosePackageManager({ ...base, userAgent: NPM_10, probe: probeOf({ pnpm: '11.9.0', yarn: '4.18.1' }) }, io.ask, io.tell);
-    expect(result).toEqual({ packageManager: 'yarn', source: 'asked', version: '4.18.1' });
-    expect(io.told).toContainEqual(expect.stringMatching(/^npm is not available here: react-vite needs npm 11/));
+    const result = await choosePackageManager({ ...base, userAgent: YARN_1, probe: probeOf({ npm: '10.9.4' }) }, io.ask, io.tell);
+    expect(io.told).toEqual(['? Package manager', '  1) npm   10.9.4', '  2) yarn  1.22.22  (default)']);
+    expect(result).toEqual({ packageManager: 'yarn', source: 'asked', version: '1.22.22' });
   });
 
   it('accepts the name (any case) as well as the number, and explains a wrong answer', async () => {
     const io = scripted(['cnpm', '9', 'PNPM']);
     const result = await choosePackageManager(
-      { ...base, frontend: 'next', userAgent: NPM_11, probe: probeOf({ pnpm: '11.9.0' }) },
+      { ...base, userAgent: NPM_11, probe: probeOf({ pnpm: '11.9.0' }) },
       io.ask,
       io.tell,
     );
@@ -293,7 +221,7 @@ describe('choosePackageManager — the question', () => {
   it('launched by an unsupported manager: says so, and offers what is installed with npm as the default', async () => {
     const io = scripted(['']);
     const result = await choosePackageManager(
-      { ...base, frontend: 'next', userAgent: 'cnpm/9.0.0 node/v22', probe: probeOf({ npm: '11.6.2', pnpm: '11.9.0' }) },
+      { ...base, userAgent: 'cnpm/9.0.0 node/v22', probe: probeOf({ npm: '11.6.2', pnpm: '11.9.0' }) },
       io.ask,
       io.tell,
     );
@@ -310,7 +238,6 @@ describe('describeResolution', () => {
     [{ packageManager: 'yarn', source: 'asked', version: '4.18.1' }, 'yarn 4.18.1 (chosen)'],
     [{ packageManager: 'bun', source: 'launcher', version: '1.4.2' }, 'bun 1.4.2 (the package manager that ran this command)'],
     [{ packageManager: 'npm', source: 'only-installed', version: '11.6.2' }, 'npm 11.6.2 (the only one installed)'],
-    [{ packageManager: 'pnpm', source: 'only-compatible', version: '11.9.0' }, 'pnpm 11.9.0 (the only installed one that can create this workspace)'],
   ] as const)('%j', (resolution, text) => {
     expect(describeResolution(resolution)).toBe(text);
   });

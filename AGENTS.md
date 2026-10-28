@@ -38,6 +38,10 @@ Always run tasks through `pnpm nx`, never the underlying tool directly.
 ## Rules
 
 - Relative imports name the `.ts` file (`import { x } from './render.ts'`); the build rewrites them.
+- The plugin's runtime dependencies are `@nx/devkit`, and `jsonc-parser`, which nx already depends on
+  at the same version. `tools/bundle.mjs` inlines only the internal `@nx-archweave/*` packages, never
+  third-party code (an audit can't see an inlined copy, and its license notice gets dropped). A new
+  runtime dependency goes into `tools/tarball-policy.json` in the same change.
 - Generators preview with `--dryRun` and write nothing until asked; integrations act only with
   `--apply`. A failed precondition is reported in the generator's report, not thrown.
 - Test the refusal and conflict paths, not only the happy path. Snapshot tests run in CI mode, so a

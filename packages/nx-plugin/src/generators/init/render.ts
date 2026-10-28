@@ -59,6 +59,10 @@ export interface InitReport {
    * When the tree was in fact dirty, the report warns that restoring a modified file also reverts
    * the pre-existing changes. */
   allowDirty?: boolean;
+  /** True when the caller says the uncommitted changes are its own preceding step's (the create
+   * CLI's plugin install), so there are no earlier user changes to warn about. Only the note
+   * reads it; the refusal never does. */
+  dirtyFromCaller?: boolean;
   /** Resolved package manager (option > detection > pnpm) — absent on a
    * refused run, where nothing was resolved. Rendered only in the "record it with"
    * commands; otherwise carried for callers and tests. */
@@ -180,7 +184,7 @@ export function renderInitReport(report: InitReport): string {
   }
 
   const ranDirty = report.allowDirty === true && !report.cleanTree && !report.dryRun;
-  if (ranDirty) {
+  if (ranDirty && report.dirtyFromCaller !== true) {
     lines.push('');
     lines.push('Note: --allowDirty was set and the working tree already had uncommitted changes —');
     lines.push('restoring the files this run modified also reverts your earlier changes to them.');

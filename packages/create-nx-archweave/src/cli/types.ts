@@ -39,9 +39,9 @@ export const AI_HOST_CHOICES: readonly { id: CliAiHost; label: string; nxAgent: 
 /** init's `reviewProvider` enum (types.spec.ts keeps it equal), with display labels. */
 export const REVIEW_PROVIDER_CHOICES: readonly { id: CliReviewProvider; label: string }[] = [
   { id: 'claude', label: 'Claude' },
-  { id: 'gemini', label: 'Gemini' },
-  { id: 'gpt', label: 'GPT' },
-  { id: 'cursor', label: 'Cursor' },
+  { id: 'gemini', label: 'Gemini (beta)' },
+  { id: 'gpt', label: 'GPT (beta)' },
+  { id: 'cursor', label: 'Cursor (beta)' },
 ];
 
 export const REVIEW_PROVIDER_VALUES: readonly CliReviewProvider[] = REVIEW_PROVIDER_CHOICES.map((provider) => provider.id);

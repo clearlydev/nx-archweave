@@ -13,6 +13,7 @@ export const BACKEND_CHECK_IDS = [
   'shared-types-lib',
   'boundary-constraints-applied',
   'boundary-tags-exist',
+  'boundary-untagged-projects',
 ] as const;
 
 const CHECK_LABELS: Record<(typeof BACKEND_CHECK_IDS)[number], string> = {
@@ -21,7 +22,17 @@ const CHECK_LABELS: Record<(typeof BACKEND_CHECK_IDS)[number], string> = {
   'shared-types-lib': 'shared-types library',
   'boundary-constraints-applied': 'Module-boundary constraints',
   'boundary-tags-exist': 'Boundary tags exist',
+  'boundary-untagged-projects': 'Projects without a boundary tag',
 };
+
+/** At most this many project names in the message; the rest are counted. */
+const UNTAGGED_LISTED = 10;
+
+/** An e2e project tests an app from outside — it has no side, so it needs no tag. */
+function isEndToEndRoot(projectRoot: string): boolean {
+  const base = projectRoot.split('/').pop() ?? '';
+  return base === 'e2e' || base.endsWith('-e2e');
+}
 
 /** Bounded scan for scope tags — one level under apps/
  * and libs/, and one or two levels under packages/, reading project.json
@@ -232,15 +243,17 @@ export function buildBackendChecks(root: string, projects?: DoctorProject[]): Do
   // Boundary tag existence: enforced rules that reference tags no
   // project carries are dead letters — the moat looks on but does nothing.
   if (classification !== 'enforced') {
-    checks.push(
-      createDoctorCheck({
-        id: 'boundary-tags-exist',
-        label: CHECK_LABELS['boundary-tags-exist'],
-        status: 'not-applicable',
-        message: 'Skipped — boundary constraints are not enforced (see boundary-constraints-applied)',
-        evidence: [],
-      }),
-    );
+    for (const id of ['boundary-tags-exist', 'boundary-untagged-projects'] as const) {
+      checks.push(
+        createDoctorCheck({
+          id,
+          label: CHECK_LABELS[id],
+          status: 'not-applicable',
+          message: 'Skipped — boundary constraints are not enforced (see boundary-constraints-applied)',
+          evidence: [],
+        }),
+      );
+    }
   } else {
     const tags = collectScopeTags(root, projects);
     // A backend-only workspace (frontend: none) has no frontend to tag yet — the frontend
@@ -265,7 +278,42 @@ export function buildBackendChecks(root: string, projects?: DoctorProject[]): Do
             : 'Add the missing tag(s) to the app project.json tags or package.json nx.tags (add-backend does this for the two apps).',
       }),
     );
+    checks.push(buildUntaggedProjectsCheck(projects, [boundaryTags.frontend, boundaryTags.backend, boundaryTags.shared]));
   }
 
   return checks;
+}
+
+/** The deny rules only constrain projects that carry a role tag, so a library added later
+ * without one (`nx g @nx/js:lib` tags nothing) sits outside them: the backend may import it
+ * even when it is frontend code. Needs Nx's project list; the folder scan sees tags, not
+ * which project carries them. */
+function buildUntaggedProjectsCheck(projects: DoctorProject[] | undefined, roleTags: string[]): DoctorCheck {
+  const id = 'boundary-untagged-projects';
+  if (projects === undefined) {
+    return createDoctorCheck({
+      id,
+      label: CHECK_LABELS[id],
+      status: 'not-applicable',
+      message: "Skipped — needs the workspace's Nx project list (run doctor through nx g)",
+      evidence: [],
+    });
+  }
+  const untagged = projects
+    .filter((project) => project.root !== '' && project.root !== '.' && !isEndToEndRoot(project.root))
+    .filter((project) => !project.tags.some((tag) => roleTags.includes(tag)))
+    .map((project) => project.name);
+  if (untagged.length === 0) {
+    return createDoctorCheck({ id, label: CHECK_LABELS[id], status: 'pass', message: `every project carries one of ${roleTags.join(', ')}`, evidence: [] });
+  }
+  const listed = untagged.slice(0, UNTAGGED_LISTED).join(', ');
+  const more = untagged.length > UNTAGGED_LISTED ? ` and ${untagged.length - UNTAGGED_LISTED} more` : '';
+  return createDoctorCheck({
+    id,
+    label: CHECK_LABELS[id],
+    status: 'warning',
+    message: `${untagged.length} project(s) carry none of ${roleTags.join(', ')}, so the frontend/backend deny rules don't cover them: ${listed}${more}`,
+    evidence: untagged,
+    suggestedAction: `Give each one the tag of its side (${roleTags.join(', ')}) in package.json nx.tags or project.json tags. When you generate a library, pass it right away: nx g @nx/js:lib libs/<name> --tags=${roleTags[2]}.`,
+  });
 }

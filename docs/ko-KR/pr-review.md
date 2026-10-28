@@ -15,6 +15,31 @@
 
 프로바이더 4종은 모두 같은 계약(`id`, `workflowFileName`, `requiredSecretName`, `buildWorkflowYaml`)을 따르고 워크플로 골격 하나를 함께 써요. 그래서 어느 걸 골라도 아래 게이트는 똑같이 동작해요.
 
+저장소 하나에는 프로바이더 하나만 쓰세요. 네 워크플로는 잡 이름(그래서 필수 체크 `review`가 어느 쪽에도 맞아요), 대기열, 라운드 마커를 함께 써요.
+
+## 프로바이더 상태
+
+`claude`가 기본이에요. `gemini`, `gpt`, `cursor`는 **beta**예요. 워크플로는 GitHub Actions에서 실제로 돌았지만, 무료 등급이나 API 잔액 부족으로 중간에 멈춰서 리뷰가 끝까지 완료된 적은 아직 없어요(알려진 문제 참고). 각각 유료 등급에서 전체 실행을 확인한 뒤 표시를 뗄 거예요.
+
+| 프로바이더 | 상태 | GitHub Actions 확인 결과 (2026-10-25) | 시크릿 받는 곳 | 비용 |
+| --- | --- | --- | --- | --- |
+| `claude` (기본) | — | 확인: 시크릿이 없으면 green-skip, Claude GitHub App 없이 토큰만 있으면 `401 … Claude Code is not installed on this repository`로 실패하고 `review`가 red, 깨끗한 pull request에서 요약·APPROVE verdict 코멘트·green `review`(처음부터 끝까지 약 1분 45초). 미확인: BLOCK, 라운드, 재실행(알려진 문제 참고) | Claude Code OAuth 토큰, 그리고 저장소에 [Claude GitHub App](https://github.com/apps/claude) 설치(**Only select repositories**) | Claude 구독. 깨끗한 리뷰 한 번에 약 $0.05 |
+| `gemini` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red. 미확인: 리뷰 완료, BLOCK, 라운드, 재실행 | [Google AI Studio](https://aistudio.google.com) → **Get API key** | 한도가 있는 무료 등급. 모델이 붐비면 503으로 실패할 수 있어요 |
+| `gpt` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰 실패(API 한도) 시 `review`가 red. 미확인: 리뷰 완료 | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | ChatGPT 구독과 별개인 OpenAI API 크레딧. pull request에서 `@codex`를 멘션하는 건 별개의 ChatGPT 기능(Codex 커넥터)이에요. 이 워크플로를 실행하지 않고, 체크를 만들지 않으며, verdict 게이트도 거치지 않아요 |
+| `cursor` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red. 미확인: 리뷰 완료, BLOCK, 라운드, 재실행 | [cursor.com/dashboard/api](https://cursor.com/dashboard/api). Free 요금제에서는 대시보드 메뉴에 보이지 않으니 주소로 직접 들어가세요 | Cursor 요금제의 에이전트 사용량. Free 요금제는 첫 리뷰에서 한도에 걸렸어요 |
+
+확인한 대상: create-nx-archweave 0.2.2가 만든 워크플로(`gemini`와 `cursor`는 이번 릴리스의 작업 폴더 신뢰 수정을 적용). 액션은 `anthropics/claude-code-action@6b6870e6…`(v1.0.258, 모델 `claude-sonnet-5-5`), `actions/checkout@3d3c42e5…`(v7.0.1), `actions/setup-node@949feb24…`(v7.1.0), `google-github-actions/run-gemini-cli@f77273f4…`(v0.1.22)이고, Gemini CLI 0.65.0, cursor-agent 2026.10.22-27dcf5f였어요.
+
+시크릿은 저장소의 **Settings → Secrets and variables → Actions**에 등록하세요. Dependabot이나 Codespaces 탭에 넣은 시크릿은 워크플로에 전달되지 않아서, 시크릿이 없을 때처럼 green-skip 돼요.
+
+### 알려진 문제
+
+- **Gemini 무료 등급:** 모델 수요가 몰리면 API가 `503 UNAVAILABLE`로 답해요. Gemini CLI가 약 5분 동안 10번 재시도한 뒤 AI 리뷰가 실패하고 `review`가 red가 돼요. 나중에 Re-run all jobs로 다시 돌리세요.
+- **Cursor Free 요금제:** 첫 리뷰가 출력 없이 8분 30초쯤 돌다가 `You've hit your usage limit`로 멈췄고, `review`가 red가 됐어요. 리뷰를 끝까지 하려면 에이전트 사용량이 더 많은 요금제가 필요해요.
+- **Claude, 거부된 도구 호출:** 보안 결함이 있는 pull request에서 리뷰가 허용 도구 밖의 호출을 시도해 2~3번 거부당했고, 요약을 게시하지 못한 채 끝났어요. GitHub에는 리뷰가 성공한 것으로 표시됐어요. 0.3.0부터는 이 경우 `review` check가 실패해요. 0.2.x에서는 녹색으로 통과했어요. 원인은 확인하지 못했어요. 액션 로그에는 거부 횟수만 나와요. 0.3.0은 claude-code-action의 공식 리뷰 예시처럼 프롬프트에 저장소와 pull request 번호를 넣고, 셸 치환 없이 요약을 게시하는 방법을 알려 줘요. `Show denied tool calls` 스텝이 거부된 호출을 하나씩 보여 줘요.
+- **GPT, API 잔액 없음:** 리뷰가 `Quota exceeded. Check your plan and billing details.`로 멈추고 `review`가 red가 돼요. ChatGPT 구독은 API 비용을 대신하지 않아요. platform.openai.com에서 크레딧을 충전하세요.
+- **Gemini는 도구 실행을 묻지 않아요.** `run-gemini-cli` 액션이 Gemini CLI를 YOLO 모드("All tool calls will be automatically approved")로 실행해요. 그래서 모델의 셸·`gh` 호출이 잡의 토큰 권한 안에서 확인 없이 실행돼요.
+
 ## 게이트
 
 | 게이트 | 하는 일 | 결과 |
@@ -27,6 +52,7 @@
 
 - 프로바이더 시크릿이 없으면 잡이 `AI review is not active: register the <SECRET> secret to enable it.`를 출력하고 **green-skip** 해요.
 - 그래서 AI를 쓰지 않는 워크스페이스에는 빨간 X가 뜨지 않아요.
+- 이 green 체크는 자기가 무엇인지 밝혀요. `review` 잡이 notice, 잡 요약 한 줄, verdict 코멘트로 `AI review did not run for this commit (<reason>). A green check here does not mean the change was reviewed.`를 남겨요. 포크나 Dependabot pull request이면 사유에 그렇다고 적어요. GitHub가 두 경우 모두 Actions 시크릿을 넘기지 않기 때문이에요. 라운드 한도에 도달했을 때도 같은 notice가 남아요. 코멘트는 실행 토큰에 쓰기 권한이 있을 때만 게시돼서, 포크 pull request에는 달리지 않아요.
 
 > [!WARNING]
 > **claude 전용 엣지케이스.** `claude` 프로바이더는 시크릿을 GitHub App 토큰으로 교환해요. 그래서 시크릿은 있는데 [Claude GitHub App](https://github.com/apps/claude)이 리포에 설치되어 있지 않으면, green-skip 대신 `401 — Claude Code is not installed on this repository`로 실패해요. 리포에 앱을 설치하면 해결돼요. 나머지 프로바이더 3종에는 앱 교환 단계가 없어요.
@@ -49,6 +75,9 @@
 - 모든 checkout 단계는 `persist-credentials: false`를 써요. 저장소 토큰이 `.git/config`에 남아 이후 단계(AI 에이전트의 셸 포함)에서 읽히지 않게 하려는 거예요.
 - pnpm 워크스페이스: 워크플로가 러너에서 `package.json`의 `packageManager`를 읽어요. 필드가 있으면 `pnpm/action-setup`이 그 값을 쓰고, 없으면 pnpm 10을 넘겨요.
 - `cursor` 프로바이더는 `curl --proto '=https' --tlsv1.2 -fsS https://cursor.com/install | bash`로 `cursor-agent`를 설치해요. Cursor는 이 설치에 고정 버전이나 체크섬을 제공하지 않아요. 그래서 남는 위험은 [보안 범위](#보안-범위)에 적었어요.
+- `gemini` 프로바이더는 액션이 설치하는 Gemini CLI 버전을 고정해요(`gemini_cli_version`). 액션의 기본값은 `latest`인데, Gemini CLI 0.65가 작업 폴더 신뢰 검사를 추가하면서 워크플로가 체크아웃 폴더를 신뢰하기 전까지 모든 리뷰가 멈췄어요. Dependabot은 이 고정값을 올리지 않고, nx-archweave 새 릴리스가 올려요.
+- 모든 잡은 GitHub 기본값 360분 대신 15분이 지나면 멈춰요(`timeout-minutes: 15`). 이렇게 멈춘 AI 리뷰는 실패로 처리돼서 `review`가 red가 돼요.
+- `claude` 에이전트는 claude-code-action의 PR 리뷰 예시와 같은 도구만 써요. inline comment, `gh pr comment`, `gh pr diff`, `gh pr view`뿐이고, 다른 셸 명령, `gh api`, 파일 수정은 안 돼요. `Show denied tool calls` 스텝은 거부된 호출마다 도구 이름과 명령 앞 200자를 JSON 한 줄로 출력하고, 그 구간에서는 워크플로 명령을 꺼 둬요. 도구가 돌려준 내용은 출력하지 않고, 아무것도 업로드하지 않아요. 액션의 `show_full_output`과 `display_report`는 도구 출력을 로그에 공개하므로 꺼 둬요.
 
 ### 보안 범위
 
@@ -56,30 +85,39 @@
 
 `cursor` 프로바이더는 고정의 예외예요. 실행할 때마다 그 시점에 Cursor가 배포한 버전이 설치돼요. 설치 단계 자체에는 시크릿이 없지만, 설치된 바이너리는 다음 단계에서 `CURSOR_API_KEY`와 pull request 코멘트를 쓸 수 있는 `GH_TOKEN`을 받아 실행돼요. 다운로드가 변조되면 둘 다 넘어가요. 이 위험을 감수할 수 없는 저장소라면 다른 프로바이더를 고르세요.
 
+`gemini`와 `cursor` CLI는 신뢰하라고 지정하지 않은 폴더에서는 실행을 거부해요. 그래서 리뷰 단계가 체크아웃한 폴더를 신뢰하도록 설정해요(`GEMINI_CLI_TRUST_WORKSPACE: 'true'`, `agent --trust`). 신뢰하면 CLI가 체크아웃한 pull request의 프로젝트 설정을 읽을 수 있어요. 위와 같은 신뢰 범위예요. 시크릿은 저장소 자체에서 온 pull request만 받고, 그 작성자는 이미 워크플로를 고칠 수 있어요.
+
 ### verdict 게이트
 
 1. 모델이 요약 코멘트 끝에 기계 판독용 `archweave/findings@1` JSON 블록을 덧붙여요.
 2. `review` 잡이 플러그인의 `archweave-review-verdict` bin으로 이 JSON 블록을 파싱해 verdict를 계산해요. P0/P1이 하나라도 있으면 `BLOCK`이에요.
 3. `review-comment` 잡은 PR마다 짧은 verdict 코멘트 하나를 유지해요. 이 코멘트를 라운드마다 고치고, 라운드별 해결/잔존 이력과 판정한 커밋을 함께 적어요.
-4. `review` 잡은 **BLOCK이면 check를 실패**시켜요. 그래서 `review`를 required check로 지정하면 P0/P1이 실제로 머지를 막아요. AI 리뷰가 성공하지 않아도 실패하고, 시크릿 게이트나 라운드 게이트가 리뷰를 끈 경우에는 녹색으로 끝나요.
+4. `review` 잡은 **BLOCK이면 check를 실패**시켜요. 그래서 `review`를 required check로 지정하면 P0/P1이 실제로 머지를 막아요. AI 리뷰가 성공하지 않았거나 판독할 수 있는 요약을 남기지 않아도 실패해요. 녹색으로 끝나는 건 이번 실행의 요약을 판정했는데 BLOCK이 아닐 때, 또는 시크릿 게이트나 라운드 게이트가 리뷰를 끈 경우뿐이에요.
 
 verdict는 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 리뷰가 요약을 남기지 않으면, 그 실행은 이전 커밋의 라운드를 다시 판정하지 않아요.
 
 > [!NOTE]
 > 한 PR의 리뷰 실행은 대기열에 들어가 하나씩 차례로 돌아요. 다른 실행이 대기 중일 때 push하면 새 실행이 대기 중인 실행을 대신해요. 그래서 중간 커밋은 리뷰 없이 지나갈 수 있어요.
 
-그 밖의 문제는 모두 녹색으로 끝나요.
+이번 실행에서 AI 리뷰가 돌았는데 판정할 것을 남기지 않았다면, check가 실패하고 verdict 코멘트가 이유를 알려 줘요.
 
 | 상황 | 결과 |
 | --- | --- |
-| 판독 불가 findings 블록 | "사람이 직접 리뷰" 고지 |
-| 요약 없는 실행 | "사람이 직접 리뷰" 고지 |
+| 이 커밋에 대한 요약이 없음(아예 없거나 이전 실행의 것만 있음) | `review` 빨간색. AI 리뷰가 요약을 게시하지 않았으니 직접 리뷰하거나 모든 잡을 다시 실행하라는 코멘트 |
+| 요약의 findings 블록을 기계 판독할 수 없음 | `review` 빨간색. 직접 리뷰하거나 다시 실행하라는 코멘트 |
+
+다음 경우는 여전히 녹색으로 끝나요.
+
+| 상황 | 결과 |
+| --- | --- |
 | 플러그인이 제거된 레포 | 스텝 skip |
 | verdict 코멘트 게시 실패 | 로그만 |
+| 0.2.2 이전에 생성된 워크플로(verdict 스텝이 코멘트를 직접 게시) | 요약 없음·판독 불가여도 "사람이 직접 리뷰" 고지만 남아요. `doctor`가 이런 워크플로를 error(`review-workflow-fail-open`)로 알려 줘요. `add-review --onConflict=overwrite`를 다시 실행해 현재 워크플로로 바꾸세요 |
 
-`review` check는 파싱된 차단 finding 말고도 세 가지 경우에 빨간색이 돼요. 모두 BLOCK인지 아닌지 알 수 없는 경우라서, BLOCK을 녹색으로 통과시키지 않으려고 실패로 끝나요.
+`review` check는 파싱된 차단 finding 말고도 다음 경우에 빨간색이 돼요. 모두 BLOCK인지 아닌지 알 수 없는 경우라서, BLOCK을 녹색으로 통과시키지 않으려고 실패로 끝나요.
 
 - AI 리뷰가 성공하지 않은 경우(실패, 취소, skip).
+- AI 리뷰는 돌았지만 이번 실행이 이 커밋에 대한 요약을 남기지 않았거나, findings 블록을 판독할 수 없는 요약을 남긴 경우(위 표).
 - AI 리뷰 잡의 결과가 `review` 잡에 전달되지 않은 경우(예: 다시 실행할 때). 모든 잡을 다시 실행하세요(AI 리뷰도 다시 돌고 비용도 다시 들어요).
 - `review` 잡이 pull request 코멘트를 읽지 못한 경우. 실패한 잡을 다시 실행하세요. 또 실패하면 `review` 잡에 `pull-requests: read`가 있는지 확인하세요.
 

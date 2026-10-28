@@ -242,3 +242,31 @@ describe('runAddAgentRules — the FSD section follows the recorded policy', () 
     expect(tree.read('CLAUDE.md', 'utf-8')).toBe(`${renderAgentRulesBlock(expected)}\n`);
   });
 });
+
+describe('runAddAgentRules — the Module Boundaries section follows the recorded backend', () => {
+  it('a recorded backend adds the section with the default role tags', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write(CONFIG_PATH, JSON.stringify({ frontend: 'react-vite', backend: 'express' }));
+    runAddAgentRules(tree, {});
+    const claude = tree.read('CLAUDE.md', 'utf-8') as string;
+    expect(claude).toContain('## Module Boundaries');
+    expect(claude).toContain('`scope:frontend` projects never import `scope:backend` projects');
+    expect(claude).toContain('--tags=scope:shared');
+  });
+
+  it('uses the tag names toolkit.config.json records under boundaries.tags', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write(CONFIG_PATH, JSON.stringify({ backend: 'nest', boundaries: { tags: { frontend: 'type:web', backend: 'type:api', shared: 'type:shared' } } }));
+    runAddAgentRules(tree, {});
+    const claude = tree.read('CLAUDE.md', 'utf-8') as string;
+    expect(claude).toContain('--tags=type:shared');
+    expect(claude).not.toContain('scope:frontend');
+  });
+
+  it('no backend recorded: no section, the output reads exactly as before', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write(CONFIG_PATH, JSON.stringify({ frontend: 'react-vite', backend: 'none' }));
+    runAddAgentRules(tree, {});
+    expect(tree.read('CLAUDE.md', 'utf-8')).not.toContain('Module Boundaries');
+  });
+});

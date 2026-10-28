@@ -12,6 +12,8 @@ export interface InitGeneratorSchema {
   review?: boolean;
   dryRun?: boolean;
   allowDirty?: boolean;
+  /** Internal: the dirty tree is the caller's own doing, so the report omits the earlier-changes note. Never affects the refusal. */
+  dirtyFromCaller?: boolean;
   applyEslint?: boolean;
   /** The frontend app(s) for the FSD section — comma-separated or a list; required with more than one frontend. */
   project?: string | string[];

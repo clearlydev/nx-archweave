@@ -24,6 +24,17 @@ describe('geminiProvider', () => {
     expect(yaml).toMatchSnapshot();
   });
 
+  it('pins the Gemini CLI instead of the action\'s latest', () => {
+    const yaml = geminiProvider.buildWorkflowYaml({ mode: 'standard', locale: 'en', maxRounds: 3, packageManager: 'pnpm' });
+    expect(yaml).toContain("gemini_cli_version: '0.65.0'");
+  });
+
+  it('trusts the checked-out workspace, which Gemini CLI 0.65 otherwise refuses to run in', () => {
+    const yaml = geminiProvider.buildWorkflowYaml({ mode: 'standard', locale: 'en', maxRounds: 3, packageManager: 'pnpm' });
+    const step = yaml.slice(yaml.indexOf('- name: Run Gemini review'), yaml.indexOf('    with:', yaml.indexOf('- name: Run Gemini review')));
+    expect(step).toContain("GEMINI_CLI_TRUST_WORKSPACE: 'true'");
+  });
+
   it('thorough mode appends the over-engineering pass per REVIEW_MODES', () => {
     const yaml = geminiProvider.buildWorkflowYaml({ mode: 'thorough', locale: 'en', maxRounds: 3, packageManager: 'pnpm' });
     expect(yaml).toContain('You are a code reviewer focused on correctness and security.');

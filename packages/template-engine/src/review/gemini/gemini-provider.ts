@@ -55,6 +55,11 @@ function composePrompt(input: ReviewWorkflowInput): string {
   return sections.join('\n\n---\n\n');
 }
 
+/** The Gemini CLI the action installs. The action's default is `latest`, so a CLI release can change
+ * a working workflow overnight (0.65's workspace-trust check did, 2026-10-25). Pinned to the version
+ * measured on Actions; Dependabot doesn't see this input, so a bump is a code change here. */
+export const GEMINI_CLI_VERSION = '0.65.0';
+
 function buildWorkflowYaml(input: ReviewWorkflowInput): string {
   return renderReviewWorkflow(input, {
     name: 'Gemini Code Review',
@@ -69,8 +74,13 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
         `  uses: ${pinnedUses('google-github-actions/run-gemini-cli')}`,
         '  env:',
         '    GITHUB_TOKEN: ${{ github.token }}',
+        // Gemini CLI 0.65 refuses to run in a folder it hasn't been told to trust (measured
+        // 2026-10-25 on Actions). The folder is this run's own checkout; pull requests from forks
+        // never get here, because they get no secret.
+        "    GEMINI_CLI_TRUST_WORKSPACE: 'true'",
         '  with:',
         `    gemini_api_key: \${{ secrets.${SECRET_NAME} }}`,
+        `    gemini_cli_version: '${GEMINI_CLI_VERSION}'`,
         '    prompt: |',
         indentBlock(composePrompt(input), 6),
       ].join('\n'),

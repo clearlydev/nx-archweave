@@ -12,6 +12,8 @@ export type ConfigAction = 'created' | 'updated' | 'unchanged' | 'not-updated' |
 export type DependabotAction = 'created' | 'present' | 'proposed' | 'not-applied';
 export const DEPENDABOT_PATH = '.github/dependabot.yml';
 
+const PROVIDER_STATUS_URL = 'https://github.com/clearlydev/nx-archweave/blob/main/docs/pr-review.md#provider-status';
+
 export interface AddReviewReport {
   dryRun: boolean;
   workflowPath: string;
@@ -24,6 +26,8 @@ export interface AddReviewReport {
   configError: string | null;
   /** Present only when the package manager was a blind pnpm fallback. */
   packageManagerNote?: string;
+  /** The chosen provider, when it is still in beta. */
+  betaProvider?: string;
   dependabot: DependabotAction;
   /** The generated dependabot.yml, shown when the existing file lacks a github-actions entry. */
   dependabotProposal: string | null;
@@ -137,6 +141,10 @@ export function renderAddReviewReport(report: AddReviewReport): string {
 
   lines.push('');
   lines.push(`Note: the review workflow stays green-skipped until you register the ${report.requiredSecretName} secret.`);
+  if (report.betaProvider !== undefined) {
+    lines.push(`Note: the ${report.betaProvider} provider is in beta — its workflow hasn't finished a review end to end on`);
+    lines.push(`GitHub Actions yet. Status, costs and known issues: ${PROVIDER_STATUS_URL}`);
+  }
   lines.push('Note: this workflow runs with elevated permissions only after it is merged to the default branch —');
   lines.push('merging is the first real validation.');
 

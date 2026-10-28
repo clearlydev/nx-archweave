@@ -2,11 +2,11 @@
 
 [English](../boundaries.md) | 한국어
 
-백엔드를 고르면 워크스페이스가 아래 모양으로 나와요. 화살표는 단순한 문서가 아니라 **린트 에러**로 강제돼요.
+백엔드를 고르면 워크스페이스가 아래 모양으로 나와요. 화살표는 단순한 문서가 아니에요. nx-archweave가 태그를 붙인 프로젝트 사이에서는 **린트 에러**(`@nx/enforce-module-boundaries`)로 강제돼요.
 
 ```
 apps/
-  <web>  (React/Next, 내부는 FSD Lite)  ──┐
+  web    (React/Next, FSD Lite 규칙)   ──┐
                                           ├──▶  libs/shared-types (scope:shared)
   api    (Express/Nest, 공식 기본 모습)  ──┘
 ```
@@ -21,9 +21,10 @@ apps/
 | `scope:backend` | `scope:frontend`에 의존할 수 없음(그 역도 금지) |
 | `scope:shared` | 어느 쪽에도 기울지 않음 |
 
-- **기존 그래프는 그대로 동작해요.** Nx가 만드는 allow-all 기준선 **위에 규칙 3개가 합성(AND)으로 얹혀요.** 그래서 풀스택 템플릿이 직접 태그한 라이브러리를 포함해 기존 프로젝트 그래프는 그대로 두고, 교차 import만 린트 에러가 돼요.
+- **기존 그래프는 그대로 동작해요.** Nx가 만드는 allow-all 기준선 **위에 규칙 3개가 합성(AND)으로 얹혀요.** 그래서 기존 프로젝트 그래프는 그대로 두고, 태그가 붙은 프론트엔드·백엔드 프로젝트 사이의 import만 린트 에러가 돼요. 세 태그 중 아무것도 없는 프로젝트는 규칙이 적용되지 않으니, 새로 추가하는 라이브러리에는 태그를 붙이세요(아래 참고).
 - **앱 2개는 자동으로 태그돼요.** 백엔드 전용 라이브러리에 `scope:backend`, 프론트엔드 전용 라이브러리에 `scope:frontend`만 달면 같은 규칙이 그 라이브러리에도 적용돼요.
-- **`doctor`가 계속 감시해요.** 설정이 아직 맨 allow-all 기본 상태면 `boundary-constraints-applied` 체크가 "경계가 강제되지 않음"으로 보고해요.
+- **AI 에이전트도 태그를 알아요.** 백엔드가 있으면 에이전트 규칙 블록에 "모듈 경계" 섹션이 들어가요. 이 세 태그(또는 `toolkit.config.json`에서 정한 이름)를 알려 주고, 새 라이브러리를 만들 때 바로 태그를 붙이게 해요. 예: `nx g @nx/js:lib libs/<name> --tags=scope:shared`
+- **`doctor`가 계속 감시해요.** 설정이 아직 맨 allow-all 기본 상태면 `boundary-constraints-applied` 체크가 "경계가 강제되지 않음"으로 보고해요. `boundary-untagged-projects` 체크는 세 태그 중 아무것도 없는 프로젝트(e2e 프로젝트 제외)를 모두 알려 줘요. 규칙이 그 프로젝트에는 적용되지 않기 때문이에요.
 
 > [!NOTE]
 > **ESLint 설정을 함부로 고치지 않아요.** nx-archweave가 ESLint 설정에서 인식하지 못한 부분은 1바이트도 건드리지 않아요. 대신 복붙용 스니펫으로 알려줘요.

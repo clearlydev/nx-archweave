@@ -142,3 +142,50 @@ describe('runVerdictGate — rounds bound to this run', () => {
     expect(runVerdictGate({ comments: [withId(10, [f('P1')])], maxRounds: 3, locale: 'en' }).kind).toBe('verdict');
   });
 });
+
+describe('runVerdictGate — the AI review ran in this workflow run (reviewRan)', () => {
+  const ran = { maxRounds: 3 as const, locale: 'en' as const, reviewRan: true, headSha: 'abcdef1234567' };
+
+  it('no round on the PR at all → no-summary, never the no-review green', () => {
+    const result = runVerdictGate({ ...ran, comments: [{ body: 'hi', id: 5 }], roundAfterId: 5 });
+    expect(result.kind).toBe('no-summary');
+    if (result.kind === 'no-summary') {
+      expect(result.commentBody).toContain(VERDICT_MARKER);
+      expect(result.commentBody).toContain('AI review posted no summary');
+      expect(result.commentBody).toContain('re-run all jobs');
+      expect(result.commentBody).toContain('`abcdef1`');
+    }
+  });
+
+  it('only an earlier run marker (at or before the watermark) → no-summary, even when it was an APPROVE', () => {
+    const earlier = { ...roundComment([]), id: 40 };
+    expect(runVerdictGate({ ...ran, comments: [earlier], roundAfterId: 40 }).kind).toBe('no-summary');
+    expect(runVerdictGate({ ...ran, comments: [earlier], roundAfterId: 60 }).kind).toBe('no-summary');
+  });
+
+  it("this run's round is judged as usual: APPROVE passes, BLOCK blocks", () => {
+    const earlier = { ...roundComment([f('P0')]), id: 40 };
+    const approve = runVerdictGate({ ...ran, comments: [earlier, { ...roundComment([]), id: 70 }], roundAfterId: 60 });
+    expect(approve).toMatchObject({ kind: 'verdict', verdict: 'APPROVE', exitCode: 0 });
+    const block = runVerdictGate({ ...ran, comments: [{ ...roundComment([f('P1')]), id: 70 }], roundAfterId: 60 });
+    expect(block).toMatchObject({ kind: 'verdict', verdict: 'BLOCK', exitCode: 1 });
+  });
+
+  it("this run's summary without a readable findings block → unparseable that fails closed", () => {
+    const result = runVerdictGate({ ...ran, comments: [{ body: `${ROUND_MARKER}\nno block here`, id: 70 }], roundAfterId: 60 });
+    expect(result).toMatchObject({ kind: 'unparseable', failClosed: true });
+    if (result.kind === 'unparseable') expect(result.commentBody).toContain('review check fails');
+  });
+
+  it('without reviewRan nothing changes: no-review, no-round and a green unparseable', () => {
+    expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [] }).kind).toBe('no-review');
+    expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [{ ...roundComment([]), id: 40 }], roundAfterId: 60 }).kind).toBe('no-round');
+    expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [{ body: `${ROUND_MARKER}\nx`, id: 70 }], roundAfterId: 60 })).toMatchObject({ kind: 'unparseable', failClosed: false });
+  });
+
+  it('the fail-closed notices exist in Korean too', () => {
+    const result = runVerdictGate({ ...ran, locale: 'ko', comments: [], roundAfterId: 0 });
+    if (result.kind === 'no-summary') expect(result.commentBody).toContain('review 체크는 실패합니다');
+    else throw new Error(`expected no-summary, got ${result.kind}`);
+  });
+});

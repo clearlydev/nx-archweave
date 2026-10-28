@@ -6,28 +6,30 @@
 //   node tools/e2e-create.mjs --pm=npm
 //   node tools/e2e-create.mjs --pm=yarn [--frontend=next]   (the yarn on PATH decides the flavor)
 //   node tools/e2e-create.mjs --pm=pnpm --frontend=next --backend=nest
+//   node tools/e2e-create.mjs --pm=npm --backend=nest   (react-vite × nest)
 //   node tools/e2e-create.mjs --pm=pnpm --frontend=none --backend=express   (backend-only)
 //   node tools/e2e-create.mjs --pm=bun
 //
 // Modes (hybrid gate):
 //   (default, strict)  every failure exits 1 — local release gate and the manual CI run.
 //   --mode=pr          UPSTREAM failures (create-nx-workspace itself, @nx/*
-//                      installs, official generators, the template's own
+//                      installs, official generators, the workspace's own
 //                      dependency install) exit 0 with a ::warning:: — the
 //                      ecosystem's drift must not hold our merges hostage.
 //                      OUR failures (pack, CLI start-up before its plan
-//                      print, wiring markers, registration, build/lint,
+//                      print, wiring markers, registration, build/lint/typecheck/test,
 //                      doctor gate) still exit 1.
 //
 // Packs both publishable packages (prepack bundles them), launches the packed
 // CLI the way a user does (`npm exec` / `pnpm dlx` / `yarn dlx` / `bunx`; only yarn
 // classic, which has no dlx, passes --package-manager),
-// creates a real workspace from the real template, and asserts the wiring that
+// creates a real workspace with the real create-nx-workspace and Nx generators, and asserts the wiring that
 // the product promises:
 //   1. the CLI takes the launching package manager, exits 0, and the
 //      add-backend report shows the deny-rule wiring
 //   2. libs/shared-types is registered (pnpm-workspace.yaml / workspaces field)
-//   3. the generated workspace installs and `nx run-many -t build,lint` is green
+//   3. the generated workspace installs, `nx run-many -t build,lint` is green, then `-t typecheck,test`
+//      (bun × next skips the web app's test, a known Nx issue)
 //   4. `doctor --json --quiet` reports safe or manual-review-required
 //
 // Read-only toward the repo; everything happens in a temp directory.
@@ -37,6 +39,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStepLog } from './e2e-steps.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modeArg = process.argv.find((a) => a.startsWith('--mode='));
@@ -59,9 +62,8 @@ if (pm !== 'pnpm' && pm !== 'npm' && pm !== 'yarn' && pm !== 'bun') {
   process.exit(2);
 }
 // react-vite (default) is the full fullstack flow with the express backend. next
-// defaults to no backend — creation, build/lint and doctor only, the mode the
-// yarn-classic leg needs, since yarn 1 cannot install the react template;
-// --backend=express|nest wires one there too (Nx 23 builds next in apps/).
+// defaults to no backend — creation, build/lint and doctor only;
+// --backend=express|nest wires one there too (both frontends build apps/web).
 const frontendArg = process.argv.find((a) => a.startsWith('--frontend='));
 const frontend = frontendArg ? frontendArg.slice('--frontend='.length) : 'react-vite';
 if (frontend !== 'react-vite' && frontend !== 'next' && frontend !== 'none') {
@@ -75,20 +77,16 @@ if (!['express', 'nest', 'none'].includes(backend)) {
   console.error(`e2e-create: unsupported --backend "${backend}" (express|nest|none)`);
   process.exit(2);
 }
-// The react template already ships an Express apps/api — the CLI refuses nest there by design.
 if (frontend === 'none' && backend === 'none') {
   console.error('e2e-create: --frontend=none is a backend-only workspace — pass --backend=express|nest');
   process.exit(2);
 }
-if (frontend === 'react-vite' && backend === 'nest') {
-  console.error('e2e-create: --frontend=react-vite --backend=nest is refused by the CLI (the template ships an Express api) — use --frontend=next');
-  process.exit(2);
-}
 
 const MAX_BUFFER = 64 * 1024 * 1024;
-const steps = [];
+const stepLog = createStepLog();
+const steps = stepLog.names;
 // Plan steps whose commands belong to the upstream ecosystem, not to us.
-const UPSTREAM_PLAN_STEPS = ['create-workspace', 'install-backend-plugin', 'create-api-app'];
+const UPSTREAM_PLAN_STEPS = ['create-workspace', 'add-react-plugin', 'create-web-app', 'install-backend-plugin', 'create-api-app'];
 function fail(step, detail, output, kind = 'ours') {
   // 'create workspace' CLI failures are classified by WHICH plan step stopped.
   // Anything before the plan print is ours: the tarball or bin not starting, a
@@ -98,7 +96,7 @@ function fail(step, detail, output, kind = 'ours') {
     const stopped = /stopped: step "([^"]+)"/.exec(output);
     if (!stopped || UPSTREAM_PLAN_STEPS.includes(stopped[1])) kind = 'upstream';
   }
-  if (step === 'workspace install') kind = 'upstream'; // the template's own dep tree
+  if (step === 'workspace install') kind = 'upstream'; // the workspace's own dep tree
   if (kind === 'upstream' && mode === 'pr') {
     const title = `e2e-create (${pm}): upstream drift at "${step}"`;
     console.log(`::warning title=${title}::${(detail ?? '').replace(/\n/g, ' ')} — not blocking this PR; see the job log (the manual strict CI run reports it as a failure).`);
@@ -110,6 +108,7 @@ function fail(step, detail, output, kind = 'ours') {
   if (detail) console.error(`  ${detail}`);
   if (output) console.error(`\n--- captured output (tail) ---\n${output.slice(-4000)}`);
   console.error(`\ncompleted steps: ${steps.join(' → ') || '(none)'}`);
+  if (steps.length > 0) console.error(`\ntimings of the completed steps:\n${stepLog.timings()}`);
   process.exit(1);
 }
 // npm, pnpm, yarn and bun are .cmd shims on Windows, which Node cannot start without a
@@ -123,7 +122,7 @@ function run(step, command, args, options = {}) {
   const result = spawnSync(command, shellArgs(args), { encoding: 'utf-8', maxBuffer: MAX_BUFFER, shell: SHELL, ...options });
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   if (result.status !== 0) fail(step, `${command} ${args.join(' ')} → exit ${result.status}`, output);
-  steps.push(step);
+  stepLog.record(step);
   // stdout alone matters for pipe consumers (the doctor gate); combined is for markers.
   return { output, stdout: result.stdout ?? '' };
 }
@@ -203,10 +202,22 @@ for (const marker of [
 ]) {
   if (!createOutput.includes(marker)) fail('create output markers', `missing "${marker}"`, createOutput);
 }
-steps.push('create output markers');
+stepLog.record('create output markers');
+
+const demoDir = join(work, demo);
+
+// 3'. the api is a webpack app. Neither @nx/express nor @nx/nest takes a bundler option: both
+// pick webpack themselves (24.0.1), while @nx/node's own default moved to tsc/rolldown in Nx 24.
+// This catches the day they follow it.
+if (withBackend) {
+  const apiDir = join(demoDir, 'apps', 'api');
+  if (!['js', 'cjs', 'mjs', 'ts'].some((ext) => existsSync(join(apiDir, `webpack.config.${ext}`)))) {
+    fail('api bundler', 'apps/api has no webpack.config — the api generators no longer pick webpack', readdirSync(apiDir).join('\n'));
+  }
+  stepLog.record('api bundler');
+}
 
 // 4. workspace registration is real on disk (only the backend flow registers shared-types)
-const demoDir = join(work, demo);
 if (!withBackend) {
   // nothing registered without a backend
 } else if (/libs\/shared-types\/src\/index\.ts/.test(readFileSync(join(demoDir, 'tsconfig.base.json'), 'utf-8'))) {
@@ -219,18 +230,18 @@ if (!withBackend) {
   const list = Array.isArray(pkg.workspaces) ? pkg.workspaces : (pkg.workspaces?.packages ?? []);
   if (!list.includes('libs/shared-types')) fail('registration', `workspaces: ${JSON.stringify(pkg.workspaces)}`);
 }
-if (withBackend) steps.push('registration');
+if (withBackend) stepLog.record('registration');
 
 // 4'. agent rules: without --ai-hosts the default host is
 // Claude Code, so CLAUDE.md carries our marked block — next to Nx's own block, which
-// must survive (the react template ships it; --aiAgents=claude writes it for next).
+// must survive (create-nx-workspace's --aiAgents=claude writes it).
 const claudeMd = readFileSync(join(demoDir, 'CLAUDE.md'), 'utf-8');
 // The start marker carries a hash of the block (`start hash=<12 hex> -->`), so only its prefix is fixed.
 for (const marker of ['<!-- nx-archweave:agent-rules start hash=', '<!-- nx-archweave:agent-rules end -->', '<!-- nx configuration start-->']) {
   if (!claudeMd.includes(marker)) fail('agent rules', `CLAUDE.md lacks "${marker}"`, claudeMd);
 }
 if (readdirSync(demoDir).some((file) => file.endsWith('.generated.md'))) fail('agent rules', 'a .generated.md file was written');
-steps.push('agent rules');
+stepLog.record('agent rules');
 
 // 4''. FSD: add-fsd-lite makes no folders — it wires the
 // archweave/fsd-boundaries rule into the frontend app's eslint config (the CLI passes
@@ -247,12 +258,12 @@ if (frontend !== 'none') {
   const manifest = ['package.json', 'project.json'].map((f) => join(dir, f)).find((f) => existsSync(f));
   const project = manifest ? JSON.parse(readFileSync(manifest, 'utf-8')).name : holders[0];
   fsdApp = { dir, project: project ?? holders[0] };
-  steps.push('fsd layers');
+  stepLog.record('fsd layers');
 }
 
 // 5. the generated workspace installs and builds green
 // --no-frozen-lockfile: add-backend just registered libs/shared-types, so the
-// template's lockfile is legitimately behind — CI sets CI=true, which would
+// workspace's lockfile is legitimately behind — CI sets CI=true, which would
 // otherwise flip pnpm into frozen mode and fail.
 // yarn: berry also turns immutable under CI=true; the variable is ignored by classic.
 const INSTALL_ARGS = { pnpm: ['install', '--no-frozen-lockfile'], npm: ['install', '--no-audit', '--no-fund'], yarn: ['install'], bun: ['install'] };
@@ -262,13 +273,22 @@ run('workspace install', pm, INSTALL_ARGS[pm], {
 });
 const nxArgs = (rest) => (pm === 'npm' ? ['exec', 'nx', '--', ...rest] : ['nx', ...rest]);
 
+// 5'. express 5 on every path and manager: @nx/express installs it, and Nx 24's @nx/react no
+// longer peers on express 4, so the frontend choice can't pull the api back to 4.
+if (backend === 'express') {
+  const manifest = join(demoDir, 'node_modules', 'express', 'package.json');
+  const version = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf-8')).version : undefined;
+  if (typeof version !== 'string' || !version.startsWith('5.')) fail('express major', `node_modules/express is ${version ?? 'missing'}, expected 5.x`);
+  stepLog.record('express major');
+}
+
 // 5a. the slice generators land in the frontend app: a page slice
-// (in _pages on Next.js) and a feature with extra segments. build+lint below then covers the
-// generated stubs — they lint clean by construction.
+// (in _pages on Next.js) and a feature with extra segments. The run-many below then covers the
+// generated stubs — they lint, typecheck and pass their spec by construction.
 if (fsdApp !== null) {
   run('slice generators', pm, nxArgs(['g', '@clearlydev/nx-archweave:page', '--name=e2e-home']), { cwd: demoDir });
   run('slice generators', pm, nxArgs(['g', '@clearlydev/nx-archweave:feature', '--name=e2e-probe', '--segments=ui,api']), { cwd: demoDir });
-  steps.pop(); // the two runs are one step
+  stepLog.mergeLast(); // the two runs are one step
   const pagesDir = frontend === 'next' ? '_pages' : 'pages';
   for (const rel of [`src/${pagesDir}/e2e-home/index.ts`, `src/${pagesDir}/e2e-home/model/e2e-home.ts`, 'src/features/e2e-probe/ui/index.ts', 'src/features/e2e-probe/api/index.ts']) {
     if (!existsSync(join(fsdApp.dir, rel))) fail('slice generators', `${rel} is missing`);
@@ -276,8 +296,29 @@ if (fsdApp !== null) {
   if (frontend === 'next' && existsSync(join(fsdApp.dir, 'src/pages'))) fail('slice generators', 'the page slice landed in src/pages on Next.js');
 }
 
-// exit 0 is the contract; the banner text is nx-version-dependent.
+// exit 0 is the contract; the banner text is nx-version-dependent. typecheck and test catch a
+// generated project that builds but doesn't typecheck or pass its own tests (Nx's e2e projects
+// on TypeScript 6 were one).
 run('build+lint', pm, nxArgs(['run-many', '-t', 'build,lint']), { cwd: demoDir });
+// typecheck runs after build, never alongside it: in Nx's generated tsconfigs both write to the
+// app's dist (tsc --build keeps its .d.ts and tsbuildinfo there while webpack and vite empty it),
+// so the two in one run-many can race into TS6305 (reproduced with a plain `run-many -t build
+// typecheck` on create-nx-workspace 23.3.0; Nx 24.0.1 still adds the build edge only for libraries
+// with a tsconfig.lib.json; related: https://github.com/nrwl/nx/issues/36744).
+// bun × next: the web app's jest config transforms with @nx/react/plugins/jest, which bun's
+// isolated install doesn't expose at the root (@nx/react only arrives through @nx/next), so its
+// test can't start — on create-nx-workspace 23.3.0 too. No Nx issue found (2026-10-25); repro:
+// create-nx-workspace@24.0.1 ws --preset=next --pm=bun …, then `bun nx test <web>`. Only that
+// test is skipped.
+const skipTest = pm === 'bun' && frontend === 'next' && fsdApp !== null ? [`--exclude=${fsdApp.project}`] : [];
+if (skipTest.length === 0) {
+  run('typecheck+test', pm, nxArgs(['run-many', '-t', 'typecheck,test']), { cwd: demoDir });
+} else {
+  run('typecheck+test', pm, nxArgs(['run-many', '-t', 'typecheck']), { cwd: demoDir });
+  run('typecheck+test', pm, nxArgs(['run-many', '-t', 'test', ...skipTest]), { cwd: demoDir });
+  stepLog.mergeLast(); // the two runs are one step
+  console.log(`e2e-create: skipped ${fsdApp.project}:test on bun × next (a known Nx issue; see the comment above)`);
+}
 
 // 5'. the FSD rule is live: a planted upward import (shared → entities) shows up in the
 // app's lint output. The solo preset reports at warn level, so lint still exits 0 — the
@@ -332,6 +373,8 @@ if (report.schema !== 'archweave/doctor-report@1') fail('doctor --json', `schema
 if (report.overallStatus !== 'safe' && report.overallStatus !== 'manual-review-required') {
   fail('doctor gate', `overallStatus: ${report.overallStatus}`, JSON.stringify(report, null, 2));
 }
-steps.push('doctor gate');
+stepLog.record('doctor gate');
 
 console.log(`\ne2e-create (${pm}, ${frontend}, backend ${backend}) PASSED — ${steps.length} steps: ${steps.join(' → ')}`);
+console.log(`\ntimings:\n${stepLog.timings()}`);
+stepLog.summarize(`e2e-create (${pm}, ${frontend}, backend ${backend})${SHELL ? ' on Windows' : ''}`);

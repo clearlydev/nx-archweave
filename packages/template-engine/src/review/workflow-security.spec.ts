@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SupportedPackageManager } from '../environment/package-manager.ts';
 import { ACTION_PINS } from './action-pins.ts';
 import { REVIEW_PROVIDERS } from './provider.ts';
-import { ROUND_MARKER } from './workflow-skeleton.ts';
+import { REVIEW_JOB_TIMEOUT_MINUTES, ROUND_MARKER } from './workflow-skeleton.ts';
 
 const PACKAGE_MANAGERS: SupportedPackageManager[] = ['pnpm', 'npm', 'yarn', 'bun'];
 const PINNED_USES = /^\s*(- )?uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+(\.\d+)*$/;
@@ -44,6 +46,38 @@ const INSTALL_SCRIPTS_OFF: Record<SupportedPackageManager, string[]> = {
 };
 
 describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[])('%s workflow security', (providerId) => {
+  it('runs the verdict bin only after the AI review ran in this run; a switched-off review ends green', () => {
+    const yaml = render(providerId, 'pnpm');
+    // no secret, or the round limit: nothing to judge, the bin never runs
+    expect(yaml).toMatch(/^ +false\/\*\)\n/m);
+    expect(yaml).toMatch(/^ +true\/false\)\n +not_run rounds\n/m);
+    expect(yaml).toMatch(/^ +echo "run=false"\n/m);
+    // the bin, and the step that fails the check, only run when run=true
+    const compute = yaml.slice(yaml.indexOf('- name: Compute review verdict'));
+    expect(compute).toMatch(/^ {8}if: steps\.ai-review-result\.outputs\.run == 'true'$/m);
+    expect(yaml).toContain("ARCHWEAVE_VERDICT_OUTPUT: 'github-output'");
+    expect(yaml).toContain('ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}');
+    expect(yaml).toContain("if: steps.verdict.outputs.blocked == 'true'");
+  });
+
+  it('says "AI review did not run" from the review job alone: no secret, no AI review, nothing inline', () => {
+    const jobs = jobsOf(render(providerId, 'npm'));
+    const notRunStep = stepsOf(jobs['review']).find((step) => step.includes('- name: Check the AI review result')) ?? '';
+    expect(notRunStep).toContain('::notice title=AI review did not run::');
+    expect(notRunStep).not.toContain('secrets.');
+    expect(notRunStep.slice(notRunStep.indexOf('  run: |'))).not.toContain('${{');
+    expect(jobs['ai-review']).not.toContain('AI review did not run for this commit');
+    expect(jobs['review-comment']).not.toContain('secrets.');
+  });
+
+  it('stops every job after 15 minutes instead of GitHub\'s 360-minute default', () => {
+    const yaml = render(providerId, 'pnpm');
+    const jobs = [...yaml.matchAll(/^ {2}([a-z-]+):\n((?: {4}.*\n|\n)*)/gm)].map(([, name, body]) => ({ name, body }));
+    expect(jobs.map((job) => job.name)).toEqual(['ai-review', 'review', 'review-comment']);
+    expect(REVIEW_JOB_TIMEOUT_MINUTES).toBe(15);
+    for (const job of jobs) expect(job.body).toMatch(/^ {4}timeout-minutes: 15$/m);
+  });
+
   it.each(PACKAGE_MANAGERS)('pins every action to a commit SHA (%s)', (packageManager) => {
     const usesLines = render(providerId, packageManager)
       .split('\n')
@@ -69,6 +103,17 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     expect(yaml).toMatch(/^permissions: \{\}$/m);
     expect(Object.keys(jobsOf(yaml))).toEqual(['ai-review', 'review', 'review-comment']);
     for (const job of Object.values(jobsOf(yaml))) expect(job).toMatch(/^ {4}permissions:$/m);
+  });
+
+  it.each(PACKAGE_MANAGERS)('uploads no artifact, so no workflow_run workflow can pick up anything a pull request wrote (%s)', (packageManager) => {
+    const variants = [
+      render(providerId, packageManager),
+      REVIEW_PROVIDERS[providerId].buildWorkflowYaml({ mode: 'fast', locale: 'ko', maxRounds: 1, packageManager }),
+    ];
+    for (const yaml of variants) {
+      expect(yaml).not.toMatch(/actions\/upload-artifact|actions\/download-artifact/);
+      expect(yaml).not.toMatch(/^\s*(- )?uses: [\w.-]+\/[\w.-]*artifact/m);
+    }
   });
 
   it.each(PACKAGE_MANAGERS)('keeps the AI review job free of dependency installs (%s)', (packageManager) => {
@@ -127,6 +172,105 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     expect(yaml).toContain(`jq -r '.packageManager // empty' package.json`);
     expect(yaml).toContain('version: ${{ steps.pnpm-version.outputs.version }}');
     expect(yaml).not.toMatch(/^\s*version: 10$/m);
+  });
+});
+
+describe('claude workflow: the agent\'s tools and the denial report', () => {
+  const yaml = render('claude', 'pnpm');
+  const aiReview = jobsOf(yaml)['ai-review'];
+  const deniedStep = stepsOf(aiReview).find((step) => step.includes('- name: Show denied tool calls')) ?? '';
+  const deniedScript = (() => {
+    const lines = deniedStep.slice(deniedStep.indexOf('  run: |\n')).split('\n').slice(1);
+    const indent = Math.min(...lines.filter((line) => line.trim() !== '').map((line) => line.length - line.trimStart().length));
+    return lines.map((line) => line.slice(indent)).join('\n');
+  })();
+
+  /** Runs the step the way the runner does (bash -e -o pipefail) on an execution file. */
+  function runDeniedStep(executionFile: string | undefined): { exitCode: number; lines: string[] } {
+    const dir = mkdtempSync(join(tmpdir(), 'denied-tools-'));
+    try {
+      const path = join(dir, 'claude-execution-output.json');
+      if (executionFile !== undefined) writeFileSync(path, executionFile);
+      const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', deniedScript], {
+        env: { PATH: process.env['PATH'] ?? '', EXECUTION_FILE: path },
+        encoding: 'utf-8',
+      });
+      return { exitCode: result.status ?? 1, lines: result.stdout.split('\n').filter((line) => line !== '') };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('allows exactly the tools of claude-code-action\'s PR-review examples: no shell at large, no API, no file writes', () => {
+    expect(yaml).toContain(
+      '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"',
+    );
+    const tools = /--allowedTools "([^"]*)"/.exec(yaml)?.[1].split(',') ?? [];
+    for (const tool of tools) expect(tool).not.toMatch(/^(Bash(\(\*\))?|Bash\(gh api.*|Write|Edit|MultiEdit|NotebookEdit)$/);
+    expect(yaml).not.toContain('--permission-mode');
+    expect(yaml).not.toContain('--dangerously-skip-permissions');
+  });
+
+  it('names the repository and the pull request in the prompt, and the safe way to post the summary', () => {
+    for (const locale of ['en', 'ko'] as const) {
+      const text = REVIEW_PROVIDERS.claude.buildWorkflowYaml({ mode: 'standard', locale, maxRounds: 3, packageManager: 'pnpm' });
+      expect(text).toContain('REPO: ${{ github.repository }}');
+      expect(text).toContain('PR NUMBER: ${{ github.event.pull_request.number }}');
+      expect(text).toContain("gh pr comment <PR NUMBER> --body-file - <<'ARCHWEAVE_EOF'");
+    }
+  });
+
+  it('keeps the action\'s full-output and report switches off and uploads nothing', () => {
+    expect(yaml).not.toContain('show_full_output');
+    expect(yaml).not.toContain('display_report');
+    expect(yaml).not.toContain('upload-artifact');
+  });
+
+  it('reads the denials only from the review step\'s execution file, after it ran or failed', () => {
+    expect(aiReview).toContain('  id: claude-review\n');
+    expect(deniedStep).toContain("if: always() && steps.claude-review.outputs.execution_file != ''");
+    expect(deniedStep).toContain('EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}');
+    expect(deniedScript).not.toContain('${{');
+  });
+
+  it('prints each denial as one escaped JSON line between stop-commands and a random token', () => {
+    const injected = 'gh api repos/x/y -f body=1\n::error::forged\n::add-mask::x ' + 'a'.repeat(300);
+    const { exitCode, lines } = runDeniedStep(
+      JSON.stringify([
+        { type: 'user', message: { content: [{ type: 'tool_result', content: 'TOOL-OUTPUT-NEVER-PRINTED' }] } },
+        {
+          type: 'result',
+          permission_denials: [
+            { tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: injected } },
+            { tool_name: 'mcp__github__get_file', tool_use_id: 't2', tool_input: { path: 'INPUT-NEVER-PRINTED' } },
+          ],
+        },
+      ]),
+    );
+    expect(exitCode).toBe(0);
+    const token = /^::stop-commands::(archweave-[0-9a-f]{32})$/.exec(lines[0])?.[1];
+    expect(token).toBeDefined();
+    expect(lines.at(-1)).toBe(`::${token}::`);
+    const denials = lines.slice(1, -1);
+    expect(denials).toHaveLength(2);
+    for (const line of denials) expect(line.startsWith('{')).toBe(true);
+    expect(JSON.parse(denials[0])).toEqual({ tool: 'Bash', command: injected.slice(0, 200) });
+    expect(JSON.parse(denials[1])).toEqual({ tool: 'mcp__github__get_file', command: '' });
+    const output = lines.join('\n');
+    expect(output).not.toContain('TOOL-OUTPUT-NEVER-PRINTED');
+    expect(output).not.toContain('INPUT-NEVER-PRINTED');
+  });
+
+  it('two runs never share a stop token', () => {
+    const empty = JSON.stringify([{ type: 'result', permission_denials: [] }]);
+    expect(runDeniedStep(empty).lines[0]).not.toBe(runDeniedStep(empty).lines[0]);
+  });
+
+  it('never fails the job: no execution file, or one that is not JSON', () => {
+    expect(runDeniedStep(undefined)).toEqual({ exitCode: 0, lines: [] });
+    const broken = runDeniedStep('not json');
+    expect(broken.exitCode).toBe(0);
+    expect(broken.lines.at(-1)).toMatch(/^::archweave-[0-9a-f]{32}::$/);
   });
 });
 

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { childEnv, createStepContext, executePlan, renderExecuteReport, type ExecResult, type PlanExec } from './execute.ts';
 import { buildPlan, type CreatePlan } from './plan.ts';
 
-const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
+const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
 
 function ok(): ExecResult {
   return { status: 0 };
@@ -122,13 +122,13 @@ describe('renderExecuteReport', () => {
   });
 
   it("prints the failed step's failureHint right under the exit code", () => {
-    const npmPlan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'npm' });
-    const report = executePlan(npmPlan, () => fail(), '/work');
-    const lines = renderExecuteReport(report, npmPlan, 'my-app').split('\n');
+    const hinted: CreatePlan = { steps: [{ ...plan.steps[0], failureHint: 'A KNOWN UPSTREAM FAILURE' }], nextSteps: [] };
+    const report = executePlan(hinted, () => fail(), '/work');
+    const lines = renderExecuteReport(report, hinted, 'my-app').split('\n');
 
     const exitLine = lines.findIndex((line) => line.includes('exit code: 1'));
     expect(exitLine).toBeGreaterThan(-1);
-    expect(lines[exitLine + 1]).toBe(`  ${npmPlan.steps[0].failureHint}`);
+    expect(lines[exitLine + 1]).toBe('  A KNOWN UPSTREAM FAILURE');
   });
 
   it('prints no hint for a step without one, nor for a finalizeArgs refusal', () => {
@@ -141,7 +141,59 @@ describe('renderExecuteReport', () => {
     expect(refused).not.toContain('HINT');
 
     const failed = renderExecuteReport(executePlan(plan, () => fail(), '/work'), plan, 'my-app');
-    expect(failed.split('\n').filter((line) => line.startsWith('  '))).toHaveLength(1); // the exit-code line only
+    const header = failed.split('\n').slice(0, failed.split('\n').findIndex((line) => line.includes('was left in place')));
+    expect(header.filter((line) => line.startsWith('  '))).toHaveLength(1); // the exit-code line only
+  });
+});
+
+describe('renderExecuteReport — remaining steps', () => {
+  it('lists the failed step and every later one in plan order, and never runs them again', () => {
+    let calls = 0;
+    const exec: PlanExec = () => {
+      calls += 1;
+      return calls === 2 ? fail() : ok();
+    };
+    const report = executePlan(plan, exec, '/work');
+    const text = renderExecuteReport(report, plan, 'my-app');
+
+    expect(calls).toBe(2);
+    expect(text).toContain('printed only — create-nx-archweave does not run them again');
+    const listed = plan.steps.slice(1).map((step) => `${step.command} ${step.args.join(' ')}`);
+    let at = text.indexOf('Remaining steps');
+    for (const command of listed) {
+      const found = text.indexOf(command, at);
+      expect(found).toBeGreaterThan(at);
+      at = found;
+    }
+    expect(text).not.toContain(plan.steps[0].args.join(' '));
+    expect(text).toContain(`1. ${plan.steps[1].description} — inside "my-app":`);
+  });
+
+  it('shows the arguments a finalized step actually ran with, and flags later run-time steps', () => {
+    const finalizing: CreatePlan = {
+      steps: [
+        { id: 'install-backend-plugin', description: 'pin', command: 'pnpm', args: ['add', '@nx/express'], cwd: 'my-app', finalizeArgs: () => ['add', '@nx/express@23.3.0'] },
+        { id: 'create-api-app', description: 'api', command: 'pnpm', args: ['nx', 'g', '@nx/express:application', 'apps/api'], cwd: 'my-app', finalizeArgs: () => ['nx', 'g', 'x'] },
+      ],
+      nextSteps: [],
+    };
+    const text = renderExecuteReport(executePlan(finalizing, () => fail(), '/work'), finalizing, 'my-app');
+
+    expect(text).toContain('pnpm add @nx/express@23.3.0');
+    expect(text).toContain('pnpm nx g @nx/express:application apps/api');
+    expect(text.match(/works out this step's exact arguments/g)).toHaveLength(1);
+  });
+
+  it('notes the plan environment and quotes arguments that need it', () => {
+    const quoted: CreatePlan = {
+      steps: [{ id: 'run-init', description: 'init', command: 'pnpm', args: ['nx', 'g', 'x', '--name=a b'], cwd: 'my-app' }],
+      nextSteps: [],
+      env: { pnpm_config_strict_dep_builds: 'false' },
+    };
+    const text = renderExecuteReport(executePlan(quoted, () => fail(), '/work'), quoted, 'my-app');
+
+    expect(text).toContain("pnpm nx g x '--name=a b'");
+    expect(text).toContain('Run them with pnpm_config_strict_dep_builds=false set');
   });
 });
 
@@ -149,7 +201,7 @@ describe('executePlan — finalizeArgs', () => {
   const ctx = { workspacePath: '/work/my-app', readFile: () => undefined, listDir: () => [] };
 
   it('executes with the finalized args', () => {
-    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
+    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
     plan.steps[1] = { ...plan.steps[1], finalizeArgs: () => ['add', '-D', '-w', 'pinned@1.2.3'] };
     const calls: string[][] = [];
     const exec: PlanExec = (_c, args) => {
@@ -162,7 +214,7 @@ describe('executePlan — finalizeArgs', () => {
   });
 
   it('stops before executing a step whose finalizeArgs returns an error', () => {
-    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
+    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
     plan.steps[1] = { ...plan.steps[1], finalizeArgs: () => ({ error: 'nx version not found' }) };
     let calls = 0;
     const exec: PlanExec = () => {
@@ -183,8 +235,8 @@ describe('executePlan — finalizeArgs', () => {
 describe('executePlan — finalize skip', () => {
   const ctx = { workspacePath: '/w', readFile: () => undefined, listDir: () => [] };
   it('records a skipped step without executing it and continues', () => {
-    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
-    plan.steps[1] = { ...plan.steps[1], finalizeArgs: () => ({ skip: 'already provided by the template' }) };
+    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
+    plan.steps[1] = { ...plan.steps[1], finalizeArgs: () => ({ skip: 'express is already declared' }) };
     const calls: string[][] = [];
     const exec: PlanExec = (_c, args) => {
       calls.push(args);
@@ -193,16 +245,16 @@ describe('executePlan — finalize skip', () => {
     const report = executePlan(plan, exec, '/work', () => ctx);
     expect(report.ok).toBe(true);
     expect(calls).toHaveLength(2); // steps 1 and 3 only
-    expect(report.completed[1].skipped).toBe('already provided by the template');
+    expect(report.completed[1].skipped).toBe('express is already declared');
   });
 
   it('surfaces the skip reason in the success report', () => {
-    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
-    plan.steps[1] = { ...plan.steps[1], finalizeArgs: () => ({ skip: 'already provided by the template' }) };
+    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
+    plan.steps[1] = { ...plan.steps[1], finalizeArgs: () => ({ skip: 'express is already declared' }) };
     const exec: PlanExec = () => ({ status: 0 });
     const report = executePlan(plan, exec, '/work', () => ctx);
     const text = renderExecuteReport(report, plan, 'my-app');
-    expect(text).toContain('skipped "install-plugin": already provided by the template');
+    expect(text).toContain('skipped "install-plugin": express is already declared');
   });
 });
 
@@ -229,7 +281,7 @@ describe('executePlan — plan env, executed args, success notes (2026-10-14)', 
       seen.push(options.env);
       return ok();
     };
-    const pnpmPlan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
+    const pnpmPlan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
     executePlan({ ...pnpmPlan, steps: pnpmPlan.steps.slice(0, 3) }, exec, '/work');
     expect(seen).toEqual([pnpmPlan.env, pnpmPlan.env, pnpmPlan.env]);
 

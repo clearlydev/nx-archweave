@@ -64,7 +64,10 @@
 - FSD 규칙이 보게 될 슬라이스 그룹, 슬라이스 제너레이터가 찾을 테스트 러너
 - 세그먼트 index를 넘어 `shared` 안쪽으로 들어가는 import와, 그 코드에 맞는 `sharedPublicApi` 값
 - `cwd` 없이 연결된 FSD 규칙(에디터나 루트에서 실행한 `eslint`는 아무것도 검사하지 않음)
+- frontend·backend·shared 태그가 하나도 없어서 경계 규칙이 적용되지 않는 프로젝트
+- 설치된 nx가 플러그인 자체의 `@nx/devkit`이 지원하는 메이저를 벗어난 경우(error). 그 밖에서는 제너레이터가 아예 로드되지 않을 수 있어요. `@nx/devkit`은 자기 메이저와 그 앞뒤 메이저 하나씩을 지원해요([Nx 플러그인 배포 가이드](https://nx.dev/docs/kb/publish-plugin)). 그래서 플러그인의 devkit 23은 nx 22~24를 뜻해요
 - nx-archweave가 만들지 않은 리뷰 워크플로, 두 공급자의 리뷰 워크플로가 함께 있는 경우, `packageManager`가 있는데 pnpm 버전을 고정한 경우
+- 0.2.2 이전에 생성된 리뷰 워크플로(error). AI 리뷰가 요약을 게시하지 않아도 `review` check가 통과해요(fail-open). `add-review --onConflict=overwrite`를 다시 실행하세요
 
 ### 배선
 

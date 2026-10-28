@@ -77,6 +77,8 @@ export type ExecuteReport =
       completed: CompletedStep[];
       failedStep: PlanStep;
       failedResult: ExecResult;
+      /** The args the failed step ran with (after finalizeArgs); absent when it never executed. */
+      failedArgs?: string[];
       /** Set when finalizeArgs refused — the step never executed. */
       finalizeError?: string;
     };
@@ -133,7 +135,7 @@ export function executePlan(
         return { ok: false, completed, failedStep: step, failedResult: { status: null }, finalizeError: finalized.error };
       }
       if ('skip' in finalized) {
-        // satisfied without running (e.g. the template already provides it)
+        // satisfied without running (e.g. express already declared)
         completed.push({ step, result: { status: 0 }, skipped: finalized.skip });
         continue;
       }
@@ -150,7 +152,7 @@ export function executePlan(
         completed.push({ step, result, args, optionalFailure });
         continue;
       }
-      return { ok: false, completed, failedStep: step, failedResult: result };
+      return { ok: false, completed, failedStep: step, failedResult: result, failedArgs: args };
     }
     completed.push({ step, result, args });
   }
@@ -203,6 +205,36 @@ export function renderExecuteReport(report: ExecuteReport, plan: CreatePlan, wor
     ...(!report.finalizeError && failedStep.failureHint ? [`  ${failedStep.failureHint}`] : []),
     '',
     `The "${workspaceName}" directory (if it was created) was left in place — create-nx-archweave never deletes it automatically.`,
-    `Inspect the error above, fix the issue, then either re-run the failed command yourself inside "${workspaceName}" or remove the directory and start over.`,
+    `Inspect the error above and fix the issue. Then either run the remaining steps below yourself, or remove the directory and start over.`,
+    '',
+    ...renderRemainingSteps(report, plan, workspaceName),
   ].join('\n');
+}
+
+/** The failed step and every step after it, as commands to run by hand. Printed only —
+ * create-nx-archweave never runs them again. A step whose arguments are decided at run
+ * time (finalizeArgs) shows its planned arguments with a note, except the failed step
+ * itself when it got as far as running: that one shows exactly what ran. */
+function renderRemainingSteps(report: Extract<ExecuteReport, { ok: false }>, plan: CreatePlan, workspaceName: string): string[] {
+  const start = plan.steps.indexOf(report.failedStep);
+  const remaining = start === -1 ? [report.failedStep] : plan.steps.slice(start);
+  const lines = [`Remaining steps, in order (printed only — create-nx-archweave does not run them again):`];
+  const env = Object.entries(plan.env ?? {});
+  if (env.length > 0) lines.push(`  Run them with ${env.map(([key, value]) => `${key}=${value}`).join(' ')} set, as the CLI does.`);
+  remaining.forEach((step, index) => {
+    const ranArgs = step === report.failedStep ? report.failedArgs : undefined;
+    const args = ranArgs ?? step.args;
+    const where = step.cwd === null ? 'in the directory you ran create-nx-archweave from' : `inside "${workspaceName}"`;
+    lines.push(`  ${index + 1}. ${step.description}${step.optional ? ' (optional)' : ''} — ${where}:`);
+    lines.push(`       ${[step.command, ...args].map(shellQuote).join(' ')}`);
+    if (step.finalizeArgs && ranArgs === undefined) {
+      lines.push('       (the CLI works out this step\'s exact arguments when it runs — check them against the workspace first)');
+    }
+  });
+  return lines;
+}
+
+/** POSIX-style quoting for display: plain words stay bare, anything else is single-quoted. */
+function shellQuote(word: string): string {
+  return /^[\w@%+=:,./^~-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
 }

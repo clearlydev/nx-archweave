@@ -113,13 +113,12 @@ async function main(argv: readonly string[]): Promise<number> {
       console.error(conflict);
       return 1;
     }
-    // Asked last, so the frontend is known for the compatibility rule. Non-interactive runs take
-    // the launching manager instead of asking (CI and agents use this path).
+    // Non-interactive runs take the launching manager instead of asking (CI and agents use
+    // this path).
     pm = await choosePackageManager(
       {
         flag: args.packageManager,
         userAgent: process.env['npm_config_user_agent'],
-        frontend: inputs.frontend,
         interactive,
         probe: readVersion,
       },

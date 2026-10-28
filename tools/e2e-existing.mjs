@@ -26,6 +26,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStepLog } from './e2e-steps.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modeArg = process.argv.find((a) => a.startsWith('--mode='));
@@ -57,7 +58,8 @@ if (!nxVersion) {
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 const UPSTREAM_STEPS = ['create workspace'];
-const steps = [];
+const stepLog = createStepLog();
+const steps = stepLog.names;
 function fail(step, detail, output) {
   if (UPSTREAM_STEPS.includes(step) && mode === 'pr') {
     console.log(`::warning title=e2e-existing (${frontend}): upstream drift at "${step}"::${(detail ?? '').replace(/\n/g, ' ')} — not blocking this PR; the manual strict CI run reports it as a failure.`);
@@ -69,6 +71,7 @@ function fail(step, detail, output) {
   if (detail) console.error(`  ${detail}`);
   if (output) console.error(`\n--- captured output (tail) ---\n${output.slice(-4000)}`);
   console.error(`\ncompleted steps: ${steps.join(' → ') || '(none)'}`);
+  if (steps.length > 0) console.error(`\ntimings of the completed steps:\n${stepLog.timings()}`);
   process.exit(1);
 }
 
@@ -76,7 +79,7 @@ function run(step, command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf-8', maxBuffer: MAX_BUFFER, ...options });
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   if (result.status !== 0) fail(step, `${command} ${args.join(' ')} → exit ${result.status}`, output);
-  steps.push(step);
+  stepLog.record(step);
   return { output, stdout: result.stdout ?? '' };
 }
 
@@ -126,12 +129,12 @@ const eslintConfig = readFileSync(join(appDir, 'eslint.config.mjs'), 'utf-8');
 if (!eslintConfig.includes("platformSuffixes: ['ios', 'android', 'native', 'web']")) fail('eslint config', 'the rule lacks the platform suffixes', eslintConfig);
 const recorded = JSON.parse(readFileSync(join(demoDir, 'toolkit.config.json'), 'utf-8'));
 if (recorded.frontend !== 'expo') fail('toolkit.config.json', `frontend: ${JSON.stringify(recorded.frontend)}`);
-steps.push('init wiring');
+stepLog.record('init wiring');
 
 // 5. slices land in the app's source root
 run('slice generators', 'pnpm', ['nx', 'g', '@clearlydev/nx-archweave:page', '--name=e2e-home'], { cwd: demoDir });
 run('slice generators', 'pnpm', ['nx', 'g', '@clearlydev/nx-archweave:feature', '--name=e2e-probe', '--segments=ui,api'], { cwd: demoDir });
-steps.pop(); // the two runs are one step
+stepLog.mergeLast(); // the two runs are one step
 for (const rel of ['src/pages/e2e-home/index.ts', 'src/features/e2e-probe/index.ts', 'src/features/e2e-probe/ui/index.ts', 'src/features/e2e-probe/api/index.ts']) {
   if (!existsSync(join(appDir, rel))) fail('slice generators', `${rel} is missing`);
 }
@@ -166,6 +169,8 @@ if (report.overallStatus !== 'safe' && report.overallStatus !== 'manual-review-r
 }
 const framework = (report.checks ?? []).find((check) => check.id === 'framework-profile');
 if (framework?.status !== 'pass' || framework.message !== 'expo') fail('doctor gate', `framework-profile: ${JSON.stringify(framework)}`, JSON.stringify(report, null, 2));
-steps.push('doctor gate');
+stepLog.record('doctor gate');
 
 console.log(`\ne2e-existing (${frontend}) PASSED — ${steps.length} steps: ${steps.join(' → ')}`);
+console.log(`\ntimings:\n${stepLog.timings()}`);
+stepLog.summarize(`e2e-existing (${frontend})`);

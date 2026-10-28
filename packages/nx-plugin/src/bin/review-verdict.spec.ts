@@ -215,6 +215,60 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
     expect(written).toEqual([]);
   });
 
+  describe('after the AI review ran in this run (the round gate passed its watermark)', () => {
+    const RAN = { ...OUTPUT, ARCHWEAVE_ROUND_AFTER_ID: '60', ARCHWEAVE_HEAD_SHA: 'abcdef1234567' };
+    const run = (comments: unknown[]) => {
+      const written: string[] = [];
+      const result = runReviewVerdictBin(RAN, stubExec(JSON.stringify(comments), []), (_p, text) => written.push(text));
+      return { result, outputs: parseOutputs(written.join('')), logs: result.logs.join('\n') };
+    };
+    const round = (id: number, findings: unknown[] = []) => ({
+      id,
+      user: { login: 'claude[bot]', type: 'Bot' },
+      body: `${ROUND_MARKER}\n${FINDINGS_MARKER}\n\`\`\`json\n${JSON.stringify({ schema: 'archweave/findings@1', findings })}\n\`\`\``,
+    });
+
+    it('no summary at all: blocked=true, a notice to review manually or re-run, an error annotation', () => {
+      const { result, outputs, logs } = run([]);
+      expect(result.exitCode).toBe(0);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['comment-body']).toContain('AI review posted no summary');
+      expect(outputs['comment-body']).toContain('re-run all jobs');
+      expect(logs).toContain('::error title=AI review posted no summary::');
+    });
+
+    it("only an earlier run's marker (an old APPROVE): blocked=true, the old round isn't reused, its verdict comment is edited", () => {
+      const { outputs } = run([round(40), verdictComment(50)]);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['comment-body']).toContain('AI review posted no summary');
+      expect(outputs['previous-comment-id']).toBe('50');
+    });
+
+    it("this run's round with rounds still left is judged: APPROVE passes, P1 blocks", () => {
+      expect(run([round(40), round(70)]).outputs['blocked']).toBe('false');
+      const p1 = { priority: 'P1', category: 'c', title: 't', file: 'f.ts', lineRange: { start: 1 }, evidence: '', impact: '', reproductionCondition: '', recommendation: '', confidence: 'confirmed' };
+      expect(run([round(70, [p1])]).outputs['blocked']).toBe('true');
+    });
+
+    it("this run's round on the last allowed round (maxRounds reached) is still judged", () => {
+      const { outputs, logs } = run([round(10), round(20), round(70)]);
+      expect(outputs['blocked']).toBe('false');
+      expect(logs).toContain('verdict gate: APPROVE');
+    });
+
+    it("this run's summary without a findings block: blocked=true with the unreadable-summary notice", () => {
+      const { outputs, logs } = run([{ id: 70, user: { login: 'claude[bot]', type: 'Bot' }, body: `${ROUND_MARKER}\nno block` }]);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['comment-body']).toContain('could not be machine-read');
+      expect(logs).toContain('::error title=AI review summary unreadable::');
+    });
+
+    it('a human comment carrying the marker never counts as the summary', () => {
+      const { outputs } = run([{ id: 70, user: { login: 'someone', type: 'User' }, body: `${ROUND_MARKER}\n${FINDINGS_MARKER}\n\`\`\`json\n{"schema":"archweave/findings@1","findings":[]}\n\`\`\`` }]);
+      expect(outputs['blocked']).toBe('true');
+    });
+  });
+
   it('a delimiter line inside the comment cannot end the output early', () => {
     const written: string[] = [];
     runReviewVerdictBin(OUTPUT, stubExec(blockComment('P0'), []), (_p, text) => written.push(text));

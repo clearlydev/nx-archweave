@@ -110,6 +110,7 @@ export const REVIEW_CHECK_IDS = [
   'review-config-consistency',
   'review-workflow-providers',
   'review-workflow-pnpm',
+  'review-workflow-fail-open',
 ] as const;
 
 const WORKFLOWS_DIR = '.github/workflows';
@@ -181,6 +182,29 @@ function buildReviewPnpmCheck(root: string, workflows: string[]): DoctorCheck {
   });
 }
 
+/** The step output the verdict gate fails closed through. Workflows generated before 0.2.2 run
+ * the verdict bin without it, and then a run whose AI review posted no summary — or one nobody
+ * can read — passes the review check: the bin can't tell it from a review switched off. */
+const FAIL_CLOSED_VERDICT_MODE = "ARCHWEAVE_VERDICT_OUTPUT: 'github-output'";
+
+function buildReviewFailOpenCheck(root: string, workflows: string[]): DoctorCheck {
+  const id = 'review-workflow-fail-open';
+  const label = 'Review check fails closed';
+  if (workflows.length === 0) return createDoctorCheck({ id, label, status: 'not-applicable', message: 'no nx-archweave review workflow', evidence: [] });
+  const failOpen = workflows.filter((path) => !readFileSync(join(root, path), 'utf-8').includes(FAIL_CLOSED_VERDICT_MODE));
+  if (failOpen.length === 0) {
+    return createDoctorCheck({ id, label, status: 'pass', message: 'a review run that leaves no readable summary fails the review check', evidence: workflows });
+  }
+  return createDoctorCheck({
+    id,
+    label,
+    status: 'error',
+    message: 'fail-open workflow: generated before nx-archweave 0.2.2, it passes the review check when the AI review posts no summary or one that cannot be read, so an unreviewed pull request can merge',
+    evidence: failOpen,
+    suggestedAction: 'Re-run add-review: nx g @clearlydev/nx-archweave:add-review --onConflict=overwrite. The report shows the difference before anything is replaced.',
+  });
+}
+
 /** Read-only review-state diagnostics: whether the main review workflow is installed,
  * whether an alternate-filename file coexists with (or is orphaned without) it, and whether
  * the installed workflow still matches what toolkit.config.json's `review` field
@@ -200,6 +224,7 @@ export function buildReviewChecks(root: string): DoctorCheck[] {
     buildReviewConfigConsistencyCheck(root, mainWorkflowPath, mainExists, config),
     buildReviewProvidersCheck(workflows),
     buildReviewPnpmCheck(root, workflows),
+    buildReviewFailOpenCheck(root, workflows),
   ];
 }
 

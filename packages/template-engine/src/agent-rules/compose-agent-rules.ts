@@ -4,13 +4,15 @@ import {
   FSD_AGENT_SECTION_ID,
   TEAM_AGENT_SECTION_ID,
   buildFsdPolicyNotes,
+  buildModuleBoundariesSection,
   type FsdPolicyNotes,
+  type ModuleBoundaryTags,
   type AgentRuleLocale,
   type AgentRuleSection,
   type AgentSectionId,
 } from '@nx-archweave/templates';
 
-export type { FsdPolicyNotes };
+export type { FsdPolicyNotes, ModuleBoundaryTags };
 
 export type AgentRuleFileName = 'CLAUDE.md' | 'AGENTS.md';
 
@@ -31,6 +33,10 @@ export interface ComposeAgentRulesInput {
   /** The workspace's configured FSD options, described at the end of that section. Omitted when
    * none is configured, which keeps the section's canonical text. */
   fsdPolicy?: FsdPolicyNotes;
+  /** The workspace's frontend/backend role tags: adds the Module Boundaries section to the
+   * DEFAULT composition, after the FSD section (or Code Structure without it). Omitted when
+   * the workspace has no backend, which keeps the output unchanged. */
+  moduleBoundaries?: ModuleBoundaryTags;
 }
 
 /** The section ids `composeAgentRules` uses when no explicit `sections` list is given:
@@ -72,6 +78,11 @@ export function composeAgentRules(input: ComposeAgentRulesInput): AgentRuleFile[
     const section = AGENT_RULE_SECTIONS[input.locale][id];
     return id === FSD_AGENT_SECTION_ID && notes !== '' ? { ...section, body: `${section.body}\n\n${notes}` } : section;
   });
+  if (input.moduleBoundaries !== undefined && input.sections === undefined) {
+    const anchor = sections.findIndex((section) => section.id === FSD_AGENT_SECTION_ID);
+    const at = (anchor === -1 ? sections.findIndex((section) => section.id === 'code-structure') : anchor) + 1;
+    sections.splice(at, 0, buildModuleBoundariesSection(input.locale, input.moduleBoundaries));
+  }
   const content = renderSections(sections);
   return input.files.map((filePath) => ({ filePath, content }));
 }

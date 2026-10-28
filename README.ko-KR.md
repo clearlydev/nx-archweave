@@ -10,10 +10,11 @@
 
 ## 제공하는 것
 
-- 모듈 경계가 강제되는 **Feature-Sliced Design (Lite)** 폴더 구조
+- 프런트엔드 앱의 FSD 레이어를 알아보고 레이어 사이 import를 검사하는 **Feature-Sliced Design (Lite) 린트 규칙**(solo·quick-start는 `warn`, team은 `error`)과, 필요할 때 슬라이스를 만드는 제너레이터
+- 백엔드를 고르면 **프런트엔드/백엔드 경계**: nx-archweave가 태그를 붙인 프런트엔드·백엔드 프로젝트 사이의 import가 린트 에러가 돼요
 - 사용하는 AI 코딩 도구를 위한 **AI 에이전트 규칙 파일**
 - **GitHub 이슈/PR 템플릿**
-- 원하는 AI 프로바이더로 동작하는 **자동 PR 리뷰**(완전 선택형)
+- 원하는 AI 프로바이더로 동작하는 **자동 PR 리뷰**(완전 선택형). Claude를 지원하고, Gemini·GPT·Cursor는 beta예요
 
 ## 빠른 시작
 

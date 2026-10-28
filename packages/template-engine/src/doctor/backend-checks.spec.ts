@@ -8,19 +8,21 @@ function byId(checks: ReturnType<typeof buildBackendChecks>, id: string) {
 }
 
 describe('buildBackendChecks', () => {
-  it('exports the five backend check ids', () => {
+  it('exports the six backend check ids', () => {
     expect(BACKEND_CHECK_IDS).toEqual([
       'backend-framework',
       'backend-config-consistency',
       'shared-types-lib',
       'boundary-constraints-applied',
       'boundary-tags-exist',
+      'boundary-untagged-projects',
     ]);
   });
 
-  it('all five pass on a fully wired fullstack workspace', () => {
+  it('all pass on a fully wired fullstack workspace (the untagged check needs the project list)', () => {
     const checks = buildBackendChecks(join(FIXTURES, 'fullstack-workspace'));
-    expect(checks).toHaveLength(5);
+    expect(checks).toHaveLength(6);
+    expect(byId(checks, 'boundary-untagged-projects')?.status).toBe('not-applicable');
     expect(byId(checks, 'backend-framework')?.status).toBe('pass');
     expect(byId(checks, 'backend-config-consistency')?.status).toBe('pass');
     expect(byId(checks, 'shared-types-lib')?.status).toBe('pass');
@@ -101,4 +103,51 @@ describe('shared-types-lib legacy shape', () => {
 it('finds tags in grouped (one-level-nested) app and lib directories', () => {
   const checks = buildBackendChecks(join(FIXTURES, 'grouped-tags'));
   expect(checks.find((c) => c.id === 'boundary-tags-exist')?.status).toBe('pass');
+});
+
+describe('boundary-untagged-projects', () => {
+  const project = (name: string, root: string, tags: string[]) => ({ name, root, sourceRoot: `${root}/src`, tags });
+  const wired = join(FIXTURES, 'fullstack-workspace');
+
+  it('passes when every project carries a role tag, ignoring e2e projects and the workspace root', () => {
+    const check = byId(
+      buildBackendChecks(wired, [
+        project('@org/web', 'apps/web', ['scope:frontend']),
+        project('@org/web-e2e', 'apps/web-e2e', []),
+        project('@org/api', 'apps/api', ['scope:backend']),
+        project('@org/shared-types', 'libs/shared-types', ['scope:shared']),
+        project('@org/source', '.', []),
+      ]),
+      'boundary-untagged-projects',
+    );
+    expect(check?.status).toBe('pass');
+  });
+
+  it('warns and names a library that carries no role tag, even if it has other tags', () => {
+    const check = byId(
+      buildBackendChecks(wired, [
+        project('@org/web', 'apps/web', ['scope:frontend']),
+        project('@org/api', 'apps/api', ['scope:backend']),
+        project('@org/shop-ui', 'packages/shop/ui', ['scope:shop', 'type:ui']),
+        project('@org/utils', 'libs/utils', []),
+      ]),
+      'boundary-untagged-projects',
+    );
+    expect(check?.status).toBe('warning');
+    expect(check?.evidence).toEqual(['@org/shop-ui', '@org/utils']);
+    expect(check?.message).toContain("deny rules don't cover them");
+    expect(check?.suggestedAction).toContain('--tags=scope:shared');
+  });
+
+  it('lists ten names and counts the rest', () => {
+    const many = Array.from({ length: 12 }, (_, i) => project(`@org/lib${i}`, `libs/lib${i}`, []));
+    const check = byId(buildBackendChecks(wired, [project('@org/web', 'apps/web', ['scope:frontend']), project('@org/api', 'apps/api', ['scope:backend']), ...many]), 'boundary-untagged-projects');
+    expect(check?.message).toContain('and 2 more');
+    expect(check?.evidence).toHaveLength(12);
+  });
+
+  it('is not-applicable when the constraints are not enforced', () => {
+    const check = byId(buildBackendChecks(join(FIXTURES, 'fullstack-misconfigured'), [project('@org/utils', 'libs/utils', [])]), 'boundary-untagged-projects');
+    expect(check?.status).toBe('not-applicable');
+  });
 });

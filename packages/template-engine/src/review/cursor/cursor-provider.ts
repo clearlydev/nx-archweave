@@ -16,7 +16,7 @@ import {
 
 const SECRET_NAME = 'CURSOR_API_KEY';
 
-/** Heredoc delimiter for the shell prompt passed to `agent -p`; quoted (`'...'`) so the
+/** Heredoc delimiter for the shell prompt passed to `agent --trust -p`; quoted (`'...'`) so the
  * composed prompt's own content (backticks, `$(...)`, etc.) is never shell-expanded.
  *
  * Indentation invariant: every line between `<<'DELIM'` and the terminator is emitted at
@@ -31,7 +31,7 @@ const PROMPT_HEREDOC_DELIMITER = 'ARCHWEAVE_CURSOR_REVIEW_PROMPT';
 /** Research finding (2026-09-12, verified against https://cursor.com/docs/cli/github-actions
  * and https://cursor.com/docs/cli/headless): there is no official Marketplace Action, so the
  * workflow installs the `cursor-agent` CLI itself (`curl https://cursor.com/install -fsS | bash`,
- * then adds its directory to `$GITHUB_PATH`) and invokes it headless via `agent -p "<prompt>"`.
+ * then adds its directory to `$GITHUB_PATH`) and invokes it headless via `agent --trust -p "<prompt>"`.
  * Unlike the sandboxed gpt/codex-action provider, `cursor-agent` is not sandboxed by default (the
  * docs' "full autonomy" example has the agent call `gh`/git directly) — so, like claude/gemini, the
  * model itself runs `gh pr diff` / `gh pr comment` inside the review step. */
@@ -96,7 +96,9 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
         `    CURSOR_API_KEY: \${{ secrets.${SECRET_NAME} }}`,
         '    GH_TOKEN: ${{ github.token }}',
         '  run: |',
-        `    agent -p "$(cat <<'${PROMPT_HEREDOC_DELIMITER}'`,
+        // cursor-agent stops at "Workspace Trust Required" without --trust (2026.10.22 on
+        // Actions); the folder is this run's own checkout, and forks never get the secret.
+        `    agent --trust -p "$(cat <<'${PROMPT_HEREDOC_DELIMITER}'`,
         indentBlock(composePrompt(input), 4),
         `    ${PROMPT_HEREDOC_DELIMITER}`,
         '    )"',

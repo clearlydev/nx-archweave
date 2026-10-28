@@ -19,7 +19,7 @@ describe('cursorProvider', () => {
     // Both directories the installer has used, so `agent` resolves wherever it lands.
     expect(yaml).toContain('echo "$HOME/.local/bin" >> "$GITHUB_PATH"');
     expect(yaml).toContain('echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"');
-    expect(yaml).toContain('agent -p "$(cat <<');
+    expect(yaml).toContain('agent --trust -p "$(cat <<');
     expect(yaml).toContain('CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}');
     expect(yaml).toContain('GH_TOKEN: ${{ github.token }}');
     expect(yaml).toContain(
@@ -29,6 +29,12 @@ describe('cursorProvider', () => {
     expect(yaml).not.toContain('focused exclusively on over-engineering');
     expect(yaml).toContain(ROUND_MARKER);
     expect(yaml).toMatchSnapshot();
+  });
+
+  it('passes --trust, without which cursor-agent stops at "Workspace Trust Required"', () => {
+    const yaml = cursorProvider.buildWorkflowYaml({ mode: 'standard', locale: 'en', maxRounds: 3, packageManager: 'pnpm' });
+    expect(yaml).toContain('agent --trust -p "$(cat <<');
+    expect(yaml).not.toMatch(/agent -p /);
   });
 
   it('thorough mode appends the over-engineering pass per REVIEW_MODES', () => {
