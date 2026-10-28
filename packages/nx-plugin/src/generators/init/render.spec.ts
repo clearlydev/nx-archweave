@@ -58,6 +58,25 @@ describe('renderInitReport — allowDirty note', () => {
     expect(output).not.toContain('Refused');
   });
 
+  it('leaves the note out when the caller says the dirty tree is its own preceding step', () => {
+    const output = renderInitReport({
+      ...BASE,
+      cleanTree: false,
+      allowDirty: true,
+      dirtyFromCaller: true,
+      sections: [{ id: 'review', enabled: false, report: null }],
+    });
+    expect(output).not.toContain('--allowDirty was set');
+    expect(output).not.toContain('reverts your earlier changes');
+    expect(output).not.toContain('Refused');
+  });
+
+  it('still prints the refusal when dirtyFromCaller is set on a refused run', () => {
+    const output = renderInitReport({ ...BASE, cleanTree: false, dirtyFromCaller: true, refused: true, sections: [] });
+    expect(output).toContain('Refused');
+    expect(output).toContain('commit or stash your changes, then rerun');
+  });
+
   it('prints no dirty note when allowDirty was set but the tree was clean anyway', () => {
     const output = renderInitReport({
       ...BASE,
@@ -227,6 +246,19 @@ describe('renderInitReport — rollback names the files this run wrote', () => {
       ...BASE,
       cleanTree: false,
       allowDirty: true,
+      sections: [aborted],
+      written: { created: [], modified: ['package.json'] },
+    });
+    expect(output).toContain('  git restore -- package.json');
+    expect(output).toContain('(--allowDirty: this also reverts the uncommitted changes those files already had.)');
+  });
+
+  it('keeps that rollback warning with dirtyFromCaller: restoring would undo the caller step too', () => {
+    const output = renderInitReport({
+      ...BASE,
+      cleanTree: false,
+      allowDirty: true,
+      dirtyFromCaller: true,
       sections: [aborted],
       written: { created: [], modified: ['package.json'] },
     });

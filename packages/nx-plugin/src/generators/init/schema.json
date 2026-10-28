@@ -90,6 +90,12 @@
       "default": false,
       "description": "Run even when the working tree has uncommitted changes. The report then warns that restoring the files init modified also reverts those pre-existing changes. Used by create-nx-archweave, whose own plugin-install step dirties the fresh workspace right before init runs"
     },
+    "dirtyFromCaller": {
+      "type": "boolean",
+      "default": false,
+      "x-priority": "internal",
+      "description": "Internal, set by create-nx-archweave: the uncommitted changes --allowDirty lets through come from the caller's own preceding step, so the report leaves out the note about reverting earlier changes. Never changes whether a dirty tree is refused"
+    },
     "applyEslint": {
       "type": "boolean",
       "default": false,

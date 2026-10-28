@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GeneratorCallback, Tree } from '@nx/devkit';
-import { buildPresetConfig } from '@nx-archweave/template-engine';
+import { buildPresetConfig, readBoundaryTags } from '@nx-archweave/template-engine';
 import { runAddFsdLite } from '../add-fsd-lite/generator.ts';
 import { runAddAgentRules } from '../add-agent-rules/generator.ts';
 import { runAddGithubTemplates } from '../add-github-templates/generator.ts';
@@ -242,8 +242,8 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
         dryRun,
       },
       // init records aiHosts below, with its other choices; the FSD section follows this run's
-      // frontend axis
-      { recordHosts: false, fsdStructure: fsdEnabled },
+      // frontend axis, the Module Boundaries section its backend axis
+      { recordHosts: false, fsdStructure: fsdEnabled, moduleBoundaries: backend === 'none' ? null : readBoundaryTags(recorded) },
     );
     sections.push({ id: 'agentRules', enabled: true, report: { kind: 'agentRules', report } });
   } else {
@@ -364,6 +364,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     dryRun,
     cleanTree,
     allowDirty,
+    dirtyFromCaller: options.dirtyFromCaller ?? false,
     refused: false,
     sections,
     config: configOutcome,

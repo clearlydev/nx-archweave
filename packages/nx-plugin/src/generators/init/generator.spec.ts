@@ -55,6 +55,26 @@ describe('runInit — dirty tree refusal', () => {
     expect(tree.listChanges().length).toBeGreaterThan(0);
   });
 
+  it('dirtyFromCaller alone never lets a dirty tree through — the refusal still fires and nothing is written', () => {
+    const before = tree.listChanges().length;
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', dirtyFromCaller: true }, DIRTY);
+    expect(report.refused).toBe(true);
+    expect(report.cleanTree).toBe(false);
+    expect(report.sections).toEqual([]);
+    expect(tree.listChanges().length).toBe(before);
+  });
+
+  it('dirtyFromCaller with allowDirty runs exactly like allowDirty alone, recording both', () => {
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', allowDirty: true, dirtyFromCaller: true }, DIRTY);
+    const plain = runInit(appTree(), { preset: 'solo', frontend: 'react-vite', allowDirty: true }, DIRTY);
+    expect(report.refused).toBe(false);
+    expect(report.cleanTree).toBe(false);
+    expect(report.dirtyFromCaller).toBe(true);
+    expect(plain.dirtyFromCaller).toBe(false);
+    expect(report.sections.map((s) => s.id)).toEqual(plain.sections.map((s) => s.id));
+    expect(report.written).toEqual(plain.written);
+  });
+
   it('allowDirty on a clean tree behaves like a normal run (cleanTree stays true)', () => {
     const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', allowDirty: true }, CLEAN);
     expect(report.refused).toBe(false);
@@ -535,6 +555,24 @@ describe('runInit — backend section', () => {
     expect(tree.exists('libs/shared-types/src/index.ts')).toBe(true);
   });
 
+  it('the agent rules name exactly the role tags add-backend put on the projects, configured names included', () => {
+    const tree = treeWithApiApp();
+    tree.write('toolkit.config.json', JSON.stringify({ boundaries: { tags: { frontend: 'type:web', backend: 'type:api', shared: 'type:shared' } } }));
+    runInit(tree, { preset: 'solo', frontend: 'react-vite', backend: 'express', applyEslint: true }, CLEAN);
+    const tagsOf = (path: string): string[] => {
+      const parsed = JSON.parse(tree.read(path, 'utf-8')!) as { tags?: string[]; nx?: { tags?: string[] } };
+      return parsed.tags ?? parsed.nx?.tags ?? [];
+    };
+    const rules = tree.read('CLAUDE.md', 'utf-8')!;
+    const apiTag = tagsOf('apps/api/project.json').find((tag) => tag.startsWith('type:'));
+    const sharedTag = tagsOf('libs/shared-types/package.json').find((tag) => tag.startsWith('type:'));
+    expect(apiTag).toBe('type:api');
+    expect(sharedTag).toBe('type:shared');
+    expect(rules).toContain(`\`type:web\` projects never import \`${apiTag}\` projects`);
+    expect(rules).toContain(`--tags=${sharedTag}`);
+    expect(rules).not.toContain('scope:frontend');
+  });
+
   it("backend 'none' leaves the report and the tree with zero backend traces", () => {
     const tree = appTree();
     const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', backend: 'none' }, CLEAN);
@@ -581,6 +619,8 @@ describe('runInit — backend-only workspaces (frontend none)', () => {
     expect(backend.report.report.refused).toBeUndefined();
     expect(backend.report.report.frontendProject).toBeUndefined();
     expect(JSON.parse(tree.read('apps/api/project.json', 'utf-8')!).tags).toEqual(['scope:backend']);
+    // the agent rules name exactly the tag add-backend just put on the api
+    expect(tree.read('CLAUDE.md', 'utf-8')).toContain('`scope:frontend` projects never import `scope:backend` projects');
     const rendered = renderInitReport(report);
     expect(rendered).toContain('init (preset: team, frontend: none, backend: nest)');
     expect(rendered).toContain('skipped (backend-only workspace — no frontend to structure)');
