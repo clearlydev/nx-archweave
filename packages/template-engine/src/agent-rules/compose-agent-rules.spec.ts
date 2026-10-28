@@ -129,3 +129,34 @@ describe('composeAgentRules — fsdStructure', () => {
     expect(composeAgentRules({ files: ['CLAUDE.md'], locale: 'en' })[0].content).not.toContain('archweave/fsd-boundaries');
   });
 });
+
+describe('composeAgentRules — moduleBoundaries', () => {
+  const tags = { frontend: 'type:web', backend: 'type:api', shared: 'type:shared' };
+  const headings = (content: string) => [...content.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+
+  it('leaves the output unchanged when omitted', () => {
+    const plain = composeAgentRules({ files: ['AGENTS.md'], locale: 'en', fsdStructure: true });
+    expect(plain[0].content).not.toContain('Module Boundaries');
+  });
+
+  it('goes right after the FSD section, with the given tag names verbatim', () => {
+    const [file] = composeAgentRules({ files: ['AGENTS.md'], locale: 'en', fsdStructure: true, moduleBoundaries: tags });
+    const list = headings(file.content);
+    expect(list[list.indexOf('Frontend Structure (FSD Lite)') + 1]).toBe('Module Boundaries');
+    expect(file.content).toContain('`type:web` projects never import `type:api` projects');
+    expect(file.content).toContain('--tags=type:shared');
+    expect(file.content).not.toContain('scope:');
+  });
+
+  it('goes right after Code Structure without the FSD section (backend-only), in Korean too', () => {
+    const [file] = composeAgentRules({ files: ['AGENTS.md'], locale: 'ko', moduleBoundaries: tags });
+    const list = headings(file.content);
+    expect(list[list.indexOf('모듈 경계') - 1]).toBe(AGENT_RULE_SECTIONS.ko['code-structure'].heading);
+    expect(file.content).toContain('--tags=type:shared');
+  });
+
+  it('an explicit sections list wins: no Module Boundaries section is added', () => {
+    const [file] = composeAgentRules({ files: ['AGENTS.md'], locale: 'en', sections: ['safety-rules', 'language-policy'], moduleBoundaries: tags });
+    expect(file.content).not.toContain('Module Boundaries');
+  });
+});

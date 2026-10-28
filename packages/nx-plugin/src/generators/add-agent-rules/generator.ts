@@ -1,5 +1,5 @@
 import type { Tree } from '@nx/devkit';
-import { applyAgentRulesBlock, composeAgentRules, rulesFilesFor, validateAgentRules, type FsdPolicyNotes } from '@nx-archweave/template-engine';
+import { applyAgentRulesBlock, composeAgentRules, readBoundaryTags, rulesFilesFor, validateAgentRules, type FsdPolicyNotes, type ModuleBoundaryTags } from '@nx-archweave/template-engine';
 import type { AddAgentRulesGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
 import { readToolkitConfig, recordAiHosts, resolveAiHostsOption, resolveLocaleOption } from '../shared/toolkit-config-file.ts';
@@ -29,6 +29,13 @@ function resolveFsdStructure(config: Record<string, unknown> | null): boolean {
   return typeof frontend === 'string' && frontend !== 'none';
 }
 
+/** The Module Boundaries section rides on the workspace having a backend (add-backend
+ * records it), with the role tags toolkit.config.json names; no backend means no section. */
+function resolveModuleBoundaries(config: Record<string, unknown> | null): ModuleBoundaryTags | undefined {
+  const backend = config?.['backend'];
+  return backend === 'express' || backend === 'nest' ? readBoundaryTags(config) : undefined;
+}
+
 const POLICY_KEYS = ['preset', 'sliceGroups', 'sharedPublicApi', 'testFiles'];
 
 /** The FSD options toolkit.config.json records, for the Frontend Structure section; undefined
@@ -47,12 +54,16 @@ export interface RunAddAgentRulesOptions {
   /** Include the Frontend Structure (FSD) section. init passes what it knows; a standalone
    * run reads toolkit.config.json (see resolveFsdStructure). */
   fsdStructure?: boolean;
+  /** The Module Boundaries section's role tags, or null for none. init passes what this run
+   * sets up (it writes the backend after the agent rules); a standalone run reads
+   * toolkit.config.json (see resolveModuleBoundaries). */
+  moduleBoundaries?: ModuleBoundaryTags | null;
 }
 
 export function runAddAgentRules(
   tree: Tree,
   options: AddAgentRulesGeneratorSchema,
-  { recordHosts = true, fsdStructure }: RunAddAgentRulesOptions = {},
+  { recordHosts = true, fsdStructure, moduleBoundaries }: RunAddAgentRulesOptions = {},
 ): AddAgentRulesReport {
   // Nothing resolved from toolkit.config.json ever blocks a write — an unusable file is
   // treated as absent.
@@ -63,7 +74,15 @@ export function runAddAgentRules(
   const teamRules = resolveTeamRules(options.teamRules, config);
   const dryRun = options.dryRun ?? false;
 
-  const composed = composeAgentRules({ files, locale, teamRules, fsdStructure: fsdStructure ?? resolveFsdStructure(config), fsdPolicy: resolveFsdPolicyNotes(config) });
+  const boundaries = moduleBoundaries === undefined ? resolveModuleBoundaries(config) : (moduleBoundaries ?? undefined);
+  const composed = composeAgentRules({
+    files,
+    locale,
+    teamRules,
+    fsdStructure: fsdStructure ?? resolveFsdStructure(config),
+    fsdPolicy: resolveFsdPolicyNotes(config),
+    ...(boundaries !== undefined ? { moduleBoundaries: boundaries } : {}),
+  });
 
   const results: AgentRuleFileResult[] = composed.map(({ filePath, content }) => {
     if (!validateAgentRules(content, teamRules ? ['team-rules'] : [])) {
