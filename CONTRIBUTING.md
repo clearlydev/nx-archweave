@@ -116,6 +116,8 @@ A second script covers a workspace nx-archweave did not create. Nx's own Expo pr
 node tools/e2e-existing.mjs --frontend=expo
 ```
 
+Both scripts print how long each step took when they finish (and the steps that passed when one fails). In CI the same table lands in the job summary, so a slow leg shows where its time goes.
+
 Run the scripts from a plain terminal. `create-nx-workspace` builds a different workspace when it finds an AI coding agent's environment variables.
 
 To try a build by hand:
@@ -160,8 +162,8 @@ A maintainer releases both packages together, with the same version:
 
 How the packages are built:
 
-- **`tools/bundle.mjs`** uses esbuild to bundle every entry point into `dist/`, inlining the internal packages. Only `@nx/devkit` and node builtins stay external.
+- **`tools/bundle.mjs`** uses esbuild to bundle every entry point into `dist/`, inlining the internal packages. Third-party code is never inlined: `@nx/devkit`, `jsonc-parser` and node builtins stay external.
 - **`tools/pack-sanitize.mjs`** is a `prepack`/`postpack` pair. It strips `workspace:` ranges from the packed manifest and restores `package.json` right after. `prepack` also runs the bundle, so a stale `dist/` can never be packed.
-- **`tools/verify-tarball.mjs`** installs the packed plugin into a throwaway project and imports every generator from it.
+- **`tools/verify-tarball.mjs`** packs both packages and checks each packed manifest against `tools/tarball-policy.json`: no install scripts, no `workspace:` range, no `bundleDependencies`, and no runtime dependency the policy doesn't list. A pull request that adds a runtime dependency adds it to the policy too. It then installs the packed plugin into a throwaway project and imports every generator from it.
 
 > **Troubleshooting.** Sometimes `create-nx-workspace` fails with `ERR_PNPM_NO_MATCHING_VERSION` for a package whose version clearly exists. That means the local pnpm metadata cache is stale. Run `pnpm cache delete` and retry.
