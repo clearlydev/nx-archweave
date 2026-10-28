@@ -39,13 +39,12 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 The examples below use `pnpm nx g`. With another package manager, run the same generator the way the block above shows.
 
 > [!NOTE]
-> The plugin ships as a self-contained bundle. Its only runtime dependency is `@nx/devkit`, so adding it doesn't pull a tree of transitive packages into your workspace.
+> The plugin ships its own code as a bundle. Its runtime dependencies are `@nx/devkit` and `jsonc-parser`, which nx itself already depends on at the same version, so adding the plugin doesn't pull a tree of transitive packages into your workspace.
 
 ## Requirements
 
 - **Node** >= 22.18
 - **A package manager:** **npm**, **pnpm >= 10**, **yarn** (classic 1.x or berry 2+) or **bun**. All four are first-class, and none of them is the default.
-- **Network access to github.com:** the CLI downloads Nx's react template from there.
 
 ### Which package manager is used
 
@@ -63,20 +62,6 @@ Every generated command, workspace registration and review workflow then follows
 
 ## Package-manager notes
 
-### npm 10 and yarn 1
-
-> [!WARNING]
-> **npm 10** and **yarn 1** can't create the react-vite workspace. Both fail inside `create-nx-workspace`'s own install of Nx's react template. Use npm 11+, pnpm, yarn 2+ (yarn berry comes with Corepack: `corepack enable`) or bun.
-
-| Manager | Why it fails |
-| --- | --- |
-| **npm 10** (bundled with Node 22) | `Cannot read properties of null (reading 'edgesOut')` |
-| **yarn 1** | It can't resolve the template's `workspace:*` packages |
-
-- The CLI's question lists npm 10 and yarn 1 with the reason, but you can't pick them.
-- If a flag or the launcher names one of them, the run stops before anything is created.
-- `--frontend=next` installs fine with both npm 10 and yarn 1.
-
 ### yarn
 
 - yarn berry workspaces use `nodeLinker: node-modules`, not Plug'n'Play. `create-nx-workspace` writes that setting itself.
@@ -87,8 +72,9 @@ Every generated command, workspace registration and review workflow then follows
 ### bun
 
 - bun silently blocks the install scripts of dependencies that aren't on its trusted list.
-- In Nx's react template, that's `@swc/core`'s postinstall. The workspace builds without it.
+- In an Nx workspace, that's typically `@swc/core`'s postinstall. The workspace builds without it.
 - The CLI's last bun step prints `bun pm untrusted`. The blocked scripts stay blocked.
+- With Next.js, the web app's `test` can't start under bun's isolated install (see [Known issues](#known-issues-in-generated-workspaces)).
 
 To allow one of them, run this inside the workspace:
 
@@ -98,7 +84,7 @@ bun pm trust <package>
 
 ### pnpm 11
 
-pnpm 11 stops an install when a dependency's build script has no allow/deny decision in `pnpm-workspace.yaml` (`ERR_PNPM_IGNORED_BUILDS`). Nx's next template hits this during its own install. pnpm 10 isn't affected.
+pnpm 11 stops an install when a dependency's build script has no allow/deny decision in `pnpm-workspace.yaml` (`ERR_PNPM_IGNORED_BUILDS`). Nx's next preset hits this during its own install. pnpm 10 isn't affected.
 
 - That's why the CLI runs its pnpm steps with this check turned off.
 - In its last step, the CLI records every build script pnpm skipped as **not allowed**. It uses pnpm's own command for that: `pnpm approve-builds '!<package>'`. No third-party install script runs until you say so.
@@ -122,7 +108,7 @@ The CLI also asks which **AI coding tools** you use: Claude Code, Codex, Cursor,
 | Nx's own AI setup | `create-nx-workspace --aiAgents` |
 | Default review provider | The first tool you picked |
 
-Nx's react template ships every tool's files anyway, whatever you pass to `--aiAgents`.
+With no tool picked, the CLI passes `--aiAgents=none`. Otherwise Nx would add files for whichever agent it detects in the environment.
 
 ### Agent rules
 
@@ -154,52 +140,57 @@ npx create-nx-archweave my-app \
   --preset=quick-start --frontend=react-vite --review
 ```
 
-The CLI prints its three steps up front, then runs them with the package manager you chose:
+The CLI prints its steps up front, then runs them with the package manager you chose:
 
 | Step | What it runs |
 | --- | --- |
-| 1 | `create-nx-workspace` with Nx's react template |
-| 2 | The plugin install |
-| 3 | The plugin's `init` generator |
+| 1 | `create-nx-workspace --preset=empty` |
+| 2 | `nx add @nx/react` |
+| 3 | `nx g @nx/react:app apps/web` |
+| 4 | The plugin install |
+| 5 | The plugin's `init` generator |
 
-With npm, the three steps are:
+With npm, the steps are:
 
 ```bash
-npx -y create-nx-workspace@23.3.0 my-app \
-  --template=nrwl/react-template \
-  --pm=npm --nxCloud=skip --interactive=false
+npx -y create-nx-workspace@24.0.1 my-app \
+  --preset=empty --pm=npm --nxCloud=skip --interactive=false
+npm exec nx -- add @nx/react
+npm exec nx -- g @nx/react:app apps/web --bundler=vite --linter=eslint \
+  --style=css --unitTestRunner=vitest --e2eTestRunner=none --routing=false
 npm install -D @clearlydev/nx-archweave@^<cli-version>
 npm exec nx -- g @clearlydev/nx-archweave:init \
   --preset=… --frontend=… --backend=… --locale=… \
   --allowDirty=true
 ```
 
-With pnpm, step 3 takes the same flags as the npm `init` command above:
+With pnpm, steps 3 and 5 take the same flags as the npm commands above:
 
 ```bash
-pnpm dlx create-nx-workspace@23.3.0 my-app \
-  --template=nrwl/react-template \
-  --pm=pnpm --nxCloud=skip --interactive=false
+pnpm dlx create-nx-workspace@24.0.1 my-app \
+  --preset=empty --pm=pnpm --nxCloud=skip --interactive=false
+pnpm nx add @nx/react
+pnpm nx g @nx/react:app apps/web …
 pnpm add -D -w @clearlydev/nx-archweave@^<cli-version>
 pnpm nx g @clearlydev/nx-archweave:init …
 ```
 
-- For `--frontend=next`, `--preset=next` replaces the template.
-- pnpm adds a fourth step. It records the dependency build scripts pnpm skipped (see [pnpm 11](#pnpm-11)).
-- bun adds a fourth step too. It lists the install scripts bun blocked, with `bun pm untrusted`.
+- For `--frontend=next`, step 1 is `--preset=next --appName=web --e2eTestRunner=none`, which already holds the app, so steps 2 and 3 don't run.
+- pnpm adds a last step. It records the dependency build scripts pnpm skipped (see [pnpm 11](#pnpm-11)).
+- bun adds a last step too. It lists the install scripts bun blocked, with `bun pm untrusted`.
 
-**Why the CLI names the template.** The react-vite workspace is Nx's fullstack template, and the CLI asks for it by name.
+**Why react-vite starts from the empty preset.**
 
-- For `--preset=react-monorepo`, `create-nx-workspace` builds that template only when it detects an AI agent in the environment (Claude Code, Codex, Cursor, …).
-- From a plain terminal, the same flags produce a different workspace with no `apps/api`.
-- Naming the template gives you the same workspace on every run.
-- The CLI downloads the template from github.com. It pins `create-nx-workspace` to the version the CLI's end-to-end gate validated.
+- `--preset=react-monorepo` turns into a download of Nx's react template whenever `create-nx-workspace` detects an AI agent in the environment (Claude Code, Codex, Cursor, …). That template is a demo shop, and it follows its repository's latest commit, Nx version included.
+- `--preset=empty` is never redirected and downloads nothing. The workspace stays on the `create-nx-workspace` version the CLI pins, the one its end-to-end gate validated, and `nx add` installs `@nx/react` at that same version.
+- The app comes from Nx's own `@nx/react:app` generator, with every option it would otherwise ask about. It has no e2e project (see [Adding e2e tests](#adding-e2e-tests)).
 
 **What the CLI does and doesn't do:**
 
 - It never re-implements `create-nx-workspace`, and it never commits for you.
 - It asks for anything you don't pass as a flag. `quick-start` keeps the questions to a minimum on purpose.
 - If a step fails, the CLI stops right away and tells you how to recover. It leaves the created directory in place and never deletes it for you.
+- It also prints the remaining steps, from the failed one on, as commands in order. It only prints them: fix the cause, then run them yourself.
 
 ### Adding a backend
 
@@ -207,30 +198,48 @@ With `--backend=express|nest`, the plan gets two official steps:
 
 ```bash
 pnpm add -D -w @nx/<backend>@<the workspace's exact nx version>
-pnpm nx g @nx/<backend>:application apps/api --frontendProject=<detected app>
+pnpm nx g @nx/<backend>:application apps/api --frontendProject=<detected app> --unitTestRunner=vitest --e2eTestRunner=none
 ```
 
 - Nx still does the generating. After that, init wires shared-types and scope tags, and writes the boundary constraints.
 - On this path, `--applyEslint=true`, because the CLI just created the workspace.
 
-Two things to know about Nx's templates:
+- **Either frontend, either backend:** Both official steps run. `apps/api` goes beside `apps/web`, and `--frontendProject` comes from the web app's package name.
+- **express:** The api gets express 5, which `@nx/express` installs. Nx 24's `@nx/react` no longer peers on express 4, so every frontend and package manager ends on the same major.
 
-| Template | `--backend=express` | `--backend=nest` |
-| --- | --- | --- |
-| react | Steps recorded as satisfied-by-template | Stops with guidance |
-| Next | Both official steps run | Same as express |
+Both frontends put the app in `apps/web` and have no api. That's why both official steps run, whichever backend you pick. If an `apps/api` is somehow there already, the CLI stops and points you at `add-backend`.
 
-- **react + express:** Nx's react template already ships an Express `apps/api`. So the CLI records the two official steps as satisfied-by-template.
-- **react + nest:** The api slot is taken, so the CLI stops with guidance. Use express, or scaffold Nest yourself and run `add-backend`.
-- **Next + either backend:** Both official steps run. `apps/api` goes beside the Next app, and `--frontendProject` comes from the Next app's package name.
+### Adding e2e tests
 
-Next workspaces put the app in `apps/<name>` and have no api. That's why both official steps run there, whichever backend you pick.
+The CLI creates no e2e project on any path, because Nx's Playwright setup downloads browsers to your machine, outside the workspace. When you want browser tests, add them with Nx's own generator, as [Nx's Playwright guide](https://nx.dev/docs/technologies/test-tools/playwright/introduction) shows:
+
+```bash
+pnpm nx add @nx/playwright
+pnpm nx g @nx/playwright:configuration --project=<web project> \
+  --webServerCommand="npx nx run <web project>:preview" \
+  --webServerAddress=http://localhost:4300 --skipInstall
+pnpm exec playwright install   # downloads the browsers, when you choose to
+```
+
+- `<web project>` is the `name` in `apps/web/package.json`, for example `@my-app/web`. On Next.js, use `<web project>:dev` and `http://localhost:3000`, the server Nx's own Next.js e2e setup points at.
+- `--skipInstall` keeps the generator from downloading browsers. The last command does that when you're ready.
+
+Measured on a React + Vite app with Nx 24.0.1, the generated setup needs one edit before `lint` passes: in `apps/web/eslint.config.mjs`, limit Playwright's rules to the e2e folder. Replace `playwright.configs['flat/recommended'],` with `{ ...playwright.configs['flat/recommended'], files: ['e2e/**/*.ts'] },`. Otherwise they also lint the app's own unit tests.
+
+For the api, Nx 24.0 has no public generator that adds an e2e project to an existing app. Its backend generators create one only together with the app.
+
+### Known issues in generated workspaces
+
+Both come from Nx's generated setup, not from nx-archweave. They show up on create-nx-workspace 23.3.0 and 24.0.1 alike (measured 2026-10-25).
+
+- **`typecheck` and `build` in one run can fail with TS6305.** Nx's generated app tsconfigs keep the typecheck output (`.d.ts` files and `tsbuildinfo`) in the app's `dist`, which `build` empties. When both run at once, typecheck can find its output gone: `TS6305: Output file '…/dist/….d.ts' has not been built from source file`. It's intermittent. Run them in two steps, `nx run-many -t build` and then `nx run-many -t typecheck`, or rerun. Related Nx issue: [nrwl/nx#36744](https://github.com/nrwl/nx/issues/36744).
+- **bun + Next.js: the web app's `test` can't start.** Its jest config transforms with `@nx/react/plugins/jest`, and bun's default isolated install doesn't put `@nx/react` at the root, because it only arrives through `@nx/next`. Jest then reports `Module @nx/react/plugins/jest in the transform option was not found`. No Nx issue was found for it. In our measurement, installing with bun's hoisted linker (`bun install --linker hoisted`) avoided it.
 
 ### Backend-only workspaces
 
 Use `--frontend=none --backend=express|nest`. The frontend question offers `none` too.
 
-- Nx's own preset builds the api (`create-nx-workspace --preset=<backend> --appName=api` → `apps/api`). So you don't need the two official steps above.
+- Nx's own preset builds the api (`create-nx-workspace --preset=<backend> --appName=api --e2eTestRunner=none --unitTestRunner=vitest` → `apps/api`). So you don't need the two official steps above.
 - init skips FSD, because there's no frontend to structure.
 - `add-backend` wires the api alone: `scope:backend`, `libs/shared-types` and the same deny rules. Those deny rules then guard whichever frontend joins later.
 
