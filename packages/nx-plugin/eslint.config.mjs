@@ -19,7 +19,6 @@ export default [
             '@nx-archweave/integrations',
             '@nx-archweave/shared',
             '@nx-archweave/template-engine',
-            'jsonc-parser',
           ],
         },
       ],

@@ -32,7 +32,9 @@ const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 const PACKAGES = {
   'nx-plugin': {
     dir: 'packages/nx-plugin',
-    external: ['@nx/devkit'],
+    // jsonc-parser stays external too: nx already depends on it (3.3.1), and an inlined copy
+    // would hide it from audits and drop its MIT notice.
+    external: ['@nx/devkit', 'jsonc-parser'],
     entryPoints(pkgDir) {
       // src/eslint: the `@clearlydev/nx-archweave/eslint` entry a workspace's eslint.config.mjs imports
       const entries = ['src/index.ts', 'src/bin/review-verdict.ts', 'src/eslint/index.ts'];
@@ -101,8 +103,8 @@ async function main() {
     platform: 'node',
     format: 'esm',
     target: 'node20',
-    // ESM entry first: an inlined third-party package (jsonc-parser) otherwise resolves to its
-    // UMD build, whose dynamic require() cannot run inside an ESM bundle.
+    // ESM entry first: a package inlined here resolves to its ESM build rather than a UMD one,
+    // whose dynamic require() cannot run inside an ESM bundle.
     mainFields: ['module', 'main'],
     external: config.external,
     sourcemap: false,
