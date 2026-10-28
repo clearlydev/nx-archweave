@@ -199,7 +199,7 @@ describe('review provider question', () => {
 
   it("is numbered, with the first AI tool's provider as the default", () => {
     expect(reviewProviderQuestion('codex')).toBe(
-      ['? AI PR review provider', '  1) Claude', '  2) Gemini', '  3) GPT  (default — Codex)', '  4) Cursor', 'Choose 1-4 [3]: '].join('\n'),
+      ['? AI PR review provider', '  1) Claude', '  2) Gemini (beta)', '  3) GPT (beta)  (default — Codex)', '  4) Cursor (beta)', 'Choose 1-4 [3]: '].join('\n'),
     );
   });
 
