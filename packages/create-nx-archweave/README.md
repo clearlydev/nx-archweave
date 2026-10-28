@@ -2,10 +2,11 @@
 
 One command takes you from an empty directory to a configured Nx workspace with:
 
-- FSD Lite structure
+- an FSD Lite lint rule for the frontend app's layers (`warn` or `error` by preset), plus slice generators
+- frontend/backend boundaries as lint errors between the projects it tags, when you pick a backend
 - AI agent rules
 - GitHub templates
-- optional AI PR review (Claude, Gemini, GPT, Cursor)
+- optional AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)
 
 ```bash
 # npm
@@ -27,15 +28,12 @@ Anything you don't pass as a flag, the CLI asks you interactively. The `quick-st
 
 - Node >= 22.18
 - npm, pnpm >= 10, yarn (classic or berry) or bun
-- network access to github.com (Nx's react template is downloaded from there)
-
-**react-vite and older package managers.** You can't create react-vite with npm 10 or yarn 1. Both of those fail inside `create-nx-workspace`'s own install of Nx's react template. So the CLI never offers npm 10 or yarn 1 for react-vite. If a flag names one of them, the CLI stops before creating anything.
 
 ## Choosing a package manager
 
 The CLI asks for the package manager too:
 
-- It only offers package managers that are installed and can create the workspace.
+- It only offers package managers that are installed.
 - It preselects the one that launched the CLI: `npx` → npm, `pnpm dlx` → pnpm, `yarn dlx` → yarn, `bunx` → bun.
 - Without a terminal, it uses the launching package manager, else npm.
 
@@ -47,28 +45,34 @@ A few things to know for specific package managers:
 
 ## What it runs
 
-The CLI prints its plan up front. Then it runs three steps with the package manager you chose.
+The CLI prints its plan up front. Then it runs the steps below with the package manager you chose.
 
-- It never re-implements `create-nx-workspace`.
+- It never re-implements `create-nx-workspace` or Nx's generators.
 - It never commits for you.
-- `--preset=next` replaces the template for `--frontend=next`.
-- pnpm adds a fourth step that records the build scripts pnpm skipped. bun adds one that lists the install scripts bun blocked (`bun pm untrusted`).
+- `--frontend=next` creates the workspace with `--preset=next --appName=web --e2eTestRunner=none` instead, which already holds the app.
+- No path creates an e2e project. See the [getting-started guide](https://github.com/clearlydev/nx-archweave/blob/main/docs/getting-started.md#adding-e2e-tests) to add one with Nx's own generator.
+- pnpm adds a last step that records the build scripts pnpm skipped. bun adds one that lists the install scripts bun blocked (`bun pm untrusted`).
 
-Here are the three steps for npm and pnpm.
+Here are the steps for npm and pnpm.
 
-**Step 1: create the workspace**
+**Step 1: create the workspace, then the React app**
 
 ```bash
 # npm
-npx -y create-nx-workspace@23.3.0 <name> \
-  --template=nrwl/react-template \
-  --pm=npm --nxCloud=skip --interactive=false
+npx -y create-nx-workspace@24.0.1 <name> \
+  --preset=empty --pm=npm --nxCloud=skip --interactive=false
+npm exec nx -- add @nx/react
+npm exec nx -- g @nx/react:app apps/web --bundler=vite --linter=eslint \
+  --style=css --unitTestRunner=vitest --e2eTestRunner=none --routing=false
 
 # pnpm
-pnpm dlx create-nx-workspace@23.3.0 <name> \
-  --template=nrwl/react-template \
-  --pm=pnpm --nxCloud=skip --interactive=false
+pnpm dlx create-nx-workspace@24.0.1 <name> \
+  --preset=empty --pm=pnpm --nxCloud=skip --interactive=false
+pnpm nx add @nx/react
+pnpm nx g @nx/react:app apps/web …   (same flags)
 ```
+
+`--preset=empty` downloads nothing and keeps the workspace on that create-nx-workspace's Nx version. `nx add` installs `@nx/react` at the same version.
 
 **Step 2: install the plugin**
 
@@ -94,13 +98,13 @@ pnpm nx g @clearlydev/nx-archweave:init …
 With `--backend=express|nest`, the CLI inserts two official steps before init:
 
 1. `@nx/<backend>`, pinned to the workspace's exact nx version
-2. `nx g @nx/<backend>:application apps/api --frontendProject=<detected app>`
+2. `nx g @nx/<backend>:application apps/api --frontendProject=<detected app> --unitTestRunner=vitest --e2eTestRunner=none` (vitest like the frontend; the generator would otherwise ask)
 
 init then wires `shared-types` and `scope:` tags, and writes the boundary constraints (`--applyEslint=true` on this path).
 
 When something goes wrong:
 
-- If a step fails, the CLI stops right away. It leaves the created directory in place (it never auto-deletes) and tells you how to recover.
+- If a step fails, the CLI stops right away. It leaves the created directory in place (it never auto-deletes), tells you how to recover, and prints the failed step and every step after it as commands you can run yourself. It never re-runs them for you.
 - When stdin isn't a TTY and a required input is missing, the CLI fails fast instead of hanging.
 
 ## Options

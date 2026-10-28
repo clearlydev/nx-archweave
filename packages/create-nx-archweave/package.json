@@ -1,7 +1,7 @@
 {
   "name": "create-nx-archweave",
   "version": "0.2.2",
-  "description": "One command from an empty directory to a configured Nx workspace: FSD Lite structure, AI agent rules, GitHub templates, and optional AI PR review (Claude, Gemini, GPT, Cursor)",
+  "description": "One command from an empty directory to a configured Nx workspace: an FSD Lite lint rule, frontend/backend boundaries, AI agent rules, GitHub templates, and optional AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)",
   "license": "MIT",
   "author": "clearlydev (https://github.com/clearlydev)",
   "engines": {

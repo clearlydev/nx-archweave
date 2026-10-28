@@ -2,10 +2,11 @@
 
 Nx generators that get a workspace ready to work on with one preset:
 
-- FSD Lite structure with enforced module boundaries
+- an FSD Lite lint rule for the frontend app's layers (`warn` or `error` by preset), plus slice generators
+- frontend/backend boundaries as lint errors between the projects it tags, when there is a backend
 - AI agent rules
 - GitHub templates
-- optional AI PR review (Claude, Gemini, GPT, Cursor)
+- optional AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)
 
 Starting a brand-new workspace instead? Use [`create-nx-archweave`](https://www.npmjs.com/package/create-nx-archweave). It creates the workspace, installs this plugin, and runs `init`, all in one command.
 
@@ -32,7 +33,7 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 - **Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun. All four package managers are first-class.
 - Generators detect the workspace's real package manager from its lockfiles.
 - The examples below use `pnpm nx g`. With another package manager, run the same generator the way the `doctor` commands above show.
-- The package ships as a self-contained bundle. Its only runtime dependency is `@nx/devkit`.
+- The package ships its own code as a bundle. Its runtime dependencies are `@nx/devkit` and `jsonc-parser`, which nx already depends on at the same version.
 
 ## Quick start
 
@@ -213,9 +214,11 @@ Review is fully optional and isn't tied to one provider.
 | `--provider` | Workflow file | Required secret |
 | --- | --- | --- |
 | `claude` (default) | `.github/workflows/claude-code-review.yml` | `CLAUDE_CODE_OAUTH_TOKEN` |
-| `gemini` | `.github/workflows/gemini-code-review.yml` | `GEMINI_API_KEY` |
-| `gpt` | `.github/workflows/gpt-code-review.yml` | `OPENAI_API_KEY` |
-| `cursor` | `.github/workflows/cursor-code-review.yml` | `CURSOR_API_KEY` |
+| `gemini` (beta) | `.github/workflows/gemini-code-review.yml` | `GEMINI_API_KEY` |
+| `gpt` (beta) | `.github/workflows/gpt-code-review.yml` | `OPENAI_API_KEY` |
+| `cursor` (beta) | `.github/workflows/cursor-code-review.yml` | `CURSOR_API_KEY` |
+
+What each provider has been checked on, where to get its secret, and known issues: [Provider status](https://github.com/clearlydev/nx-archweave/blob/main/docs/pr-review.md#provider-status).
 
 Modes:
 

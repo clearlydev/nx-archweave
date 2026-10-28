@@ -10,10 +10,11 @@ English | [한국어](README.ko-KR.md)
 
 ## What you get
 
-- **Feature-Sliced Design (Lite)** folder structure with enforced module boundaries
+- **Feature-Sliced Design (Lite) lint rule** that knows the FSD layers and checks imports between them in your frontend app (`warn` on solo and quick-start, `error` on team), plus generators that add slices as you need them
+- **Frontend/backend boundaries** when you pick a backend: imports between the frontend and backend projects nx-archweave tags become lint errors
 - **AI agent rule files** for the AI coding tools you use
 - **GitHub issue and PR templates**
-- **Automated PR review** with the AI provider you choose (fully optional)
+- **Automated PR review** with the AI provider you choose: Claude is supported, Gemini, GPT and Cursor are in beta (fully optional)
 
 ## Quick start
 
