@@ -16,6 +16,7 @@ permissions: {}
 jobs:
   ai-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -129,11 +130,12 @@ jobs:
     needs: ai-review
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      comment-body: \${{ steps.verdict.outputs.comment-body }}
+      comment-body: \${{ steps.verdict.outputs.comment-body || steps.ai-review-result.outputs.notice-body }}
       previous-comment-id: \${{ steps.verdict.outputs.previous-comment-id }}
     steps:
       - name: Check the AI review result
@@ -143,15 +145,46 @@ jobs:
           REVIEW_ENABLED: \${{ needs.ai-review.outputs.enabled }}
           REVIEW_ALLOWED: \${{ needs.ai-review.outputs.allowed }}
           LAST_COMMENT_ID: \${{ needs.ai-review.outputs.last-comment-id }}
+          HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          HEAD_REPOSITORY: \${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: \${{ github.repository }}
+          PR_AUTHOR: \${{ github.event.pull_request.user.login }}
         run: |
+          not_run() {
+            case "$1" in
+              secret) annotation='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.' ;;
+              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
+              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.' ;;
+              rounds) annotation='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.' ;;
+            esac
+            echo "::notice title=AI review did not run::$annotation"
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
+            case "$short_sha" in
+              '' | *[!0-9a-f]*) short_sha= ;;
+            esac
+            {
+              echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"
+              printf '%s\\n' '<!-- archweave-verdict -->' "ℹ️ $notice"
+              if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>Commit \`'"$short_sha"'\` · this comment is updated on every review round.</sub>'; fi
+              echo "ARCHWEAVE_NOT_RUN_EOF"
+              echo "run=false"
+            } >> "$GITHUB_OUTPUT"
+          }
           if [ "$AI_REVIEW_RESULT" != success ]; then
             echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
             exit 1
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
-            false/* | true/false)
-              echo "The AI review did not run (no secret, or the round limit) - nothing to judge."
-              echo "run=false" >> "$GITHUB_OUTPUT"
+            false/*)
+              if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
+              elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot
+              else not_run secret
+              fi
+              exit 0
+              ;;
+            true/false)
+              not_run rounds
               exit 0
               ;;
             true/true)
@@ -224,13 +257,14 @@ jobs:
       - name: Fail on a blocking verdict
         if: steps.verdict.outputs.blocked == 'true'
         run: |
-          echo "The review verdict is BLOCK - see the verdict comment on this pull request."
+          echo "The review check failed: the verdict is BLOCK, or the AI review left no readable summary. See the verdict comment on this pull request."
           exit 1
 
   review-comment:
     needs: review
     if: \${{ !cancelled() && needs.review.outputs.comment-body != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       pull-requests: write
     steps:
@@ -243,6 +277,9 @@ jobs:
           PREVIOUS_ID: \${{ needs.review.outputs.previous-comment-id }}
         run: |
           payload=$(jq -n --arg body "$VERDICT_BODY" '{body: $body}')
+          if [ -z "$PREVIOUS_ID" ]; then
+            PREVIOUS_ID=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- archweave-verdict -->")) | .id' | tail -n 1) || PREVIOUS_ID=
+          fi
           case "$PREVIOUS_ID" in
             ''|*[!0-9]*) PREVIOUS_ID= ;;
           esac
@@ -270,6 +307,7 @@ permissions: {}
 jobs:
   ai-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -405,11 +443,12 @@ jobs:
     needs: ai-review
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      comment-body: \${{ steps.verdict.outputs.comment-body }}
+      comment-body: \${{ steps.verdict.outputs.comment-body || steps.ai-review-result.outputs.notice-body }}
       previous-comment-id: \${{ steps.verdict.outputs.previous-comment-id }}
     steps:
       - name: Check the AI review result
@@ -419,15 +458,46 @@ jobs:
           REVIEW_ENABLED: \${{ needs.ai-review.outputs.enabled }}
           REVIEW_ALLOWED: \${{ needs.ai-review.outputs.allowed }}
           LAST_COMMENT_ID: \${{ needs.ai-review.outputs.last-comment-id }}
+          HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          HEAD_REPOSITORY: \${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: \${{ github.repository }}
+          PR_AUTHOR: \${{ github.event.pull_request.user.login }}
         run: |
+          not_run() {
+            case "$1" in
+              secret) annotation='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(OPENAI_API_KEY 시크릿이 등록되지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(Dependabot 실행은 Dependabot 시크릿만 받는데, OPENAI_API_KEY는 그중에 없음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+              rounds) annotation='AI review did not run for this commit (the automated review round limit (5) is reached). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(자동 리뷰 라운드 한도(5)에 도달함). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+            esac
+            echo "::notice title=AI review did not run::$annotation"
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
+            case "$short_sha" in
+              '' | *[!0-9a-f]*) short_sha= ;;
+            esac
+            {
+              echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"
+              printf '%s\\n' '<!-- archweave-verdict -->' "ℹ️ $notice"
+              if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>커밋 \`'"$short_sha"'\` · 이 코멘트는 리뷰 라운드마다 갱신됩니다.</sub>'; fi
+              echo "ARCHWEAVE_NOT_RUN_EOF"
+              echo "run=false"
+            } >> "$GITHUB_OUTPUT"
+          }
           if [ "$AI_REVIEW_RESULT" != success ]; then
             echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
             exit 1
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
-            false/* | true/false)
-              echo "The AI review did not run (no secret, or the round limit) - nothing to judge."
-              echo "run=false" >> "$GITHUB_OUTPUT"
+            false/*)
+              if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
+              elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot
+              else not_run secret
+              fi
+              exit 0
+              ;;
+            true/false)
+              not_run rounds
               exit 0
               ;;
             true/true)
@@ -500,13 +570,14 @@ jobs:
       - name: Fail on a blocking verdict
         if: steps.verdict.outputs.blocked == 'true'
         run: |
-          echo "The review verdict is BLOCK - see the verdict comment on this pull request."
+          echo "The review check failed: the verdict is BLOCK, or the AI review left no readable summary. See the verdict comment on this pull request."
           exit 1
 
   review-comment:
     needs: review
     if: \${{ !cancelled() && needs.review.outputs.comment-body != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       pull-requests: write
     steps:
@@ -519,6 +590,9 @@ jobs:
           PREVIOUS_ID: \${{ needs.review.outputs.previous-comment-id }}
         run: |
           payload=$(jq -n --arg body "$VERDICT_BODY" '{body: $body}')
+          if [ -z "$PREVIOUS_ID" ]; then
+            PREVIOUS_ID=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- archweave-verdict -->")) | .id' | tail -n 1) || PREVIOUS_ID=
+          fi
           case "$PREVIOUS_ID" in
             ''|*[!0-9]*) PREVIOUS_ID= ;;
           esac
@@ -546,6 +620,7 @@ permissions: {}
 jobs:
   ai-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -659,11 +734,12 @@ jobs:
     needs: ai-review
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      comment-body: \${{ steps.verdict.outputs.comment-body }}
+      comment-body: \${{ steps.verdict.outputs.comment-body || steps.ai-review-result.outputs.notice-body }}
       previous-comment-id: \${{ steps.verdict.outputs.previous-comment-id }}
     steps:
       - name: Check the AI review result
@@ -673,15 +749,46 @@ jobs:
           REVIEW_ENABLED: \${{ needs.ai-review.outputs.enabled }}
           REVIEW_ALLOWED: \${{ needs.ai-review.outputs.allowed }}
           LAST_COMMENT_ID: \${{ needs.ai-review.outputs.last-comment-id }}
+          HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          HEAD_REPOSITORY: \${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: \${{ github.repository }}
+          PR_AUTHOR: \${{ github.event.pull_request.user.login }}
         run: |
+          not_run() {
+            case "$1" in
+              secret) annotation='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.' ;;
+              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
+              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.' ;;
+              rounds) annotation='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.' ;;
+            esac
+            echo "::notice title=AI review did not run::$annotation"
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
+            case "$short_sha" in
+              '' | *[!0-9a-f]*) short_sha= ;;
+            esac
+            {
+              echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"
+              printf '%s\\n' '<!-- archweave-verdict -->' "ℹ️ $notice"
+              if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>Commit \`'"$short_sha"'\` · this comment is updated on every review round.</sub>'; fi
+              echo "ARCHWEAVE_NOT_RUN_EOF"
+              echo "run=false"
+            } >> "$GITHUB_OUTPUT"
+          }
           if [ "$AI_REVIEW_RESULT" != success ]; then
             echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
             exit 1
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
-            false/* | true/false)
-              echo "The AI review did not run (no secret, or the round limit) - nothing to judge."
-              echo "run=false" >> "$GITHUB_OUTPUT"
+            false/*)
+              if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
+              elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot
+              else not_run secret
+              fi
+              exit 0
+              ;;
+            true/false)
+              not_run rounds
               exit 0
               ;;
             true/true)
@@ -754,13 +861,14 @@ jobs:
       - name: Fail on a blocking verdict
         if: steps.verdict.outputs.blocked == 'true'
         run: |
-          echo "The review verdict is BLOCK - see the verdict comment on this pull request."
+          echo "The review check failed: the verdict is BLOCK, or the AI review left no readable summary. See the verdict comment on this pull request."
           exit 1
 
   review-comment:
     needs: review
     if: \${{ !cancelled() && needs.review.outputs.comment-body != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       pull-requests: write
     steps:
@@ -773,6 +881,9 @@ jobs:
           PREVIOUS_ID: \${{ needs.review.outputs.previous-comment-id }}
         run: |
           payload=$(jq -n --arg body "$VERDICT_BODY" '{body: $body}')
+          if [ -z "$PREVIOUS_ID" ]; then
+            PREVIOUS_ID=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- archweave-verdict -->")) | .id' | tail -n 1) || PREVIOUS_ID=
+          fi
           case "$PREVIOUS_ID" in
             ''|*[!0-9]*) PREVIOUS_ID= ;;
           esac
