@@ -1,9 +1,11 @@
-import { buildPlan, isYarnBerry, nxGenerateCommand, NPM_10_CREATE_WORKSPACE_HINT, pendingBuildDecisions, YARN_1_CREATE_WORKSPACE_HINT, type CreatePlanInput, type StepContext } from './plan.ts';
+import { buildPlan, isYarnBerry, nxGenerateCommand, pendingBuildDecisions, type CreatePlanInput, type StepContext } from './plan.ts';
 import { PLUGIN_CHOICES } from './types.ts';
 import { CLI_VERSION } from '../render-usage.ts';
 
 // The plan installs the plugin release this CLI was built with, so the spec follows a version bump.
 const PLUGIN_SPEC = `@clearlydev/nx-archweave@^${CLI_VERSION}`;
+
+const stepById = (plan: ReturnType<typeof buildPlan>, id: string) => plan.steps.find((step) => step.id === id)!;
 
 const baseInput: CreatePlanInput = {
   packageManager: 'pnpm',
@@ -26,15 +28,40 @@ describe('buildPlan', () => {
         command: 'pnpm',
         args: [
           'dlx',
-          'create-nx-workspace@23.3.0',
+          'create-nx-workspace@24.0.1',
           'my-app',
-          '--template=nrwl/react-template',
+          '--preset=empty',
           '--aiAgents=claude',
           '--pm=pnpm',
           '--nxCloud=skip',
           '--interactive=false',
         ],
         cwd: null,
+      },
+      {
+        id: 'add-react-plugin',
+        description: 'Add @nx/react with nx add (at the workspace nx version)',
+        command: 'pnpm',
+        args: ['nx', 'add', '@nx/react'],
+        cwd: 'my-app',
+      },
+      {
+        id: 'create-web-app',
+        description: 'Create the React + Vite app in apps/web with the official @nx/react generator',
+        command: 'pnpm',
+        args: [
+          'nx',
+          'g',
+          '@nx/react:app',
+          'apps/web',
+          '--bundler=vite',
+          '--linter=eslint',
+          '--style=css',
+          '--unitTestRunner=vitest',
+          '--e2eTestRunner=none',
+          '--routing=false',
+        ],
+        cwd: 'my-app',
       },
       {
         id: 'install-plugin',
@@ -58,6 +85,7 @@ describe('buildPlan', () => {
           '--aiHosts=claude-code',
       '--packageManager=pnpm',
           '--allowDirty=true',
+          '--dirtyFromCaller=true',
           '--applyEslint=true',
         ],
         cwd: 'my-app',
@@ -79,9 +107,11 @@ describe('buildPlan', () => {
     const plan = buildPlan({ ...baseInput, frontend: 'next' });
     expect(plan.steps[0].args).toEqual([
       'dlx',
-      'create-nx-workspace@23.3.0',
+      'create-nx-workspace@24.0.1',
       'my-app',
       '--preset=next',
+      '--appName=web',
+      '--e2eTestRunner=none',
       '--aiAgents=claude',
       '--pm=pnpm',
       '--nxCloud=skip',
@@ -91,7 +121,7 @@ describe('buildPlan', () => {
 
   it('overrides the plugin source in the install step only', () => {
     const plan = buildPlan({ ...baseInput, pluginSource: 'file:../local-plugin.tgz' });
-    expect(plan.steps[1]).toEqual({
+    expect(stepById(plan, 'install-plugin')).toEqual({
       id: 'install-plugin',
       description: 'Install file:../local-plugin.tgz',
       command: 'pnpm',
@@ -100,12 +130,12 @@ describe('buildPlan', () => {
     });
     // create-workspace and run-init steps are unaffected by pluginSource.
     expect(plan.steps[0].args).not.toContain('file:../local-plugin.tgz');
-    expect(plan.steps[2].args).not.toContain('file:../local-plugin.tgz');
+    expect(stepById(plan, 'run-init').args).not.toContain('file:../local-plugin.tgz');
   });
 
   it('appends --review=true to the init step when review is explicitly true', () => {
     const plan = buildPlan({ ...baseInput, review: true });
-    expect(plan.steps[2].args).toEqual([
+    expect(stepById(plan, 'run-init').args).toEqual([
       'nx',
       'g',
       '@clearlydev/nx-archweave:init',
@@ -116,6 +146,7 @@ describe('buildPlan', () => {
       '--aiHosts=claude-code',
       '--packageManager=pnpm',
       '--allowDirty=true',
+      '--dirtyFromCaller=true',
       '--review=true',
       '--applyEslint=true',
     ]);
@@ -123,7 +154,7 @@ describe('buildPlan', () => {
 
   it('appends --review=false to the init step when review is explicitly false', () => {
     const plan = buildPlan({ ...baseInput, review: false });
-    expect(plan.steps[2].args).toEqual([
+    expect(stepById(plan, 'run-init').args).toEqual([
       'nx',
       'g',
       '@clearlydev/nx-archweave:init',
@@ -134,6 +165,7 @@ describe('buildPlan', () => {
       '--aiHosts=claude-code',
       '--packageManager=pnpm',
       '--allowDirty=true',
+      '--dirtyFromCaller=true',
       '--review=false',
       '--applyEslint=true',
     ]);
@@ -141,12 +173,17 @@ describe('buildPlan', () => {
 
   it('always passes --allowDirty=true to init — the plugin-install step (step 2) has just dirtied the tree', () => {
     const plan = buildPlan(baseInput);
-    expect(plan.steps[2].args).toContain('--allowDirty=true');
+    expect(stepById(plan, 'run-init').args).toContain('--allowDirty=true');
+  });
+
+  it('tells init the dirty tree is its own plugin install, so the earlier-changes note stays out of the report', () => {
+    const plan = buildPlan(baseInput);
+    expect(stepById(plan, 'run-init').args).toContain('--dirtyFromCaller=true');
   });
 
   it('omits --review from the init step when review is left undefined', () => {
     const plan = buildPlan(baseInput);
-    expect(plan.steps[2].args.some((arg) => arg.startsWith('--review'))).toBe(false);
+    expect(stepById(plan, 'run-init').args.some((arg) => arg.startsWith('--review'))).toBe(false);
   });
 
   describe('nextSteps', () => {
@@ -197,12 +234,12 @@ describe('buildPlan — backend steps', () => {
 
   it("backend 'none' keeps exactly the three classic steps (plus pnpm's final settle step) with no other finalizeArgs", () => {
     const plan = buildPlan(baseInput);
-    expect(plan.steps.map((s) => s.id)).toEqual(['create-workspace', 'install-plugin', 'run-init', 'settle-build-approvals']);
-    expect(plan.steps.slice(0, 3).every((s) => s.finalizeArgs === undefined)).toBe(true);
+    expect(plan.steps.map((s) => s.id)).toEqual(['create-workspace', 'add-react-plugin', 'create-web-app', 'install-plugin', 'run-init', 'settle-build-approvals']);
+    expect(plan.steps.slice(0, 5).every((s) => s.finalizeArgs === undefined)).toBe(true);
     // the CLI just created the workspace: every ESLint rule is written for real
-    expect(plan.steps[2].args).toContain('--applyEslint=true');
+    expect(stepById(plan, 'run-init').args).toContain('--applyEslint=true');
     const npmPlan = buildPlan({ ...baseInput, packageManager: 'npm' });
-    expect(npmPlan.steps.map((s) => s.id)).toEqual(['create-workspace', 'install-plugin', 'run-init']);
+    expect(npmPlan.steps.map((s) => s.id)).toEqual(['create-workspace', 'add-react-plugin', 'create-web-app', 'install-plugin', 'run-init']);
     expect(npmPlan.steps.every((s) => s.finalizeArgs === undefined)).toBe(true);
   });
 
@@ -210,14 +247,16 @@ describe('buildPlan — backend steps', () => {
     const plan = buildPlan({ ...baseInput, backend: 'nest' });
     expect(plan.steps.map((s) => s.id)).toEqual([
       'create-workspace',
+      'add-react-plugin',
+      'create-web-app',
       'install-plugin',
       'install-backend-plugin',
       'create-api-app',
       'run-init',
       'settle-build-approvals',
     ]);
-    expect(plan.steps[4].args).toContain('--backend=nest');
-    expect(plan.steps[4].args).toContain('--applyEslint=true');
+    expect(stepById(plan, 'run-init').args).toContain('--backend=nest');
+    expect(stepById(plan, 'run-init').args).toContain('--applyEslint=true');
   });
 
   it('pins @nx/<backend> to the workspace nx version at execution time', () => {
@@ -238,11 +277,17 @@ describe('buildPlan — backend steps', () => {
     const plan = buildPlan({ ...baseInput, backend: 'nest' });
     const step = plan.steps.find((s) => s.id === 'create-api-app')!;
     const args = step.finalizeArgs!(stubCtx({}, ['web', 'web-e2e']));
-    expect(args).toEqual(['nx', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web']);
+    expect(args).toEqual(['nx', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web', '--unitTestRunner=vitest', '--e2eTestRunner=none']);
     const npmStep = buildPlan({ ...baseInput, backend: 'nest', packageManager: 'npm' }).steps.find((s) => s.id === 'create-api-app')!;
     expect(npmStep.finalizeArgs!(stubCtx({}, ['web', 'web-e2e']))).toEqual([
-      'exec', 'nx', '--', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web',
+      'exec', 'nx', '--', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web', '--unitTestRunner=vitest', '--e2eTestRunner=none',
     ]);
+  });
+
+  it.each(['express', 'nest'] as const)('passes the unit test runner to @nx/%s:application, which asks for one in a terminal', (backend) => {
+    const step = buildPlan({ ...baseInput, backend }).steps.find((s) => s.id === 'create-api-app')!;
+    expect(step.args).toContain('--unitTestRunner=vitest');
+    expect(step.finalizeArgs!(stubCtx({}, ['web']))).toContain('--unitTestRunner=vitest');
   });
 
   it('fails with both names when the frontend app is ambiguous', () => {
@@ -257,40 +302,43 @@ describe('buildPlan — backend steps', () => {
   });
 });
 
-describe('buildPlan — measured template realities (probed 2026-10-05)', () => {
+describe('buildPlan — both frontends build apps/web with no api, so both official steps run', () => {
   const ctx = (apps: string[], files: Record<string, string> = {}): StepContext => ({
     workspacePath: '/work/my-app',
     readFile: (rel) => files[rel],
     listDir: (rel) => (rel === 'apps' ? apps : []),
   });
 
-  it('react-vite × express: skips both official steps when the template already ships apps/api', () => {
-    const plan = buildPlan({ ...baseInput, backend: 'express' });
-    const install = plan.steps.find((s) => s.id === 'install-backend-plugin')!;
-    const create = plan.steps.find((s) => s.id === 'create-api-app')!;
-    const apps = ['api', 'shop', 'shop-e2e'];
-    expect(install.finalizeArgs!(ctx(apps))).toHaveProperty('skip');
-    expect(create.finalizeArgs!(ctx(apps))).toHaveProperty('skip');
+  it.each(['express', 'nest'] as const)('react-vite × %s: both official steps run against apps/web', (backend) => {
+    const plan = buildPlan({ ...baseInput, backend });
+    const install = stepById(plan, 'install-backend-plugin');
+    const create = stepById(plan, 'create-api-app');
+    const web = ctx(['web'], {
+      'package.json': JSON.stringify({ devDependencies: { nx: '23.3.0' } }),
+      'apps/web/package.json': JSON.stringify({ name: '@my-app/web' }),
+    });
+    expect(install.finalizeArgs!(web)).toEqual(['add', '-D', '-w', `@nx/${backend}@23.3.0`]);
+    expect(create.finalizeArgs!(web)).toEqual(['nx', 'g', `@nx/${backend}:application`, 'apps/api', '--frontendProject=@my-app/web', '--unitTestRunner=vitest', '--e2eTestRunner=none']);
   });
 
-  it('react-vite × nest: refuses with guidance when the template api slot is taken by Express', () => {
-    const plan = buildPlan({ ...baseInput, backend: 'nest' });
-    const create = plan.steps.find((s) => s.id === 'create-api-app')!;
-    const result = create.finalizeArgs!(ctx(['api', 'shop', 'shop-e2e']));
+  it.each(['express', 'nest'] as const)('an apps/api that already exists stops %s before any backend step, pointing at add-backend', (backend) => {
+    const plan = buildPlan({ ...baseInput, backend });
+    const first = stepById(plan, 'install-backend-plugin');
+    const result = first.finalizeArgs!(ctx(['api', 'web'], { 'package.json': JSON.stringify({ devDependencies: { nx: '23.3.0' } }) }));
     expect(result).toHaveProperty('error');
-    if ('error' in result) expect(result.error).toContain('--backend=express');
+    if ('error' in result) expect(result.error).toContain(`add-backend --backend=${backend}`);
   });
 
-  it.each(['express', 'nest'] as const)('next × %s: Nx 23 builds apps/<name> + apps/<name>-e2e — both official steps run against it', (backend) => {
+  it.each(['express', 'nest'] as const)('next × %s: Nx 23 builds apps/web — both official steps run against it', (backend) => {
     const plan = buildPlan({ ...baseInput, frontend: 'next', backend });
     const install = plan.steps.find((s) => s.id === 'install-backend-plugin')!;
     const create = plan.steps.find((s) => s.id === 'create-api-app')!;
-    const next = ctx(['my-app', 'my-app-e2e'], {
+    const next = ctx(['web', 'web-e2e'], {
       'package.json': JSON.stringify({ devDependencies: { nx: '23.2.0' } }),
-      'apps/my-app/package.json': JSON.stringify({ name: '@my-app/my-app' }),
+      'apps/web/package.json': JSON.stringify({ name: '@my-app/web' }),
     });
     expect(install.finalizeArgs!(next)).toEqual(['add', '-D', '-w', `@nx/${backend}@23.2.0`]);
-    expect(create.finalizeArgs!(next)).toEqual(['nx', 'g', `@nx/${backend}:application`, 'apps/api', '--frontendProject=@my-app/my-app']);
+    expect(create.finalizeArgs!(next)).toEqual(['nx', 'g', `@nx/${backend}:application`, 'apps/api', '--frontendProject=@my-app/web', '--unitTestRunner=vitest', '--e2eTestRunner=none']);
   });
 
   it('a workspace without apps/: refuses with the manual add-backend guidance', () => {
@@ -372,34 +420,62 @@ describe('buildPlan — npm command matrix', () => {
   });
 });
 
-describe('buildPlan — react-vite names the fullstack template (E2E CI finding, 2026-10-13)', () => {
-  // create-nx-workspace maps --preset=react-monorepo to this template only when it
-  // detects an AI agent; CI and plain terminals got the classic preset (no apps/api).
-  it('requests nrwl/react-template explicitly for both package managers, never the react-monorepo preset', () => {
-    for (const packageManager of ['pnpm', 'npm'] as const) {
-      const args = buildPlan({ ...baseInput, packageManager }).steps.find((s) => s.id === 'create-workspace')?.args ?? [];
-      expect(args).toContain('--template=nrwl/react-template');
-      expect(args.some((a) => a.startsWith('--preset'))).toBe(false);
+describe('buildPlan — react-vite starts from the empty preset and Nx\'s own React generator', () => {
+  // --preset=react-monorepo becomes a template download under an AI agent's environment;
+  // empty is never redirected and downloads nothing.
+  it('asks for --preset=empty, never a template or react-monorepo, for every package manager', () => {
+    for (const packageManager of ['pnpm', 'npm', 'yarn', 'bun'] as const) {
+      const args = stepById(buildPlan({ ...baseInput, packageManager }), 'create-workspace').args;
+      expect(args).toContain('--preset=empty');
+      expect(args.some((a) => a.startsWith('--template') || a === '--preset=react-monorepo')).toBe(false);
     }
   });
 
-  it('keeps the next preset for --frontend=next (no template mapping exists for it)', () => {
-    const args = buildPlan({ ...baseInput, frontend: 'next', packageManager: 'npm' }).steps[0].args;
-    expect(args).toContain('--preset=next');
-    expect(args.some((a) => a.startsWith('--template'))).toBe(false);
+  it('adds @nx/react and the apps/web app right after the workspace, before the plugin install', () => {
+    const ids = buildPlan(baseInput).steps.map((s) => s.id);
+    expect(ids.slice(0, 4)).toEqual(['create-workspace', 'add-react-plugin', 'create-web-app', 'install-plugin']);
+    expect(stepById(buildPlan({ ...baseInput, packageManager: 'npm' }), 'add-react-plugin').args).toEqual(['exec', 'nx', '--', 'add', '@nx/react']);
   });
-});
 
-describe('buildPlan — npm 10 create-workspace hint (E2E CI finding, 2026-10-13)', () => {
-  it('attaches the npm 10 crash hint to the npm create-workspace step only', () => {
-    const npmStep = buildPlan({ ...baseInput, packageManager: 'npm' }).steps[0];
-    expect(npmStep.failureHint).toBe(NPM_10_CREATE_WORKSPACE_HINT);
-    expect(npmStep.failureHint).toContain("reading 'edgesOut'");
-    expect(npmStep.failureHint).toContain('npm install -g npm@11');
-    expect(npmStep.failureHint).toContain('--package-manager=pnpm');
-    const pnpmPlan = buildPlan(baseInput);
-    expect(pnpmPlan.steps.every((s) => s.failureHint !== NPM_10_CREATE_WORKSPACE_HINT)).toBe(true);
-    expect(buildPlan({ ...baseInput, packageManager: 'npm' }).steps.slice(1).every((s) => s.failureHint === undefined)).toBe(true);
+  it('passes every option @nx/react:app would ask about, with no e2e project', () => {
+    const args = stepById(buildPlan(baseInput), 'create-web-app').args;
+    for (const flag of ['--bundler=vite', '--linter=eslint', '--style=css', '--unitTestRunner=vitest', '--e2eTestRunner=none', '--routing=false']) {
+      expect(args).toContain(flag);
+    }
+  });
+
+  it('keeps the next preset for --frontend=next, with no React steps', () => {
+    const plan = buildPlan({ ...baseInput, frontend: 'next', packageManager: 'npm' });
+    expect(plan.steps[0].args).toContain('--preset=next');
+    expect(plan.steps.map((s) => s.id)).not.toContain('create-web-app');
+  });
+
+  it.each([
+    ['react-vite', 'express', 'create-web-app'],
+    ['next', 'nest', 'create-workspace'],
+    ['none', 'express', 'create-workspace'],
+    ['none', 'nest', 'create-workspace'],
+  ] as const)('%s × %s: no step creates an e2e project', (frontend, backend, appStep) => {
+    const plan = buildPlan({ ...baseInput, frontend, backend });
+    expect(stepById(plan, appStep).args).toContain('--e2eTestRunner=none');
+    const api = plan.steps.find((s) => s.id === 'create-api-app');
+    if (api) expect(api.args).toContain('--e2eTestRunner=none');
+  });
+
+  it('a backend-only workspace gets vitest, like the api the other paths create', () => {
+    const args = stepById(buildPlan({ ...baseInput, frontend: 'none', backend: 'express' }), 'create-workspace').args;
+    expect(args).toEqual(expect.arrayContaining(['--preset=express', '--appName=api', '--e2eTestRunner=none', '--unitTestRunner=vitest']));
+  });
+
+  it('says --aiAgents=none when no AI host is picked, so Nx adds nothing on its own', () => {
+    const args = stepById(buildPlan({ ...baseInput, aiHosts: [] }), 'create-workspace').args;
+    expect(args.filter((a) => a.startsWith('--aiAgents'))).toEqual(['--aiAgents=none']);
+  });
+
+  it('attaches no failure hint to the create step for any package manager', () => {
+    for (const packageManager of ['pnpm', 'npm', 'yarn', 'bun'] as const) {
+      expect(buildPlan({ ...baseInput, packageManager }).steps[0].failureHint).toBeUndefined();
+    }
   });
 });
 
@@ -409,7 +485,7 @@ describe('buildPlan — validated create-nx-workspace pin (E2E CI finding)', () 
       const plan = buildPlan({ name: 'my-app', preset: 'solo', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager });
       const step = plan.steps.find((s) => s.id === 'create-workspace');
       const spec = step?.args.find((a) => a.startsWith('create-nx-workspace@'));
-      expect(spec).toBe('create-nx-workspace@23.3.0');
+      expect(spec).toBe('create-nx-workspace@24.0.1');
     }
   });
 
@@ -539,16 +615,6 @@ describe('pendingBuildDecisions', () => {
   });
 });
 
-describe('buildPlan — known-failing installs carry their hint', () => {
-  it('react-vite: npm carries the npm 10 hint, yarn the yarn 1 hint; next and pnpm carry none', () => {
-    expect(buildPlan({ ...baseInput, packageManager: 'npm' }).steps[0].failureHint).toBe(NPM_10_CREATE_WORKSPACE_HINT);
-    expect(buildPlan({ ...baseInput, packageManager: 'yarn' }).steps[0].failureHint).toBe(YARN_1_CREATE_WORKSPACE_HINT);
-    expect(buildPlan({ ...baseInput, packageManager: 'npm', frontend: 'next' }).steps[0].failureHint).toBeUndefined();
-    expect(buildPlan({ ...baseInput, packageManager: 'yarn', frontend: 'next' }).steps[0].failureHint).toBeUndefined();
-    expect(buildPlan(baseInput).steps[0].failureHint).toBeUndefined();
-  });
-});
-
 describe('buildPlan — yarn', () => {
   const yarnInput: CreatePlanInput = { ...baseInput, packageManager: 'yarn', backend: 'express' };
   const files = (entries: Record<string, string>): StepContext => ({
@@ -583,7 +649,7 @@ describe('buildPlan — yarn', () => {
     expect(backendPlugin.finalizeArgs!(files({ 'package.json': pkg, '.yarnrc.yml': '' }))).toEqual(['add', '-D', '@nx/nest@23.2.0']);
     const api = plan.steps.find((step) => step.id === 'create-api-app')!;
     expect(api.command).toBe('yarn');
-    expect(api.finalizeArgs!(files({}))).toEqual(['nx', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web']);
+    expect(api.finalizeArgs!(files({}))).toEqual(['nx', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web', '--unitTestRunner=vitest', '--e2eTestRunner=none']);
   });
 
   it('isYarnBerry: .yarnrc.yml or a __metadata lockfile', () => {
@@ -625,7 +691,7 @@ describe('buildPlan — bun', () => {
     expect(backendPlugin.finalizeArgs!(files({ 'package.json': JSON.stringify({ devDependencies: { nx: '23.2.0' } }) }))).toEqual(['add', '-d', '@nx/nest@23.2.0']);
     const api = plan.steps.find((step) => step.id === 'create-api-app')!;
     expect(api.command).toBe('bun');
-    expect(api.finalizeArgs!(files({}))).toEqual(['nx', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web']);
+    expect(api.finalizeArgs!(files({}))).toEqual(['nx', 'g', '@nx/nest:application', 'apps/api', '--frontendProject=web', '--unitTestRunner=vitest', '--e2eTestRunner=none']);
   });
 
   it('ends with a read-only bun pm untrusted, whose note names the way back (bun pm trust)', () => {
@@ -665,7 +731,7 @@ describe('buildPlan — plugins', () => {
   it('one optional install-integration step per plugin, at project scope, after everything else', () => {
     const plan = buildPlan({ ...baseInput, plugins: [ponytail] });
     const last = plan.steps[plan.steps.length - 1];
-    expect(plan.steps.map((step) => step.id)).toEqual(['create-workspace', 'install-plugin', 'run-init', 'settle-build-approvals', 'install-ai-plugin']);
+    expect(plan.steps.map((step) => step.id)).toEqual(['create-workspace', 'add-react-plugin', 'create-web-app', 'install-plugin', 'run-init', 'settle-build-approvals', 'install-ai-plugin']);
     expect(last).toMatchObject({
       id: 'install-ai-plugin',
       description: 'Install the ponytail plugin for Claude Code (project scope)',

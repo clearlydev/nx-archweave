@@ -41,6 +41,8 @@ export interface StepContext {
 export interface PlanStep {
   id:
     | 'create-workspace'
+    | 'add-react-plugin'
+    | 'create-web-app'
     | 'install-plugin'
     | 'install-backend-plugin'
     | 'create-api-app'
@@ -59,7 +61,7 @@ export interface PlanStep {
    * @nx/<backend> version pin and --frontendProject are only knowable after
    * step 1 ran). Returning { error } stops the plan before executing the
    * step; { skip } records the step as satisfied without executing it
-   * (measured reality: the react template already ships apps/api). */
+   * (express already declared, so there is nothing to align). */
   finalizeArgs?: (ctx: StepContext) => string[] | { error: string } | { skip: string };
   /** Printed under the failure report when this step's command exits non-zero — for
    * a known upstream failure the user cannot diagnose from the tool's own output. */
@@ -86,29 +88,11 @@ export interface CreatePlan {
  * breaking 0.x plugin never pairs with an older CLI (release prep, 2026-10-17). */
 const DEFAULT_PLUGIN_SOURCE = `@clearlydev/nx-archweave@^${CLI_VERSION}`;
 
-/** E2E-CI finding (2026-10-08): the react-monorepo layout differed between CI and
- * local runs — first blamed on a 23.2.0 → 23.2.1 minor bump, later traced to the
- * agent detection documented on createWorkspaceSourceArgs (2026-10-13). The CLI pins the exact version its own E2E
- * gate validated either way — bumping this constant is done together with a green
- * `node tools/e2e-create.mjs` run for both PMs. */
-const VALIDATED_CREATE_NX_WORKSPACE_VERSION = '23.3.0';
+/** The CLI pins the exact create-nx-workspace version its own E2E gate validated. Every
+ * path is a preset, so this pins the workspace's nx too. Bumping this constant is done
+ * together with a green `node tools/e2e-create.mjs` run for both PMs. */
+const VALIDATED_CREATE_NX_WORKSPACE_VERSION = '24.0.1';
 
-/** npm 10 (bundled with Node 22) crashes inside create-nx-workspace's own install
- * of the react template's dependency tree — an arborist bug in its peer-set
- * resolution, reproduced on every npm 10 release up to 10.9.9 and absent in npm 11
- * (E2E CI finding, 2026-10-13). The next preset installs fine on npm 10
- * (2026-10-14), so only react-vite + npm is affected: package-manager.ts never lets a
- * known npm 10 pick it, and the create step keeps this hint for the case the version
- * could not be read. */
-export const NPM_10_CREATE_WORKSPACE_HINT =
-  "If the npm error above is \"Cannot read properties of null (reading 'edgesOut')\", that is a known npm 10 bug " +
-  'with the current Nx workspace dependencies — upgrade npm (npm install -g npm@11), or, if pnpm is installed, re-run with --package-manager=pnpm.';
-
-/** yarn 1 cannot resolve the `workspace:*` packages Nx's react template declares
- * (measured 2026-10-15); the same guard and fallback as npm 10 above. */
-export const YARN_1_CREATE_WORKSPACE_HINT =
-  'If the yarn error above is "Couldn\'t find package …@workspace:*", that is yarn 1 (classic), which cannot resolve ' +
-  "the workspace:* packages in Nx's react template — use yarn 2+ (corepack enable, then yarn set version stable) or re-run with another package manager.";
 
 /** `nx` through the workspace's own manager. npm never gets a bare `nx` (its exec needs `--`). */
 function nxArgs(pm: CliPackageManager): string[] {
@@ -140,30 +124,36 @@ export function isYarnBerry(ctx: Pick<StepContext, 'readFile'>): boolean {
  * would fail create-nx-workspace's own install in CI and agent runs. Classic ignores it. */
 const YARN_PLAN_ENV: Record<string, string> = { YARN_ENABLE_IMMUTABLE_INSTALLS: 'false' };
 
+/** No e2e project on any path: Nx's Playwright setup installs browsers outside the
+ * workspace (measured 2026-10-25 on create-nx-workspace 23.3.0 and 24.0.1). The
+ * getting-started guide shows how to add one later with Nx's own generator. */
+const NO_E2E = ['--e2eTestRunner=none'];
+
 /**
- * Maps our `frontend` option to what `create-nx-workspace` builds the workspace
- * from: react-vite → `--template=nrwl/react-template`, next → `--preset=next`.
+ * Maps our `frontend` option to the create-nx-workspace preset the workspace starts from:
+ * react-vite → `--preset=empty` (the React app comes next, from Nx's own generator — see
+ * reactAppSteps), next → `--preset=next --appName=web`.
  *
- * Why react-vite names the template (E2E CI finding, 2026-10-13): with
- * `--preset=react-monorepo`, create-nx-workspace 23.2 builds the fullstack
- * GitHub template (apps/shop + an Express apps/api) ONLY when it detects an AI
- * agent in the environment (CLAUDECODE, CLAUDE_CODE, OPENCODE, CODEX_THREAD_ID,
- * ...); from a plain terminal — and in CI — the same flags run the classic preset
- * (apps/<name> only, no api, a different package layout). Every measurement this
- * CLI and its docs rely on was taken on the template, so naming it makes every
- * user get that workspace. The template flow downloads from github.com.
+ * Why react-vite starts empty (2026-10-25): `--preset=react-monorepo` turns into a download
+ * of Nx's react template whenever create-nx-workspace detects an AI agent in the
+ * environment, and that template is a demo shop that follows its repository's latest
+ * commit, nx version included. `empty` is never redirected, downloads nothing, and stays
+ * on this create-nx-workspace's nx (measured with and without agent variables).
  *
  * `--preset=next` needs no further flag with `--interactive=false` — Nx fills
  * every unspecified option with its own default (non-interactive probe against
- * create-nx-workspace v23.2.1, 2026-09-16).
+ * create-nx-workspace v23.2.1, 2026-09-16; re-measured on 24.0.1). `--appName=web` puts the app at apps/web;
+ * without it Nx names the app after the workspace, so a workspace called `api` or
+ * `*-e2e` would get an app the frontend lookup skips.
  */
 function createWorkspaceSourceArgs(frontend: CliFrontend, backend: CliBackend): string[] {
-  if (frontend === 'react-vite') return ['--template=nrwl/react-template'];
-  if (frontend === 'next') return ['--preset=next'];
+  if (frontend === 'react-vite') return ['--preset=empty'];
+  if (frontend === 'next') return ['--preset=next', '--appName=web', ...NO_E2E];
   // Backend-only: Nx's own preset builds the api, named the way every other path names
-  // it (measured 2026-10-16, 23.2.0: express → apps/api as a package.json project,
-  // nest → apps/api with a project.json; both with apps/api-e2e).
-  return [`--preset=${backend}`, '--appName=api'];
+  // it (measured 2026-10-25, 24.0.1: express → apps/api, a scoped package with a typecheck
+  // target; nest → apps/api with a project.json named `api`). vitest like the api the other
+  // paths create.
+  return [`--preset=${backend}`, '--appName=api', ...NO_E2E, '--unitTestRunner=vitest'];
 }
 
 function buildNextSteps(input: CreatePlanInput): string[] {
@@ -204,9 +194,13 @@ function buildNextSteps(input: CreatePlanInput): string[] {
 export function buildPlan(input: CreatePlanInput): CreatePlan {
   const pluginSource = input.pluginSource ?? DEFAULT_PLUGIN_SOURCE;
   const workspaceSource = createWorkspaceSourceArgs(input.frontend, input.backend);
-  // One flag per host — create-nx-workspace rejects a comma list (measured, 23.2.0). The
-  // react template ships every host's files anyway; the flag decides them for next.
-  const aiAgentArgs = input.aiHosts.map((host) => `--aiAgents=${AI_HOST_CHOICES.find((choice) => choice.id === host)?.nxAgent ?? host}`);
+  // One flag per host — create-nx-workspace rejects a comma list (measured, 23.2.0). With
+  // none, `none` says so explicitly: an omitted flag makes Nx add whatever agent it detects
+  // in the environment.
+  const aiAgentArgs =
+    input.aiHosts.length === 0
+      ? ['--aiAgents=none']
+      : input.aiHosts.map((host) => `--aiAgents=${AI_HOST_CHOICES.find((choice) => choice.id === host)?.nxAgent ?? host}`);
   const pm = input.packageManager;
   // npm's -w means --workspace=<name>, never "workspace root" — npm installs
   // at the root by default, so the flag is simply absent there.
@@ -225,8 +219,10 @@ export function buildPlan(input: CreatePlanInput): CreatePlan {
     // Step 2 (the plugin install) always dirties the fresh workspace's tree
     // (package.json + lockfile), so init's clean-tree refusal would otherwise
     // always fire here. This is orchestration knowledge, not policy: the CLI
-    // knows what its own previous step did.
+    // knows what its own previous step did. For the same reason the report's note about
+    // reverting earlier user changes doesn't apply: the only changes are that install's.
     '--allowDirty=true',
+    '--dirtyFromCaller=true',
   ];
   if (input.review !== undefined) {
     initArgs.push(`--review=${input.review}`);
@@ -269,9 +265,8 @@ export function buildPlan(input: CreatePlanInput): CreatePlan {
               '--interactive=false',
             ],
       cwd: null,
-      ...(input.frontend === 'react-vite' && pm === 'npm' ? { failureHint: NPM_10_CREATE_WORKSPACE_HINT } : {}),
-      ...(input.frontend === 'react-vite' && pm === 'yarn' ? { failureHint: YARN_1_CREATE_WORKSPACE_HINT } : {}),
     },
+    ...(input.frontend === 'react-vite' ? reactAppSteps(input.name, pm) : []),
     {
       id: 'install-plugin',
       description: `Install ${pluginSource}`,
@@ -420,8 +415,8 @@ function settleBuildApprovalsStep(workspaceName: string): PlanStep {
 }
 
 /** Last bun step: bun blocks the install scripts of dependencies outside its trusted
- * list without a word during the install (measured: @swc/core's postinstall in Nx's react
- * template). Read-only — `bun pm untrusted` prints bun's own list, and exits 0 with
+ * list without a word during the install (measured: @swc/core's postinstall in an Nx
+ * workspace). Read-only — `bun pm untrusted` prints bun's own list, and exits 0 with
  * "Found 0 untrusted dependencies" when nothing was blocked (measured, bun 1.4.2). The
  * scripts stay blocked; the note names the one-line way back. */
 function listBlockedScriptsStep(workspaceName: string): PlanStep {
@@ -440,6 +435,42 @@ function listBlockedScriptsStep(workspaceName: string): PlanStep {
   };
 }
 
+/** The react-vite path's React app, from Nx's own generators on the empty workspace:
+ * `nx add @nx/react` (Nx installs the plugin at the workspace's nx version), then
+ * `@nx/react:app` with every option it would otherwise ask about, and no e2e project
+ * (see NO_E2E). */
+function reactAppSteps(workspaceName: string, pm: CliPackageManager): PlanStep[] {
+  return [
+    {
+      id: 'add-react-plugin',
+      description: 'Add @nx/react with nx add (at the workspace nx version)',
+      command: pm,
+      args: [...nxArgs(pm), 'add', '@nx/react'],
+      cwd: workspaceName,
+    },
+    {
+      id: 'create-web-app',
+      description: 'Create the React + Vite app in apps/web with the official @nx/react generator',
+      command: pm,
+      args: [...nxArgs(pm), 'g', '@nx/react:app', 'apps/web', ...REACT_APP_OPTIONS],
+      cwd: workspaceName,
+    },
+  ];
+}
+
+/** Every option @nx/react:app would prompt for in a terminal (measured with a TTY on
+ * 23.3.0; the 24.0.1 schema asks the same), so it never stops to ask. ESLint because init writes ESLint rules; vitest because Vite. */
+const REACT_APP_OPTIONS = ['--bundler=vite', '--linter=eslint', '--style=css', '--unitTestRunner=vitest', ...NO_E2E, '--routing=false'];
+
+/** The api generators ask for a unit test runner in a terminal (an x-prompt on both
+ * @nx/express and @nx/nest, measured 23.3.0, unchanged in 24.0.1); vitest matches the
+ * frontend's runner. `--e2eTestRunner=none` (see NO_E2E) is @nx/nest's own option;
+ * @nx/express hands its options to @nx/node's application generator, which takes it.
+ * No bundler flag: neither schema has one, and both pick webpack themselves (24.0.1:
+ * @nx/express passes `bundler: 'webpack'` to @nx/node, @nx/nest forces it), so
+ * e2e-create checks for the api's webpack config instead. */
+const API_APP_OPTIONS = ['--unitTestRunner=vitest', ...NO_E2E];
+
 /** The two official-generator steps (3 and 4). Both need
  * execution-time facts: the created workspace's nx version (so @nx/* versions
  * can never drift from nx's) and the frontend app's directory name. */
@@ -450,24 +481,19 @@ function backendSteps(
   initCommand: string,
 ): PlanStep[] {
   const nxG = nxGenerateCommand(pm);
-  // Measured realities (probed 2026-10-05 against create-nx-workspace
-  // v23.2.x): the react-vite path builds Nx's fullstack template (named
-  // explicitly — see createWorkspaceSourceArgs), which ALREADY ships an Express
-  // apps/api — so for express the two official
-  // steps are satisfied-by-template (skip), and for nest the api slot is
-  // taken (clear refusal instead of a collision). The next preset (re-measured
-  // 2026-10-16, Nx 23.2.0) builds apps/<name> + apps/<name>-e2e with no api, so
-  // both steps run there as on a template without one. A workspace without apps/
-  // (a layout neither path builds today) still stops with the manual path.
-  const templateApi = (ctx: StepContext): boolean => ctx.listDir('apps').includes('api');
+  // Both frontend paths build apps/web with no api (react-vite: Nx's React generator; next:
+  // the next preset, re-measured 2026-10-25 on Nx 24.0.1), so both official steps run.
+  // A workspace without apps/ (a layout neither path builds) stops with the manual path,
+  // and one that somehow has an apps/api already stops instead of colliding with it.
+  const apiExists = (ctx: StepContext): boolean => ctx.listDir('apps').includes('api');
   const standaloneError =
     'this workspace has no apps/ directory — CLI backend wiring needs the frontend under apps/. ' +
     'Create the api app with the official @nx generator, then run ' +
     `\`${nxG} @clearlydev/nx-archweave:add-backend\` yourself. ` +
     `Finish setup inside "${workspaceName}" with: ${initCommand}`;
-  const nestConflictError =
-    "the workspace template already ships an Express apps/api — re-run with --backend=express " +
-    'to wire it, or remove apps/api and scaffold Nest yourself, then run add-backend. ' +
+  const apiExistsError =
+    'the workspace already has an apps/api — wire it with ' +
+    `\`${nxG} @clearlydev/nx-archweave:add-backend --backend=${backend}\`, or remove it and run the official generator yourself. ` +
     `Either way, finish setup inside "${workspaceName}" with: ${initCommand}`;
 
   return [
@@ -479,11 +505,7 @@ function backendSteps(
       cwd: workspaceName,
       finalizeArgs: (ctx) => {
         if (ctx.listDir('apps').length === 0) return { error: standaloneError };
-        if (templateApi(ctx)) {
-          return backend === 'express'
-            ? { skip: 'the workspace template already ships the Express api' }
-            : { error: nestConflictError };
-        }
+        if (apiExists(ctx)) return { error: apiExistsError };
         const raw = ctx.readFile('package.json');
         if (raw === undefined) return { error: "could not read the created workspace's package.json to pin the @nx version" };
         try {
@@ -502,20 +524,16 @@ function backendSteps(
       command: pm,
       // Since Nx 20 the positional is a directory relative to the workspace root —
       // a bare `api` would land at the root instead of beside the frontend.
-      args: [...nxArgs(pm), 'g', `@nx/${backend}:application`, 'apps/api'],
+      args: [...nxArgs(pm), 'g', `@nx/${backend}:application`, 'apps/api', ...API_APP_OPTIONS],
       cwd: workspaceName,
       finalizeArgs: (ctx) => {
         const all = ctx.listDir('apps');
         if (all.length === 0) return { error: standaloneError };
-        if (all.includes('api')) {
-          return backend === 'express'
-            ? { skip: 'the workspace template already ships the Express api' }
-            : { error: nestConflictError };
-        }
+        if (all.includes('api')) return { error: apiExistsError };
         const apps = all.filter((name) => name !== 'api' && name !== 'e2e' && !name.endsWith('-e2e'));
         if (apps.length === 0) return { error: 'no frontend app directory found under apps/ in the created workspace' };
         if (apps.length > 1) return { error: `multiple app directories found under apps/ (${apps.join(', ')}) — cannot pick --frontendProject` };
-        // The template registers SCOPED project names (@org/web) while the
+        // Nx registers SCOPED project names (@org/web) while the
         // directory stays apps/web — --frontendProject needs the project name
         // (E2E-CI finding: the directory name made nx fail with "Cannot find
         // configuration"). project.json name, then package.json name, then dir.
@@ -532,7 +550,7 @@ function backendSteps(
           }
           return apps[0];
         })();
-        return [...nxArgs(pm), 'g', `@nx/${backend}:application`, 'apps/api', `--frontendProject=${frontendProject}`];
+        return [...nxArgs(pm), 'g', `@nx/${backend}:application`, 'apps/api', `--frontendProject=${frontendProject}`, ...API_APP_OPTIONS];
       },
     },
   ];
