@@ -25,9 +25,22 @@ const NOT_APPLICABLE_IDS = [
   ...BACKEND_CHECK_IDS,
 ];
 
+/** The Nx versions the running plugin supports, as the plugin reads them: the nx majors its
+ * @nx/devkit supports (its own major, one before and one after — Nx's policy,
+ * https://nx.dev/docs/kb/publish-plugin) and the nx installed in the workspace. */
+export interface NxSupport {
+  devkitVersion: string;
+  supportedMajors: { min: number; max: number };
+  /** node_modules/nx's version; undefined when nx isn't installed yet. */
+  installedVersion: string | undefined;
+  /** Whether installedVersion's major is within supportedMajors; undefined when unknown. */
+  inRange: boolean | undefined;
+}
+
 /** `projects`: the workspace's projects as Nx lists them (the plugin's doctor passes them);
- * without them the checks scan the conventional apps/ and libs/ folders. */
-export function runDoctorChecks(root: string, projects?: DoctorProject[]): DoctorReport {
+ * without them the checks scan the conventional apps/ and libs/ folders. `nxSupport`: the
+ * plugin's supported Nx range, which turns an installed nx outside it into an error. */
+export function runDoctorChecks(root: string, projects?: DoctorProject[], nxSupport?: NxSupport): DoctorReport {
   const env = detectEnvironment(root);
 
   if (!env.hasNxWorkspace) {
@@ -61,7 +74,7 @@ export function runDoctorChecks(root: string, projects?: DoctorProject[]): Docto
       message: 'nx.json found',
       evidence: ['nx.json'],
     }),
-    buildNxVersionCheck(env),
+    buildNxVersionCheck(env, nxSupport),
     buildFsdLikeCheck(root, projects),
     buildFsdEnforcementCheck(root, projects),
     buildFsdRuleAnchoredCheck(root, projects),
@@ -92,9 +105,12 @@ export function runDoctorChecks(root: string, projects?: DoctorProject[]): Docto
   return { checks, overallStatus };
 }
 
-/** Majors the toolkit's own E2E validated
- * (the E2E probes ran against 23.x). */
-const VALIDATED_NX_MAJOR = 23;
+/** Majors the toolkit's own E2E validated: 23.x (the create CLI's pin until 0.3.0, so
+ * workspaces it made earlier) and 24.x (its pin since). Kept as its own list, not derived
+ * from @nx/devkit's ±1 majors: devkit support means "may work" (nx 22 included), this means
+ * "measured". Outside devkit's majors the installed-nx error above applies instead. */
+const VALIDATED_NX_MAJORS = [23, 24];
+const VALIDATED_RANGE_TEXT = `${VALIDATED_NX_MAJORS[0]}.x–${VALIDATED_NX_MAJORS[VALIDATED_NX_MAJORS.length - 1]}.x`;
 
 function extractMajor(version: string): number | null {
   // First digit run on purpose — deliberately conservative: a multi-major
@@ -104,7 +120,21 @@ function extractMajor(version: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function buildNxVersionCheck(env: EnvironmentDetection): DoctorCheck {
+function buildNxVersionCheck(env: EnvironmentDetection, nxSupport?: NxSupport): DoctorCheck {
+  // Outside the nx majors @nx/devkit supports the plugin's generators may not even load, so
+  // this outranks the validated-major judgment below.
+  if (nxSupport?.inRange === false && nxSupport.installedVersion !== undefined) {
+    const major = extractMajor(nxSupport.installedVersion);
+    const supported = `${nxSupport.supportedMajors.min}.x–${nxSupport.supportedMajors.max}.x`;
+    return createDoctorCheck({
+      id: 'nx-version',
+      label: 'Nx version',
+      status: 'error',
+      message: `Nx ${nxSupport.installedVersion} is installed, outside the majors the plugin's @nx/devkit ${nxSupport.devkitVersion} supports (nx ${supported}) — the generators may fail to load or misbehave`,
+      evidence: [`nx@${nxSupport.installedVersion}`, `@nx/devkit@${nxSupport.devkitVersion}`],
+      suggestedAction: `Install the @clearlydev/nx-archweave release built for Nx ${major ?? 'this'}${major === null ? '' : '.x'}, or keep nx at ${supported}.`,
+    });
+  }
   if (env.rootPackageJsonError) {
     return createDoctorCheck({
       id: 'nx-version',
@@ -134,30 +164,30 @@ function buildNxVersionCheck(env: EnvironmentDetection): DoctorCheck {
       evidence: [`nx@${env.nxVersion}`],
     });
   }
-  if (major === VALIDATED_NX_MAJOR) {
+  if (VALIDATED_NX_MAJORS.includes(major)) {
     return createDoctorCheck({
       id: 'nx-version',
       label: 'Nx version',
       status: 'pass',
-      message: `Nx ${env.nxVersion} — within the toolkit-validated range (${VALIDATED_NX_MAJOR}.x)`,
+      message: `Nx ${env.nxVersion} — within the toolkit-validated range (${VALIDATED_RANGE_TEXT})`,
       evidence: [`nx@${env.nxVersion}`],
     });
   }
-  if (major < VALIDATED_NX_MAJOR) {
+  if (major < VALIDATED_NX_MAJORS[0]) {
     return createDoctorCheck({
       id: 'nx-version',
       label: 'Nx version',
       status: 'warning',
-      message: `Nx ${env.nxVersion} is below the toolkit-validated range (${VALIDATED_NX_MAJOR}.x) — generator behavior is not guaranteed`,
+      message: `Nx ${env.nxVersion} is below the toolkit-validated range (${VALIDATED_RANGE_TEXT}) — generator behavior is not guaranteed`,
       evidence: [`nx@${env.nxVersion}`],
-      suggestedAction: `Upgrade the workspace to Nx ${VALIDATED_NX_MAJOR}.x before running the generators.`,
+      suggestedAction: `Upgrade the workspace to Nx ${VALIDATED_NX_MAJORS[VALIDATED_NX_MAJORS.length - 1]}.x before running the generators.`,
     });
   }
   return createDoctorCheck({
     id: 'nx-version',
     label: 'Nx version',
     status: 'warning',
-    message: `Nx ${env.nxVersion} is above the toolkit-validated range (${VALIDATED_NX_MAJOR}.x) — may work, unvalidated`,
+    message: `Nx ${env.nxVersion} is above the toolkit-validated range (${VALIDATED_RANGE_TEXT}) — may work, unvalidated`,
     evidence: [`nx@${env.nxVersion}`],
     suggestedAction: 'Proceed with care and report issues; validation for newer majors lands with toolkit updates.',
   });

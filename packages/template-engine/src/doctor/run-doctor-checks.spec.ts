@@ -81,8 +81,10 @@ describe('nx-version range judgment', () => {
     ['23.2.0', 'pass'],
     ['^23.1.0', 'pass'],
     ['>=23 <24', 'pass'],
+    ['24.0.1', 'pass'],
+    ['^24.0.0', 'pass'],
     ['22.9.1', 'warning'],
-    ['24.0.0', 'warning'],
+    ['25.0.0', 'warning'],
   ])('%s → %s', (version, status) => {
     const root = mkWorkspace(version);
     try {
@@ -94,7 +96,7 @@ describe('nx-version range judgment', () => {
 
   it('below range says upgrade, above range says unvalidated', () => {
     const low = mkWorkspace('22.0.0');
-    const high = mkWorkspace('24.1.0');
+    const high = mkWorkspace('25.1.0');
     try {
       expect(nxCheck(low)?.message).toContain('below');
       expect(nxCheck(high)?.message).toContain('above');
@@ -292,5 +294,52 @@ describe('runDoctorChecks — a workspace with its own boundary tags', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('nx-version against the nx majors the plugin\'s @nx/devkit supports', () => {
+  const support = (installedVersion: string | undefined, inRange: boolean | undefined) => ({
+    devkitVersion: '23.3.1',
+    supportedMajors: { min: 22, max: 24 },
+    installedVersion,
+    inRange,
+  });
+  const withWorkspace = (declared: string, run: (root: string) => void) => {
+    const root = mkdtempSync(join(tmpdir(), 'nxsupport-'));
+    writeFileSync(join(root, 'nx.json'), '{}\n');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ devDependencies: { nx: declared } }));
+    try {
+      run(root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it('an installed nx outside them is an error that names both versions, the majors and the way out', () => {
+    withWorkspace('25.0.0', (root) => {
+      const report = runDoctorChecks(root, undefined, support('25.0.0', false));
+      const check = report.checks.find((c) => c.id === 'nx-version');
+      expect(check?.status).toBe('error');
+      expect(check?.message).toContain('Nx 25.0.0 is installed, outside the majors');
+      expect(check?.message).toContain('@nx/devkit 23.3.1');
+      expect(check?.message).toContain('nx 22.x–24.x');
+      expect(check?.suggestedAction).toContain('built for Nx 25.x');
+      expect(report.overallStatus).not.toBe('safe');
+    });
+  });
+
+  it('inside them, the validated-major judgment still applies (nx 22: a warning, not an error)', () => {
+    withWorkspace('22.6.0', (root) => {
+      const check = runDoctorChecks(root, undefined, support('22.6.0', true)).checks.find((c) => c.id === 'nx-version');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toContain('below the toolkit-validated range (23.x–24.x)');
+    });
+  });
+
+  it('nx not installed yet, or no support info: the declared version alone decides', () => {
+    withWorkspace('23.3.0', (root) => {
+      expect(runDoctorChecks(root, undefined, support(undefined, undefined)).checks.find((c) => c.id === 'nx-version')?.status).toBe('pass');
+      expect(runDoctorChecks(root).checks.find((c) => c.id === 'nx-version')?.status).toBe('pass');
+    });
   });
 });
