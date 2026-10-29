@@ -12,7 +12,7 @@
     "url": "git+https://github.com/clearlydev/nx-archweave.git",
     "directory": "packages/nx-plugin"
   },
-  "homepage": "https://github.com/clearlydev/nx-archweave/tree/main/packages/nx-plugin#readme",
+  "homepage": "https://github.com/clearlydev/nx-archweave#readme",
   "bugs": {
     "url": "https://github.com/clearlydev/nx-archweave/issues"
   },
