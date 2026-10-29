@@ -162,7 +162,7 @@ A maintainer releases both packages together, with the same version:
 
 How the packages are built:
 
-- **`tools/bundle.mjs`** uses esbuild to bundle every entry point into `dist/`, inlining the internal packages. Third-party code is never inlined: `@nx/devkit`, `jsonc-parser` and node builtins stay external.
+- **`tools/bundle.mjs`** uses esbuild to bundle every entry point into `dist/`, inlining the internal packages. Code the entries share goes into chunks in `dist/generators/_chunks/` (the CLI: `dist/_chunks/`), so each module ships once. Third-party code is never inlined: `@nx/devkit`, `jsonc-parser` and node builtins stay external.
 - **`tools/pack-sanitize.mjs`** is a `prepack`/`postpack` pair. It strips `workspace:` ranges from the packed manifest and restores `package.json` right after. `prepack` also runs the bundle, so a stale `dist/` can never be packed.
 - **`tools/verify-tarball.mjs`** packs both packages and checks each packed manifest against `tools/tarball-policy.json`: no install scripts, no `workspace:` range, no `bundleDependencies`, and no runtime dependency the policy doesn't list. A pull request that adds a runtime dependency adds it to the policy too. It then installs the packed plugin into a throwaway project and imports every generator from it.
 
