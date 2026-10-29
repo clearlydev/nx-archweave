@@ -21,7 +21,7 @@ interface LocaleCopy {
 const COPY: Record<ReviewLocale, LocaleCopy> = {
   en: {
     terminationBanner: (maxRounds) =>
-      `> ⚠️ **Automated review ended.** The maximum of ${maxRounds} review rounds has been reached with blocking findings (P0/P1) still open. Human review is required.`,
+      `> ⚠️ **Automated review ended.** The maximum of ${maxRounds} review rounds has been reached with blocking findings (P0/P1) still open. Later pushes aren't reviewed by AI, so review them yourself before merging.`,
     verdictLines: {
       BLOCK: '**Verdict: BLOCK** — P0/P1 findings must be resolved before this change can merge.',
       CHANGES_RECOMMENDED: '**Verdict: CHANGES_RECOMMENDED** — P2 findings should be addressed.',
@@ -44,7 +44,7 @@ const COPY: Record<ReviewLocale, LocaleCopy> = {
   },
   ko: {
     terminationBanner: (maxRounds) =>
-      `> ⚠️ **자동 리뷰 종료.** 최대 ${maxRounds}회의 리뷰 라운드에 도달했지만 병합을 막는 finding(P0/P1)이 남아 있습니다. 사람의 리뷰가 필요합니다.`,
+      `> ⚠️ **자동 리뷰 종료.** 최대 ${maxRounds}회의 리뷰 라운드에 도달했지만 병합을 막는 finding(P0/P1)이 남아 있습니다. 이후 push는 AI가 리뷰하지 않으니, 병합 전에 직접 리뷰하세요.`,
     verdictLines: {
       BLOCK: '**판정: BLOCK** — 병합 전에 P0/P1 finding을 해결해야 합니다.',
       CHANGES_RECOMMENDED: '**판정: CHANGES_RECOMMENDED** — P2 finding을 해결하는 것을 권장합니다.',

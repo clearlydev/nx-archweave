@@ -7,7 +7,7 @@ exports[`renderVerdictComment en: APPROVE on round 1 is just the verdict line 1`
 
 exports[`renderVerdictComment en: BLOCK on the final round carries the banner and the history 1`] = `
 "<!-- archweave-verdict -->
-> ⚠️ **Automated review ended.** The maximum of 2 review rounds has been reached with blocking findings (P0/P1) still open. Human review is required.
+> ⚠️ **Automated review ended.** The maximum of 2 review rounds has been reached with blocking findings (P0/P1) still open. Later pushes aren't reviewed by AI, so review them yourself before merging.
 
 **Verdict: BLOCK** — P0/P1 findings must be resolved before this change can merge.
 
@@ -30,7 +30,7 @@ exports[`renderVerdictComment ko: APPROVE on round 1 is just the verdict line 1`
 
 exports[`renderVerdictComment ko: BLOCK on the final round carries the banner and the history 1`] = `
 "<!-- archweave-verdict -->
-> ⚠️ **자동 리뷰 종료.** 최대 2회의 리뷰 라운드에 도달했지만 병합을 막는 finding(P0/P1)이 남아 있습니다. 사람의 리뷰가 필요합니다.
+> ⚠️ **자동 리뷰 종료.** 최대 2회의 리뷰 라운드에 도달했지만 병합을 막는 finding(P0/P1)이 남아 있습니다. 이후 push는 AI가 리뷰하지 않으니, 병합 전에 직접 리뷰하세요.
 
 **판정: BLOCK** — 병합 전에 P0/P1 finding을 해결해야 합니다.
 
