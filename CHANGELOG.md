@@ -1,3 +1,9 @@
+## 0.3.1 (2026-10-29)
+
+### 🩹 Fixes
+
+- clearer review check failures, shorter package descriptions and create step timings ([#12](https://github.com/clearlydev/nx-archweave/pull/12))
+
 ## 0.3.0 (2026-10-28)
 
 ### 🚀 Features
