@@ -116,7 +116,7 @@ A second script covers a workspace nx-archweave did not create. Nx's own Expo pr
 node tools/e2e-existing.mjs --frontend=expo
 ```
 
-Both scripts print how long each step took when they finish (and the steps that passed when one fails). In CI the same table lands in the job summary, so a slow leg shows where its time goes.
+Both scripts print how long each step took when they finish (and the steps that passed when one fails). In CI the same table lands in the job summary, so a slow leg shows where its time goes. The create step is broken down further: with `CREATE_NX_ARCHWEAVE_TIMINGS=1` set, as `e2e-create.mjs` sets it, the CLI prints how long each of its own steps took.
 
 Run the scripts from a plain terminal. `create-nx-workspace` builds a different workspace when it finds an AI coding agent's environment variables.
 
