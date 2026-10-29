@@ -190,7 +190,14 @@ const [launcher, launcherArgs] =
       : pm === 'yarn'
         ? ['npm', ['exec', '--yes', `--package=${cliTarball}`, '--', 'create-nx-archweave', ...cliArgs, '--package-manager=yarn']]
         : ['npm', ['exec', '--yes', `--package=${cliTarball}`, '--', 'create-nx-archweave', ...cliArgs]];
-const { output: createOutput } = run('create workspace', launcher, launcherArgs, { cwd: work });
+// CREATE_NX_ARCHWEAVE_TIMINGS makes the CLI print how long each of its plan steps took, so the
+// step log can show which part of the create run is slow (create-nx-workspace, an install, a generator).
+const { output: createOutput } = run('create workspace', launcher, launcherArgs, { cwd: work, env: { ...process.env, CREATE_NX_ARCHWEAVE_TIMINGS: '1' } });
+const planTimings = createOutput.slice(createOutput.lastIndexOf('Step timings:'));
+stepLog.detail(
+  'create workspace',
+  [...planTimings.matchAll(/^\s+(\d+\.\d)s {2}(\S.*)$/gm)].map((match) => [match[2], Number(match[1]) * 1000]),
+);
 for (const marker of [
   // the version proves which yarn ran (a yarn-1 runner would pass a bare "yarn" check)
   pm === 'yarn' ? `Package manager: yarn ${yarnMajor}.` : `Package manager: ${pm}`,
