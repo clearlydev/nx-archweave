@@ -77,7 +77,9 @@ function composePrompt(input: ReviewWorkflowInput): string {
 
 /** Lists the tool calls the agent was denied, after the review step (the action's own log
  * shows only a count). It reads the action's execution file and prints, per denial, the tool
- * name and the first 200 characters of the command, nothing the tools returned. The command is
+ * name and the first 200 characters of the command, nothing the tools returned. When the run ended
+ * in an error (an expired token, a usage limit), it also prints the first 300 characters of the
+ * error, which the action's log leaves out. The command is
  * text the model wrote from the pull request, so jq prints it as an escaped JSON string (one line,
  * control characters escaped) between ::stop-commands:: and a token made for this run, so none
  * of it is read as a workflow command. It never fails the job. */
@@ -91,7 +93,7 @@ function renderDeniedToolsStep(): string {
     '    [ -f "$EXECUTION_FILE" ] || exit 0',
     '    stop_token="archweave-$(od -An -N16 -tx1 /dev/urandom | tr -d \' \\n\')"',
     '    echo "::stop-commands::$stop_token"',
-    `    jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, command: ((.tool_input.command // "") | tostring | .[0:200])}' "$EXECUTION_FILE" || echo "Could not read the execution file."`,
+    `    jq -c '.[] | select(.type == "result") | ((.permission_denials[]? | {tool: .tool_name, command: ((.tool_input.command // "") | tostring | .[0:200])}), (select(.is_error == true) | {error: ((.result // "") | tostring | .[0:300])}))' "$EXECUTION_FILE" || echo "Could not read the execution file."`,
     '    echo "::$stop_token::"',
   ].join('\n');
 }

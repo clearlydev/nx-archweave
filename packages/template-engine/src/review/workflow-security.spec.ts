@@ -261,6 +261,15 @@ describe('claude workflow: the agent\'s tools and the denial report', () => {
     expect(output).not.toContain('INPUT-NEVER-PRINTED');
   });
 
+  it('prints why the run ended in an error, as one escaped line, and nothing for a run that succeeded', () => {
+    const failed = runDeniedStep(JSON.stringify([{ type: 'result', is_error: true, result: 'Invalid API key\n::error::forged ' + 'x'.repeat(400), permission_denials: [] }]));
+    expect(failed.exitCode).toBe(0);
+    const lines = failed.lines.slice(1, -1);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]).error).toBe(('Invalid API key\n::error::forged ' + 'x'.repeat(400)).slice(0, 300));
+    expect(runDeniedStep(JSON.stringify([{ type: 'result', is_error: false, result: 'done', permission_denials: [] }])).lines.slice(1, -1)).toEqual([]);
+  });
+
   it('two runs never share a stop token', () => {
     const empty = JSON.stringify([{ type: 'result', permission_denials: [] }]);
     expect(runDeniedStep(empty).lines[0]).not.toBe(runDeniedStep(empty).lines[0]);
