@@ -35,6 +35,9 @@ const PACKAGES = {
     // jsonc-parser stays external too: nx already depends on it (3.3.1), and an inlined copy
     // would hide it from audits and drop its MIT notice.
     external: ['@nx/devkit', 'jsonc-parser'],
+    // Code the entries share goes into chunks beside the generators: a chunk that renders a
+    // generator's files/ finds them from its own location (generatorFilesDir), as an entry does.
+    chunkNames: 'generators/_chunks/[name]-[hash]',
     entryPoints(pkgDir) {
       // src/eslint: the `@clearlydev/nx-archweave/eslint` entry a workspace's eslint.config.mjs imports
       const entries = ['src/index.ts', 'src/bin/review-verdict.ts', 'src/eslint/index.ts'];
@@ -72,6 +75,7 @@ const PACKAGES = {
     // the package as an install spec in the plan it executes), so nothing
     // workspace-internal needs inlining here; only node builtins stay external.
     external: [],
+    chunkNames: '_chunks/[name]-[hash]',
     entryPoints() {
       return ['src/index.ts', 'src/bin.ts'];
     },
@@ -100,6 +104,10 @@ async function main() {
     outdir: 'dist',
     outbase: 'src',
     bundle: true,
+    // Without splitting every entry carries its own copy of the code it shares with the others
+    // (the template engine, the review policy), so the package ships the same modules many times.
+    splitting: true,
+    chunkNames: config.chunkNames,
     platform: 'node',
     format: 'esm',
     target: 'node20',
