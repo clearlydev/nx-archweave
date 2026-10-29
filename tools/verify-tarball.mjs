@@ -149,10 +149,10 @@ try {
     log(`  OK  ${name} -> ${factory}.js (exports: ${exportNames.join(', ')})`);
   }
 
-  // Only bundles ship: each generator factory, each migration, every exports target and the bin.
-  // tsc's per-file output of everything else still imports the internal @nx-archweave/* packages
-  // (and bundled libraries) the tarball does not carry.
-  log('checking that every shipped .js file is a bundle entry');
+  // Only bundles ship: each generator factory, each migration, every exports target and the bin,
+  // and the chunks of code they share. tsc's per-file output of everything else still imports the
+  // internal @nx-archweave/* packages (and bundled libraries) the tarball does not carry.
+  log('checking that every shipped .js file is a bundle entry or a shared chunk');
   const installedManifest = JSON.parse(readFileSync(path.join(installedPkgDir, 'package.json'), 'utf8'));
   const migrationsPath = path.join(installedPkgDir, 'migrations.json');
   const installedMigrations = existsSync(migrationsPath) ? JSON.parse(readFileSync(migrationsPath, 'utf8')) : {};
@@ -166,18 +166,20 @@ try {
       .filter((file) => typeof file === 'string' && file.endsWith('.js'))
       .map((file) => path.posix.normalize(file.replace(/^\.\//, ''))),
   );
-  const stray = readdirSync(path.join(installedPkgDir, 'dist'), { recursive: true })
+  const shipped = readdirSync(path.join(installedPkgDir, 'dist'), { recursive: true })
     .map((entry) => `dist/${String(entry).split(path.sep).join('/')}`)
-    .filter((file) => file.endsWith('.js') && !entries.has(file));
-  if (stray.length > 0) throw new Error(`shipped .js files that are not bundle entries:\n  ${stray.join('\n  ')}`);
-  log(`  OK  ${entries.size} bundle entries, nothing else`);
+    .filter((file) => file.endsWith('.js'));
+  const chunks = shipped.filter((file) => file.startsWith('dist/generators/_chunks/'));
+  const stray = shipped.filter((file) => !entries.has(file) && !chunks.includes(file));
+  if (stray.length > 0) throw new Error(`shipped .js files that are not bundle entries or chunks:\n  ${stray.join('\n  ')}`);
+  log(`  OK  ${entries.size} bundle entries and ${chunks.length} shared chunks, nothing else`);
 
   // Third-party code is never inlined: an audit can't see a bundled copy, and esbuild drops its
   // license notice. esbuild marks every module it inlines with a `// <path>` comment, so a path
   // into node_modules means one slipped in (an import of a package bundle.mjs doesn't list
   // as external).
   log('checking that no bundle inlines a node_modules package');
-  const inlined = [...entries].flatMap((file) => {
+  const inlined = [...entries, ...chunks].flatMap((file) => {
     const source = readFileSync(path.join(installedPkgDir, file), 'utf8');
     const packages = [...source.matchAll(/^\/\/ (?:\.\.\/)*node_modules\/(?:\.pnpm\/)?(@[^/\s]+\/[^/\s]+|[^/\s]+)/gm)].map((match) => match[1]);
     return [...new Set(packages)].map((name) => `${file}: ${name}`);

@@ -12,9 +12,9 @@ export interface RenderedFile {
 
 /**
  * The `files/` directory of a generator. `fromUrl` is the calling module's `import.meta.url`:
- * from source and from a generator's own bundle that is `../<generator>/files`; from a bundle
- * that inlines another generator (init runs add-github-templates) the sibling directory is
- * the same, and from the package's root `index.js` it is `./generators/<generator>/files`.
+ * from source, from a generator's own bundle and from a shared chunk in `generators/_chunks/`
+ * that is `../<generator>/files`; from the package's root `index.js` it is
+ * `./generators/<generator>/files`.
  */
 export function generatorFilesDir(generator: string, fromUrl: string): string {
   for (const relative of [`../${generator}/files`, `./generators/${generator}/files`]) {
