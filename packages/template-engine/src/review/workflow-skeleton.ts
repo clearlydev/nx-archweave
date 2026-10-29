@@ -233,10 +233,17 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
  * comment is handed over first) and this step fails the job. */
 export function renderBlockStep(): string {
   return [
-    '- name: Fail on a blocking verdict',
+    '- name: Fail the review check',
     "  if: steps.verdict.outputs.blocked == 'true'",
+    '  env:',
+    '    BLOCK_REASON: ${{ steps.verdict.outputs.block-reason }}',
     '  run: |',
-    '    echo "The review check failed: the verdict is BLOCK, or the AI review left no readable summary. See the verdict comment on this pull request."',
+    '    case "$BLOCK_REASON" in',
+    '      block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;',
+    '      no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
+    '      unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
+    '      *) echo "The review check failed. See the verdict comment on this pull request." ;;',
+    '    esac',
     '    exit 1',
   ].join('\n');
 }

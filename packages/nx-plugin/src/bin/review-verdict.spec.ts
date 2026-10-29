@@ -195,10 +195,11 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
     expect(outputs['comment-body']).toContain('<!-- archweave-verdict -->');
     expect(outputs['previous-comment-id']).toBe('95');
     expect(outputs['blocked']).toBe('true');
+    expect(outputs['block-reason']).toBe('block');
     expect(result.logs.join('\n')).toContain('BLOCK');
   });
 
-  it('a clean review writes blocked=false and no earlier id when there is none', () => {
+  it('a clean review writes blocked=false and no block reason', () => {
     const written: string[] = [];
     const ok = JSON.stringify([
       { user: { login: 'claude[bot]', type: 'Bot' }, body: `${ROUND_MARKER}\n${FINDINGS_MARKER}\n\`\`\`json\n{"schema":"archweave/findings@1","findings":[]}\n\`\`\`` },
@@ -206,6 +207,7 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
     expect(runReviewVerdictBin(OUTPUT, stubExec(ok, []), (_p, text) => written.push(text)).exitCode).toBe(0);
     const outputs = parseOutputs(written.join(''));
     expect(outputs['blocked']).toBe('false');
+    expect(outputs['block-reason']).toBe('');
     expect(outputs['previous-comment-id']).toBe('');
   });
 
@@ -234,6 +236,7 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       expect(outputs['blocked']).toBe('true');
       expect(outputs['comment-body']).toContain('AI review posted no summary');
       expect(outputs['comment-body']).toContain('re-run all jobs');
+      expect(outputs['block-reason']).toBe('no-summary');
       expect(logs).toContain('::error title=AI review posted no summary::');
     });
 
@@ -260,6 +263,7 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       const { outputs, logs } = run([{ id: 70, user: { login: 'claude[bot]', type: 'Bot' }, body: `${ROUND_MARKER}\nno block` }]);
       expect(outputs['blocked']).toBe('true');
       expect(outputs['comment-body']).toContain('could not be machine-read');
+      expect(outputs['block-reason']).toBe('unreadable');
       expect(logs).toContain('::error title=AI review summary unreadable::');
     });
 

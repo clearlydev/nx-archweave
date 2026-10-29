@@ -121,7 +121,7 @@ function reviewCheck(providerId: keyof typeof REVIEW_PROVIDERS, scenario: Scenar
   if (first.exitCode !== 0) return 'failure';
   if (first.outputs['run'] !== 'true') return 'success';
   if (scenario.blocked === undefined) throw new Error(`${scenario.name}: the verdict ran but the scenario gives no verdict`);
-  const blockStep = stepNamed(steps, 'Fail on a blocking verdict');
+  const blockStep = stepNamed(steps, 'Fail the review check');
   expect(blockStep).toContain("if: steps.verdict.outputs.blocked == 'true'");
   if (!scenario.blocked) return 'success';
   return runStep(scriptOf(blockStep), {}).exitCode === 0 ? 'success' : 'failure';
@@ -208,6 +208,17 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     // A skipped job counts as passed for a required check; `always()` keeps a stopped
     // dependency from skipping it, where the default success() would not.
     expect(yaml).toContain(['  review:', '    needs: ai-review', '    if: always()', ''].join('\n'));
+  });
+
+  it.each([
+    ['block', 'The AI verdict is BLOCK'],
+    ['no-summary', 'posted no summary for this commit'],
+    ['unreadable', 'no readable findings block'],
+    ['', 'See the verdict comment'],
+  ])('the failing step names the reason (%s)', (reason, text) => {
+    const result = spawnSync('bash', ['-e', '-c', scriptOf(stepNamed(reviewJobSteps(providerId), 'Fail the review check'))], { env: { PATH: process.env['PATH'] ?? '', BLOCK_REASON: reason }, encoding: 'utf-8' });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(text);
   });
 
   it('runs whatever the AI review job did, and judges only after checking its result', () => {
