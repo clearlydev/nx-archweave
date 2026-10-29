@@ -161,6 +161,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
+      # Windows: the e2e workspace and the npm cache go to the runner's work drive (D:, where
+      # RUNNER_TEMP is) instead of the user profile on C:. The npm leg spent 13–14 of its 15
+      # minutes creating the workspace (the step timings now show which part of it); the job
+      # summary of the next runs shows whether the move helps.
+      - name: Put temp files and the npm cache on the work drive
+        if: runner.os == 'Windows' && (github.event_name != 'pull_request' || steps.filter.outputs.run == 'true')
+        run: |
+          {
+            echo "TEMP=$RUNNER_TEMP"
+            echo "TMP=$RUNNER_TEMP"
+            echo "npm_config_cache=$RUNNER_TEMP/npm-cache"
+          } >> "$GITHUB_ENV"
+
       - run: node tools/e2e-create.mjs --pm=${{ matrix.pm }} --frontend=${{ matrix.frontend }} ${{ matrix.backend && format('--backend={0}', matrix.backend) || '' }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }}
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
