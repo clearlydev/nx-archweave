@@ -1,6 +1,6 @@
 {
   "name": "create-nx-archweave",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Create a ready-to-work Nx workspace in one command: FSD Lite lint rule, boundaries, AI agent rules, templates and AI PR review",
   "license": "MIT",
   "author": "clearlydev (https://github.com/clearlydev)",

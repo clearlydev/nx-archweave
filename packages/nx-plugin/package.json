@@ -1,6 +1,6 @@
 {
   "name": "@clearlydev/nx-archweave",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Nx generators for an FSD Lite lint rule, frontend/backend boundaries, AI agent rules, GitHub templates and optional AI PR review",
   "license": "MIT",
   "author": "clearlydev (https://github.com/clearlydev)",

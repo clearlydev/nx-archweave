@@ -1,3 +1,9 @@
+## 0.3.3 (2026-10-29)
+
+### 🩹 Fixes
+
+- ship shared code once instead of in every generator bundle ([#14](https://github.com/clearlydev/nx-archweave/pull/14))
+
 ## 0.3.2 (2026-10-29)
 
 ### 🩹 Fixes
