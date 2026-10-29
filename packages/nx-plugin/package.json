@@ -1,7 +1,7 @@
 {
   "name": "@clearlydev/nx-archweave",
   "version": "0.3.0",
-  "description": "Nx generators that make a workspace ready to work on in one preset: an FSD Lite lint rule, frontend/backend boundaries, AI agent rules, GitHub templates, and optional AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)",
+  "description": "Nx generators for an FSD Lite lint rule, frontend/backend boundaries, AI agent rules, GitHub templates and optional AI PR review",
   "license": "MIT",
   "author": "clearlydev (https://github.com/clearlydev)",
   "engines": {

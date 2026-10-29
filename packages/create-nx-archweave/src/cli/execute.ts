@@ -68,6 +68,8 @@ export interface CompletedStep {
   skipped?: string;
   /** An optional step that failed (the run went on): the exit status, or why it never ran. */
   optionalFailure?: string;
+  /** How long the step's command ran; absent when it never ran. */
+  durationMs?: number;
 }
 
 export type ExecuteReport =
@@ -81,6 +83,8 @@ export type ExecuteReport =
       failedArgs?: string[];
       /** Set when finalizeArgs refused — the step never executed. */
       finalizeError?: string;
+      /** How long the failed step's command ran; absent when it never ran. */
+      failedDurationMs?: number;
     };
 
 /** Real StepContext over the created workspace (tests inject their own). */
@@ -119,6 +123,7 @@ export function executePlan(
   exec: PlanExec,
   invokedFromDir: string,
   ctxFactory: (workspacePath: string) => StepContext = createStepContext,
+  now: () => number = Date.now,
 ): ExecuteReport {
   const completed: CompletedStep[] = [];
 
@@ -141,7 +146,9 @@ export function executePlan(
       }
       args = finalized;
     }
+    const startedAt = now();
     const result = exec(step.command, args, plan.env ? { cwd, env: plan.env } : { cwd });
+    const durationMs = now() - startedAt;
 
     if (result.status !== 0) {
       if (step.optional) {
@@ -149,12 +156,12 @@ export function executePlan(
           result.status === null
             ? 'it did not start or was stopped (no exit code)'
             : `exit code: ${result.status} (its own error output is printed above)`;
-        completed.push({ step, result, args, optionalFailure });
+        completed.push({ step, result, args, optionalFailure, durationMs });
         continue;
       }
-      return { ok: false, completed, failedStep: step, failedResult: result, failedArgs: args };
+      return { ok: false, completed, failedStep: step, failedResult: result, failedArgs: args, failedDurationMs: durationMs };
     }
-    completed.push({ step, result, args });
+    completed.push({ step, result, args, durationMs });
   }
 
   return { ok: true, completed };
@@ -209,6 +216,15 @@ export function renderExecuteReport(report: ExecuteReport, plan: CreatePlan, wor
     '',
     ...renderRemainingSteps(report, plan, workspaceName),
   ].join('\n');
+}
+
+/** How long each step that ran took, slowest work first in plan order: printed when
+ * CREATE_NX_ARCHWEAVE_TIMINGS=1 (the e2e scripts set it to see where a slow run spends its
+ * time). */
+export function renderStepTimings(report: ExecuteReport): string {
+  const rows: [string, number][] = report.completed.filter((c) => c.durationMs !== undefined).map((c) => [c.step.id, c.durationMs as number]);
+  if (!report.ok && report.failedDurationMs !== undefined) rows.push([`${report.failedStep.id} (failed)`, report.failedDurationMs]);
+  return ['Step timings:', ...rows.map(([id, ms]) => `  ${(ms / 1000).toFixed(1).padStart(7)}s  ${id}`)].join('\n');
 }
 
 /** The failed step and every step after it, as commands to run by hand. Printed only —

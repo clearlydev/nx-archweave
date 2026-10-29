@@ -25,11 +25,22 @@ function outputModePath(env: Record<string, string | undefined>): string | undef
 
 /** Step outputs in GitHub's heredoc form; the delimiter is random, so no line of the comment can
  * end the value early. */
-function renderStepOutputs(commentBody: string, previousId: number | undefined, blocked: boolean): string {
+/** Why the review check fails: an AI BLOCK, no summary from this run, or one nobody can read. */
+type BlockReason = 'block' | 'no-summary' | 'unreadable';
+
+function renderStepOutputs(commentBody: string, previousId: number | undefined, blocked: boolean, reason?: BlockReason): string {
   let delimiter: string;
   do delimiter = `ARCHWEAVE_${randomBytes(8).toString('hex')}`;
   while (commentBody.split('\n').includes(delimiter));
-  return [`comment-body<<${delimiter}`, commentBody, delimiter, `previous-comment-id=${previousId ?? ''}`, `blocked=${blocked}`, ''].join('\n');
+  return [
+    `comment-body<<${delimiter}`,
+    commentBody,
+    delimiter,
+    `previous-comment-id=${previousId ?? ''}`,
+    `blocked=${blocked}`,
+    `block-reason=${blocked ? (reason ?? '') : ''}`,
+    '',
+  ].join('\n');
 }
 
 /** Output mode fails closed when the comments cannot be read: the job reads them with a
@@ -103,7 +114,8 @@ export function runReviewVerdictBin(
   const settled = !failedReview && (result.kind === 'no-round' || result.kind === 'unparseable');
   const blocked = failedReview || (result.kind === 'verdict' && result.exitCode !== 0);
   if (outputPath !== undefined) {
-    writeOutput(outputPath, renderStepOutputs(result.commentBody, previous?.id, blocked));
+    const reason: BlockReason = result.kind === 'no-summary' ? 'no-summary' : result.kind === 'unparseable' ? 'unreadable' : 'block';
+    writeOutput(outputPath, renderStepOutputs(result.commentBody, previous?.id, blocked, reason));
   } else {
     const payload = JSON.stringify({ body: result.commentBody });
     const updated =

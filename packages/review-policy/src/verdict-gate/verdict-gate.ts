@@ -29,6 +29,22 @@ export function collectRounds(comments: readonly { body: string; id?: number }[]
     .map((c, index) => ({ round: index + 1, id: c.id, extraction: extractFindingsBlock(c.body) }));
 }
 
+/** Lines two reports of one defect may drift apart between rounds (an edit above it, or the
+ * model citing the call instead of the function). */
+const LINE_DRIFT = 3;
+
+/** Whether two findings from consecutive rounds report the same defect. The model rewords a
+ * finding every round — another category name (`remote-code-execution`, then `code-injection`),
+ * a start line a few lines off — so only the file and the lines count: the same file and line
+ * ranges that overlap, give or take LINE_DRIFT. Two different defects on the same lines count
+ * once, which only affects the progress shown, never the verdict. */
+function sameDefect(a: ReviewFinding, b: ReviewFinding): boolean {
+  if (a.file !== b.file) return false;
+  const aEnd = a.lineRange.end ?? a.lineRange.start;
+  const bEnd = b.lineRange.end ?? b.lineRange.start;
+  return a.lineRange.start <= bEnd + LINE_DRIFT && b.lineRange.start <= aEnd + LINE_DRIFT;
+}
+
 /** Unparseable past rounds are skipped (a gap, never zeros). */
 export function computeRoundHistory(rounds: readonly Round[]): RoundHistoryEntry[] {
   const parsed = rounds.filter(
@@ -41,10 +57,10 @@ export function computeRoundHistory(rounds: readonly Round[]): RoundHistoryEntry
       history.push({ round: parsed[i].round, fixedFindingKeys: [], remainingFindingKeys: [...keys] });
       continue;
     }
-    const previous = new Set(parsed[i - 1].extraction.findings.map(findingKey));
+    const current = parsed[i].extraction.findings;
     history.push({
       round: parsed[i].round,
-      fixedFindingKeys: [...previous].filter((key) => !keys.has(key)),
+      fixedFindingKeys: parsed[i - 1].extraction.findings.filter((finding) => !current.some((now) => sameDefect(finding, now))).map(findingKey),
       remainingFindingKeys: [...keys],
     });
   }

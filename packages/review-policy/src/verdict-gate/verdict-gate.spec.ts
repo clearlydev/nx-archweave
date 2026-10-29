@@ -72,6 +72,22 @@ describe('runVerdictGate — round history', () => {
     }
   });
 
+  it('a defect the model rewords between rounds stays remaining: another category, a start line a few lines off', () => {
+    const round1 = roundComment([f('P0', 'apps/api/src/main.ts', 36, 'remote-code-execution')]);
+    const round2 = roundComment([f('P0', 'apps/api/src/main.ts', 38, 'code-injection')]);
+    const result = runVerdictGate({ comments: [round1, round2], maxRounds: 3, locale: 'en' });
+    if (result.kind === 'verdict') expect(result.commentBody).toContain('round 2: 0 fixed, 1 remaining');
+    else throw new Error(result.kind);
+  });
+
+  it('a finding in another file, or far from where it was, counts as fixed', () => {
+    const round1 = roundComment([f('P1', 'a.ts', 10), f('P1', 'b.ts', 10)]);
+    const round2 = roundComment([f('P1', 'a.ts', 40), f('P1', 'c.ts', 10)]);
+    const result = runVerdictGate({ comments: [round1, round2], maxRounds: 3, locale: 'en' });
+    if (result.kind === 'verdict') expect(result.commentBody).toContain('round 2: 2 fixed, 2 remaining');
+    else throw new Error(result.kind);
+  });
+
   it('an unparseable PAST round is skipped (결번), not reported as zeros', () => {
     const broken = { body: `${ROUND_MARKER}\nno block` };
     const round2 = roundComment([f('P2')]);

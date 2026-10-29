@@ -23,7 +23,7 @@
 
 | 프로바이더 | 상태 | GitHub Actions 확인 결과 (2026-10-25) | 시크릿 받는 곳 | 비용 |
 | --- | --- | --- | --- | --- |
-| `claude` (기본) | — | 확인: 시크릿이 없으면 green-skip, Claude GitHub App 없이 토큰만 있으면 `401 … Claude Code is not installed on this repository`로 실패하고 `review`가 red, 깨끗한 pull request에서 요약·APPROVE verdict 코멘트·green `review`(처음부터 끝까지 약 1분 45초). 미확인: BLOCK, 라운드, 재실행(알려진 문제 참고) | Claude Code OAuth 토큰, 그리고 저장소에 [Claude GitHub App](https://github.com/apps/claude) 설치(**Only select repositories**) | Claude 구독. 깨끗한 리뷰 한 번에 약 $0.05 |
+| `claude` (기본) | — | 확인: 시크릿이 없으면 green-skip, Claude GitHub App 없이 토큰만 있으면 `401 … Claude Code is not installed on this repository`로 실패하고 `review`가 red, 깨끗한 pull request에서 요약·APPROVE verdict 코멘트·green `review`(처음부터 끝까지 약 1분 45초). 0.3.0 배포 전 빌드에서는 보안 결함 pull request가 BLOCK과 red `review`, 실패한 잡만 재실행해도 red 유지, 이후 라운드는 verdict 코멘트 하나를 수정, 요약을 남기지 않은 리뷰는 red. 미확인: 배포된 0.3.0에서 라운드 한도 이후 커밋 | Claude Code OAuth 토큰, 그리고 저장소에 [Claude GitHub App](https://github.com/apps/claude) 설치(**Only select repositories**) | Claude 구독. 깨끗한 리뷰 한 번에 약 $0.05 |
 | `gemini` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red. 미확인: 리뷰 완료, BLOCK, 라운드, 재실행 | [Google AI Studio](https://aistudio.google.com) → **Get API key** | 한도가 있는 무료 등급. 모델이 붐비면 503으로 실패할 수 있어요 |
 | `gpt` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰 실패(API 한도) 시 `review`가 red. 미확인: 리뷰 완료 | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | ChatGPT 구독과 별개인 OpenAI API 크레딧. pull request에서 `@codex`를 멘션하는 건 별개의 ChatGPT 기능(Codex 커넥터)이에요. 이 워크플로를 실행하지 않고, 체크를 만들지 않으며, verdict 게이트도 거치지 않아요 |
 | `cursor` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red. 미확인: 리뷰 완료, BLOCK, 라운드, 재실행 | [cursor.com/dashboard/api](https://cursor.com/dashboard/api). Free 요금제에서는 대시보드 메뉴에 보이지 않으니 주소로 직접 들어가세요 | Cursor 요금제의 에이전트 사용량. Free 요금제는 첫 리뷰에서 한도에 걸렸어요 |
@@ -36,7 +36,7 @@
 
 - **Gemini 무료 등급:** 모델 수요가 몰리면 API가 `503 UNAVAILABLE`로 답해요. Gemini CLI가 약 5분 동안 10번 재시도한 뒤 AI 리뷰가 실패하고 `review`가 red가 돼요. 나중에 Re-run all jobs로 다시 돌리세요.
 - **Cursor Free 요금제:** 첫 리뷰가 출력 없이 8분 30초쯤 돌다가 `You've hit your usage limit`로 멈췄고, `review`가 red가 됐어요. 리뷰를 끝까지 하려면 에이전트 사용량이 더 많은 요금제가 필요해요.
-- **Claude, 거부된 도구 호출:** 보안 결함이 있는 pull request에서 리뷰가 허용 도구 밖의 호출을 시도해 2~3번 거부당했고, 요약을 게시하지 못한 채 끝났어요. GitHub에는 리뷰가 성공한 것으로 표시됐어요. 0.3.0부터는 이 경우 `review` check가 실패해요. 0.2.x에서는 녹색으로 통과했어요. 원인은 확인하지 못했어요. 액션 로그에는 거부 횟수만 나와요. 0.3.0은 claude-code-action의 공식 리뷰 예시처럼 프롬프트에 저장소와 pull request 번호를 넣고, 셸 치환 없이 요약을 게시하는 방법을 알려 줘요. `Show denied tool calls` 스텝이 거부된 호출을 하나씩 보여 줘요.
+- **Claude, 거부된 도구 호출:** 보안 결함이 있는 pull request에서 리뷰가 허용 도구 밖의 호출을 시도해 2~3번 거부당했고, 요약을 게시하지 못한 채 끝났어요. GitHub에는 리뷰가 성공한 것으로 표시됐어요. 0.3.0부터는 이 경우 `review` check가 실패해요. 0.2.x에서는 녹색으로 통과했어요. 원인은 확인하지 못했어요. 액션 로그에는 거부 횟수만 나와요. 0.3.0은 claude-code-action의 공식 리뷰 예시처럼 프롬프트에 저장소와 pull request 번호를 넣고, 셸 치환 없이 요약을 게시하는 방법을 알려 줘요. 같은 pull request에서 이후 리뷰는 거부 없이 돌고 요약을 게시했어요. `Show denied tool calls` 스텝이 거부된 호출을 하나씩 보여 줘요.
 - **GPT, API 잔액 없음:** 리뷰가 `Quota exceeded. Check your plan and billing details.`로 멈추고 `review`가 red가 돼요. ChatGPT 구독은 API 비용을 대신하지 않아요. platform.openai.com에서 크레딧을 충전하세요.
 - **Gemini는 도구 실행을 묻지 않아요.** `run-gemini-cli` 액션이 Gemini CLI를 YOLO 모드("All tool calls will be automatically approved")로 실행해요. 그래서 모델의 셸·`gh` 호출이 잡의 토큰 권한 안에서 확인 없이 실행돼요.
 
@@ -77,7 +77,7 @@
 - `cursor` 프로바이더는 `curl --proto '=https' --tlsv1.2 -fsS https://cursor.com/install | bash`로 `cursor-agent`를 설치해요. Cursor는 이 설치에 고정 버전이나 체크섬을 제공하지 않아요. 그래서 남는 위험은 [보안 범위](#보안-범위)에 적었어요.
 - `gemini` 프로바이더는 액션이 설치하는 Gemini CLI 버전을 고정해요(`gemini_cli_version`). 액션의 기본값은 `latest`인데, Gemini CLI 0.65가 작업 폴더 신뢰 검사를 추가하면서 워크플로가 체크아웃 폴더를 신뢰하기 전까지 모든 리뷰가 멈췄어요. Dependabot은 이 고정값을 올리지 않고, nx-archweave 새 릴리스가 올려요.
 - 모든 잡은 GitHub 기본값 360분 대신 15분이 지나면 멈춰요(`timeout-minutes: 15`). 이렇게 멈춘 AI 리뷰는 실패로 처리돼서 `review`가 red가 돼요.
-- `claude` 에이전트는 claude-code-action의 PR 리뷰 예시와 같은 도구만 써요. inline comment, `gh pr comment`, `gh pr diff`, `gh pr view`뿐이고, 다른 셸 명령, `gh api`, 파일 수정은 안 돼요. `Show denied tool calls` 스텝은 거부된 호출마다 도구 이름과 명령 앞 200자를 JSON 한 줄로 출력하고, 그 구간에서는 워크플로 명령을 꺼 둬요. 도구가 돌려준 내용은 출력하지 않고, 아무것도 업로드하지 않아요. 액션의 `show_full_output`과 `display_report`는 도구 출력을 로그에 공개하므로 꺼 둬요.
+- `claude` 에이전트는 claude-code-action의 PR 리뷰 예시와 같은 도구만 써요. inline comment, `gh pr comment`, `gh pr diff`, `gh pr view`뿐이고, 다른 셸 명령, `gh api`, 파일 수정은 안 돼요. `Show denied tool calls` 스텝은 거부된 호출마다 도구 이름과 명령 앞 200자를 JSON 한 줄로 출력하고, 그 구간에서는 워크플로 명령을 꺼 둬요. 실행이 오류로 끝나면(만료된 토큰, 사용 한도) 액션 로그에 없는 오류 문구 앞 300자도 출력해요. 도구가 돌려준 내용은 출력하지 않고, 아무것도 업로드하지 않아요. 액션의 `show_full_output`과 `display_report`는 도구 출력을 로그에 공개하므로 꺼 둬요.
 
 ### 보안 범위
 

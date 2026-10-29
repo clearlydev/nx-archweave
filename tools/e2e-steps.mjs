@@ -8,6 +8,8 @@ import { appendFileSync } from 'node:fs';
 export function createStepLog() {
   const names = [];
   const durations = [];
+  // step name → [label, ms][]: the parts a step's own command reported (the CLI's plan steps)
+  const details = new Map();
   let last = Date.now();
   const startedAt = last;
   return {
@@ -18,6 +20,10 @@ export function createStepLog() {
       durations.push(now - last);
       last = now;
     },
+    /** Parts of a recorded step, timed by the command it ran: printed indented under it. */
+    detail(step, rows) {
+      details.set(step, rows);
+    },
     /** The last two recorded steps were one: keep the earlier name, add the times. */
     mergeLast() {
       names.pop();
@@ -26,14 +32,20 @@ export function createStepLog() {
     },
     /** One line per step with its seconds, and the total. */
     timings() {
-      const rows = names.map((name, index) => `  ${(durations[index] / 1000).toFixed(1).padStart(7)}s  ${name}`);
+      const rows = names.flatMap((name, index) => [
+        `  ${(durations[index] / 1000).toFixed(1).padStart(7)}s  ${name}`,
+        ...(details.get(name) ?? []).map(([label, ms]) => `  ${(ms / 1000).toFixed(1).padStart(9)}s    ${label}`),
+      ]);
       return [...rows, `  ${((Date.now() - startedAt) / 1000).toFixed(1).padStart(7)}s  total`].join('\n');
     },
     /** Appends the timings to the GitHub Actions job summary, when there is one. */
     summarize(title) {
       const summary = process.env.GITHUB_STEP_SUMMARY;
       if (!summary) return;
-      const rows = names.map((name, index) => `| ${name} | ${(durations[index] / 1000).toFixed(1)} |`);
+      const rows = names.flatMap((name, index) => [
+        `| ${name} | ${(durations[index] / 1000).toFixed(1)} |`,
+        ...(details.get(name) ?? []).map(([label, ms]) => `| &nbsp;&nbsp;↳ ${label} | ${(ms / 1000).toFixed(1)} |`),
+      ]);
       const total = `| **total** | **${((Date.now() - startedAt) / 1000).toFixed(1)}** |`;
       try {
         appendFileSync(summary, [`### ${title}`, '', '| step | seconds |', '| --- | ---: |', ...rows, total, ''].join('\n') + '\n');

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { childEnv, createStepContext, executePlan, renderExecuteReport, type ExecResult, type PlanExec } from './execute.ts';
+import { childEnv, createStepContext, executePlan, renderExecuteReport, renderStepTimings, type ExecResult, type PlanExec } from './execute.ts';
 import { buildPlan, type CreatePlan } from './plan.ts';
 
 const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager: 'pnpm' });
@@ -386,4 +386,24 @@ it('an optional step that never started (no exit code) says so', () => {
     '/work',
   );
   expect(report.ok && report.completed[0].optionalFailure).toBe('it did not start or was stopped (no exit code)');
+});
+
+describe('step timings', () => {
+  const ticking = () => {
+    let t = 0;
+    return () => (t += 1500);
+  };
+
+  it('records how long each step ran and prints them in plan order', () => {
+    const report = executePlan(plan, () => ({ status: 0 }), '/work', () => ({ workspacePath: '/work', readFile: () => undefined, listDir: () => [] }), ticking());
+    const text = renderStepTimings(report);
+    expect(text.split('\n')[0]).toBe('Step timings:');
+    expect(text).toContain(`1.5s  ${plan.steps[0].id}`);
+    expect(text.split('\n').length).toBe(1 + report.completed.filter((c) => c.durationMs !== undefined).length);
+  });
+
+  it('names the step that failed, with its time', () => {
+    const report = executePlan(plan, () => ({ status: 1 }), '/work', undefined, ticking());
+    expect(renderStepTimings(report)).toContain(`1.5s  ${plan.steps[0].id} (failed)`);
+  });
 });

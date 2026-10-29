@@ -10,7 +10,7 @@ import { buildPlan, nxGenerateCommand } from './cli/plan.ts';
 import { detectInstalledHosts } from './cli/host-probe.ts';
 import { choosePlugins, resolvePluginFlag } from './cli/plugins.ts';
 import { spawnableCommand } from './cli/spawnable-command.ts';
-import { createProcessExec, executePlan, renderExecuteReport } from './cli/execute.ts';
+import { createProcessExec, executePlan, renderExecuteReport, renderStepTimings } from './cli/execute.ts';
 import { choosePackageManager, describeResolution, type CliPackageManager } from './cli/package-manager.ts';
 import { renderUsage, renderVersion } from './render-usage.ts';
 
@@ -182,6 +182,7 @@ async function main(argv: readonly string[]): Promise<number> {
 
   const report = executePlan(plan, createProcessExec(), process.cwd());
   console.log(renderExecuteReport(report, plan, name));
+  if (process.env['CREATE_NX_ARCHWEAVE_TIMINGS'] === '1') console.log(`\n${renderStepTimings(report)}`);
 
   return report.ok ? 0 : 1;
 }
