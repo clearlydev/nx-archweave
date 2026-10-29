@@ -1,3 +1,9 @@
+## 0.3.2 (2026-10-29)
+
+### 🩹 Fixes
+
+- point the npm homepage at the repository README ([#13](https://github.com/clearlydev/nx-archweave/pull/13))
+
 ## 0.3.1 (2026-10-29)
 
 ### 🩹 Fixes
