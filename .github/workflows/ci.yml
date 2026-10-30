@@ -222,6 +222,128 @@ jobs:
       - run: node tools/e2e-existing.mjs --frontend=${{ matrix.frontend }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }}
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
+  # The path a user takes with no flags: `npx create-nx-archweave@<version>` resolves the CLI by
+  # name, and the CLI installs @clearlydev/nx-archweave@^<its version> by name. e2e passes
+  # --plugin-source=<tarball> and never reaches either. A throwaway registry started with
+  # `pnpm dlx` (not a devDependency, so it never enters pnpm-lock.yaml) serves both packages;
+  # everything else is proxied from npmjs.
+  e2e-registry:
+    if: github.event_name != 'push' && inputs.legs != 'windows' && (github.event_name == 'workflow_dispatch' || github.repository == 'clearlydev/nx-archweave')
+    runs-on: ${{ inputs.ubuntu || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      VERDACCIO_VERSION: 6.11.1
+      REGISTRY: http://127.0.0.1:4873/
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this PR touches code
+        id: filter
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only "origin/$GITHUB_BASE_REF"...HEAD | grep -qE '^(packages/|tools/bundle\.mjs|tools/pack-sanitize\.mjs|\.github/workflows/ci\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "docs-only change — e2e-registry skipped"
+          fi
+
+      - uses: pnpm/action-setup@v6
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - uses: actions/setup-node@v7
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # npm 10 crashes inside create-nx-workspace's install (see the e2e job).
+      - run: npm install -g npm@11
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - run: pnpm install --frozen-lockfile
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+
+      - name: Start a throwaway registry
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/registry"
+          mkdir -p "$dir/storage"
+          # Our two packages are local-only (no uplink), so the registry can never answer with
+          # the npmjs copy; everything else comes from npmjs.
+          cat > "$dir/config.yml" <<EOF
+          storage: $dir/storage
+          uplinks:
+            npmjs:
+              url: https://registry.npmjs.org/
+          packages:
+            '@clearlydev/*': { access: \$all, publish: \$all }
+            'create-nx-archweave': { access: \$all, publish: \$all }
+            '**': { access: \$all, proxy: npmjs }
+          log: { type: file, path: $dir/verdaccio.log, level: warn }
+          EOF
+          # From the temp dir: the repo's pnpm settings (overrides, allowBuilds) don't apply to dlx.
+          # All of its output goes to a file, so nothing holds this step's output open, and it
+          # runs in its own process group (set -m): stopping the group also stops the verdaccio
+          # process pnpm starts, which renames itself.
+          cd "$RUNNER_TEMP"
+          set -m
+          nohup pnpm dlx "verdaccio@$VERDACCIO_VERSION" --config "$dir/config.yml" --listen 127.0.0.1:4873 > "$dir/stdout.log" 2>&1 < /dev/null &
+          echo $! > "$dir/pid"
+          set +m
+          for _ in $(seq 1 60); do
+            curl -sf "${REGISTRY}-/ping" >/dev/null && { echo "registry up"; exit 0; }
+            sleep 2
+          done
+          echo "::error title=registry::verdaccio@$VERDACCIO_VERSION did not answer /-/ping within 120 s"
+          tail -50 "$dir/stdout.log" || true
+          exit 1
+
+      - name: Publish both packages to it
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          version="0.0.0-registry.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          printf '//127.0.0.1:4873/:_authToken=throwaway\n' > "$RUNNER_TEMP/registry/npmrc"
+          for dir in packages/nx-plugin packages/create-nx-archweave; do
+            (cd "$dir" && npm pkg set version="$version" \
+              && npm pack --pack-destination "$RUNNER_TEMP/registry" >/dev/null) \
+              || { echo "::error title=pack::npm pack failed in $dir"; exit 1; }
+          done
+          for tgz in "$RUNNER_TEMP"/registry/clearlydev-nx-archweave-*.tgz "$RUNNER_TEMP"/registry/create-nx-archweave-*.tgz; do
+            npm publish "$tgz" --registry "$REGISTRY" --tag ci --userconfig "$RUNNER_TEMP/registry/npmrc" \
+              || { echo "::error title=publish::publishing $(basename "$tgz") to the throwaway registry failed"; exit 1; }
+          done
+          got=$(npm view "@clearlydev/nx-archweave@^$version" version --registry "$REGISTRY")
+          [ "$got" = "$version" ] || { echo "::error title=resolve::^$version resolved to '$got'"; exit 1; }
+
+      - name: Create a workspace the way a user does, by name, with no --plugin-source
+        if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          npm_config_registry: ${{ env.REGISTRY }}
+          npm_config_userconfig: ${{ runner.temp }}/registry/npmrc
+          CREATE_NX_ARCHWEAVE_TIMINGS: '1'
+        run: |
+          set -euo pipefail
+          npx --yes "create-nx-archweave@$VERSION" demo --preset=solo --frontend=react-vite --backend=none --locale=en --package-manager=npm \
+            || { echo "::error title=create::create-nx-archweave@$VERSION failed (see the log above)"; exit 1; }
+          spec=$(node -p "require('./demo/package.json').devDependencies['@clearlydev/nx-archweave']")
+          installed=$(node -p "require('./demo/node_modules/@clearlydev/nx-archweave/package.json').version")
+          echo "plugin spec: $spec, installed: $installed"
+          [ "$spec" = "^$VERSION" ] || { echo "::error title=plugin-spec::the CLI wrote '$spec', expected '^$VERSION'"; exit 1; }
+          [ "$installed" = "$VERSION" ] || { echo "::error title=plugin-install::installed $installed, expected $VERSION"; exit 1; }
+
+      - name: Stop the registry
+        if: always() && (github.event_name != 'pull_request' || steps.filter.outputs.run == 'true')
+        run: |
+          kill -- "-$(cat "$RUNNER_TEMP/registry/pid" 2>/dev/null)" 2>/dev/null || true
+          if [ "${{ job.status }}" != "success" ]; then tail -50 "$RUNNER_TEMP/registry/verdaccio.log" 2>/dev/null || true; fi
+
   # Publish rehearsal without credentials: prepack (bundle + pack-sanitize)
   # must survive `npm publish --dry-run` for both publishable packages.
   publish-dry-run:
