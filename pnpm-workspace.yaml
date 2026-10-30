@@ -5,3 +5,7 @@ allowBuilds:
   esbuild: true
   nx: true
   unrs-resolver: true
+overrides:
+  # nx 23.3.x and 24.0.x pin undici to 7.29.0, which has published advisories; 7.30.1 fixes them.
+  # Remove this once an nx release allows undici >= 7.30.1.
+  nx>undici: 7.30.1
