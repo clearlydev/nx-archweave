@@ -20,10 +20,10 @@
   "private": true,
   "devDependencies": {
     "@eslint/js": "^9.8.0",
-    "@nx/eslint": "23.1.0",
-    "@nx/eslint-plugin": "23.1.0",
-    "@nx/jest": "23.1.0",
-    "@nx/js": "23.1.0",
+    "@nx/eslint": "23.3.1",
+    "@nx/eslint-plugin": "23.3.1",
+    "@nx/jest": "23.3.1",
+    "@nx/js": "23.3.1",
     "@swc-node/register": "1.11.1",
     "@swc/core": "1.15.8",
     "@swc/helpers": "0.5.18",
@@ -37,26 +37,15 @@
     "jest-environment-node": "~30.3.0",
     "jest-util": "~30.3.0",
     "jsonc-eslint-parser": "^2.1.0",
-    "nx": "23.1.0",
+    "nx": "23.3.1",
     "prettier": "^3.8.1",
     "ts-jest": "^29.4.7",
     "ts-node": "10.9.1",
     "tslib": "^2.3.0",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.58.0",
-    "verdaccio": "^6.3.2"
+    "typescript-eslint": "^8.58.0"
   },
   "nx": {
-    "includedScripts": [],
-    "targets": {
-      "local-registry": {
-        "executor": "@nx/js:verdaccio",
-        "options": {
-          "port": 4873,
-          "config": ".verdaccio/config.yml",
-          "storage": "tmp/local-registry/storage"
-        }
-      }
-    }
+    "includedScripts": []
   }
 }

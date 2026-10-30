@@ -3,9 +3,6 @@ dist
 out-tsc
 test-output
 
-# the local-registry target's storage (.verdaccio/config.yml)
-/tmp
-
 # dependencies
 node_modules
 
