@@ -15,7 +15,8 @@
     }
   },
   "scripts": {
-    "release": "nx release --skip-publish"
+    "release": "nx release --skip-publish",
+    "sync-pins": "node tools/sync-pins.mjs"
   },
   "private": true,
   "devDependencies": {
