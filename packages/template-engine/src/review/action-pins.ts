@@ -8,7 +8,7 @@ export const ACTION_PINS = {
   'actions/setup-node': 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
   'pnpm/action-setup': 'pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0',
   'oven-sh/setup-bun': 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0',
-  'anthropics/claude-code-action': 'anthropics/claude-code-action@6b6870e649b5ff408753befeaee5fc7989d4e6a9 # v1.0.258',
+  'anthropics/claude-code-action': 'anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264',
   'google-github-actions/run-gemini-cli': 'google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22',
   'openai/codex-action': 'openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13',
 } as const;
