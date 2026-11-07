@@ -1,3 +1,13 @@
+## 0.4.0 (2026-11-07)
+
+### 🚀 Features
+
+- fail the review check when a commit has no AI verdict ([#18](https://github.com/clearlydev/nx-archweave/pull/18))
+
+### 🩹 Fixes
+
+- update claude-code-action to v1.0.268 ([#17](https://github.com/clearlydev/nx-archweave/pull/17))
+
 ## 0.3.3 (2026-10-29)
 
 ### 🩹 Fixes
