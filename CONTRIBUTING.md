@@ -140,6 +140,8 @@ Every pull request runs:
 
 A failure caused by our code blocks the pull request. A change upstream (Nx's templates, the registry) shows up as a warning instead. A nightly run repeats the matrix strictly. A change that touches only documentation starts no CI.
 
+Dependabot's pull requests for the review workflow's actions change only `.github/workflows/pinned-actions.yml`, so their tests fail until the generated workflows follow. Check out the Dependabot branch, run `pnpm sync-pins --verify`, review `git diff` and push. It first checks with the GitHub API that each new pin's version tag points at its SHA (following an annotated tag to its commit) and writes nothing if one doesn't. Then it copies the new pins into `packages/template-engine/src/review/action-pins.ts` and regenerates the provider snapshots and the doctor fixtures. It needs the GitHub CLI, signed in.
+
 ## Releases
 
 A maintainer releases both packages together, with the same version:

@@ -291,6 +291,19 @@ describe('pinned-actions.yml', () => {
       .split('\n')
       .map((line) => /^\s*(?:- )?uses: (.+)$/.exec(line)?.[1].trim())
       .filter((uses): uses is string => uses !== undefined);
-    expect(new Set(listed)).toEqual(new Set(Object.values(ACTION_PINS)));
+    const pinned: string[] = Object.values(ACTION_PINS);
+    const onlyInWorkflow = listed.filter((uses) => !pinned.includes(uses));
+    const onlyInPins = pinned.filter((uses) => !listed.includes(uses));
+    if (onlyInWorkflow.length > 0 || onlyInPins.length > 0) {
+      throw new Error(
+        [
+          'pinned-actions.yml and action-pins.ts differ.',
+          ...onlyInWorkflow.map((uses) => `  only in pinned-actions.yml: ${uses}`),
+          ...onlyInPins.map((uses) => `  only in action-pins.ts: ${uses}`),
+          'On a Dependabot branch, run `pnpm sync-pins --verify`: it checks each new pin against its version tag, copies the pins into action-pins.ts and regenerates the snapshots and doctor fixtures.',
+        ].join('\n'),
+      );
+    }
+    expect(new Set(listed)).toEqual(new Set(pinned));
   });
 });

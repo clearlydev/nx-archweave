@@ -53,7 +53,9 @@ Always run tasks through `pnpm nx`, never the underlying tool directly.
 - Comments explain the code; they don't cite issues, reviews or design notes.
 - Actions in generated workflows are pinned to a commit SHA in
   `packages/template-engine/src/review/action-pins.ts`, mirrored in `.github/workflows/pinned-actions.yml`
-  for Dependabot; `review/workflow-security.spec.ts` must pass.
+  for Dependabot; `review/workflow-security.spec.ts` must pass. A Dependabot pull request changes only
+  the mirror: run `pnpm sync-pins --verify` on its branch to check each new pin against its version tag
+  and update `action-pins.ts`, the snapshots and the doctor fixtures.
 - Versions and `CHANGELOG.md` are written by `pnpm release` (Nx Release) from the commits on `main`;
   never edit them by hand. Pull request titles are Conventional Commits (`feat:`, `fix:`, `docs:` …)
   because the squash-merged title is what the release reads.
