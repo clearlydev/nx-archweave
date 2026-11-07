@@ -48,32 +48,48 @@ const HEAD_LINE: Record<ReviewLocale, (sha: string) => string> = {
   ko: (sha) => renderCommitLine('ko', sha.slice(0, 7)),
 };
 
-/** Why the AI review did not run although the check ends green. */
-export type NotRunReason = 'secret' | 'fork' | 'dependabot' | 'rounds';
+/** Why the AI review did not run although the check ends green: the run received no provider
+ * secret, so it can't tell a repository with review switched off from one with it on. */
+export type NotRunReason = 'secret' | 'fork' | 'dependabot';
 
-const NOT_RUN_REASON: Record<ReviewLocale, Record<NotRunReason, (secretName: string, maxRounds: number) => string>> = {
+const NOT_RUN_REASON: Record<ReviewLocale, Record<NotRunReason, (secretName: string) => string>> = {
   en: {
     secret: (secretName) => `the ${secretName} secret is not registered`,
     fork: () => 'this pull request comes from a fork, and GitHub passes no secrets to runs from forks',
     dependabot: (secretName) => `Dependabot runs receive only Dependabot secrets, and ${secretName} is not one of them`,
-    rounds: (_secretName, maxRounds) => `the automated review round limit (${maxRounds}) is reached`,
   },
   ko: {
     secret: (secretName) => `${secretName} 시크릿이 등록되지 않음`,
     fork: () => '포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음',
     dependabot: (secretName) => `Dependabot 실행은 Dependabot 시크릿만 받는데, ${secretName}는 그중에 없음`,
-    rounds: (_secretName, maxRounds) => `자동 리뷰 라운드 한도(${maxRounds})에 도달함`,
   },
 };
 
 /** The sentence a run that skipped the AI review shows (annotation, job summary, verdict
  * comment): the check's color stays as it is, and the text says plainly that green here is not a
  * review. */
-export function renderNotRunNotice(locale: ReviewLocale, reason: NotRunReason, secretName: string, maxRounds: number): string {
-  const why = NOT_RUN_REASON[locale][reason](secretName, maxRounds);
+export function renderNotRunNotice(locale: ReviewLocale, reason: NotRunReason, secretName: string): string {
+  const why = NOT_RUN_REASON[locale][reason](secretName);
   return locale === 'en'
     ? `AI review did not run for this commit (${why}). A green check here does not mean the change was reviewed.`
     : `이 커밋에는 AI 리뷰가 실행되지 않았습니다(${why}). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.`;
+}
+
+/** The AI review ran, but the workspace has no verdict tool, so nothing can judge the commit and
+ * the review check fails. A workflow without the tool is a broken setup, not review switched off:
+ * that is a missing secret or no review workflow. */
+export function renderVerdictToolMissingNotice(locale: ReviewLocale): string {
+  return locale === 'en'
+    ? 'The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
+    : 'AI 리뷰는 실행됐지만 이 워크스페이스에 판정 도구(@clearlydev/nx-archweave)가 설치돼 있지 않아 이 커밋의 verdict가 없고, review 체크는 실패합니다. @clearlydev/nx-archweave를 devDependency로 설치하거나, 리뷰를 끄려면 리뷰 워크플로를 지우세요.';
+}
+
+/** A commit after the round limit has no AI verdict, so the review check fails; the text names
+ * the two ways forward. */
+export function renderRoundLimitNotice(locale: ReviewLocale, maxRounds: number): string {
+  return locale === 'en'
+    ? `The AI review did not review this commit: the automated review round limit (${maxRounds}) is reached, so there is no verdict and the review check fails. To merge, use your branch ruleset's bypass, or raise maxRounds and run add-review again.`
+    : `AI 리뷰가 이 커밋을 리뷰하지 않았습니다. 자동 리뷰 라운드 한도(${maxRounds})에 도달해 verdict가 없고, review 체크는 실패합니다. 머지하려면 브랜치 ruleset의 bypass를 쓰거나, maxRounds를 올리고 add-review를 다시 실행하세요.`;
 }
 
 /** The verdict comment is edited in place round after round, so it names the commit it judged —

@@ -168,26 +168,34 @@ jobs:
           REPOSITORY: \${{ github.repository }}
           PR_AUTHOR: \${{ github.event.pull_request.user.login }}
         run: |
-          not_run() {
-            case "$1" in
-              secret) annotation='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(CLAUDE_CODE_OAUTH_TOKEN 시크릿이 등록되지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
-              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
-              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(Dependabot 실행은 Dependabot 시크릿만 받는데, CLAUDE_CODE_OAUTH_TOKEN는 그중에 없음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
-              rounds) annotation='AI review did not run for this commit (the automated review round limit (5) is reached). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(자동 리뷰 라운드 한도(5)에 도달함). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
-            esac
-            echo "::notice title=AI review did not run::$annotation"
-            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+          write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
             case "$short_sha" in
               '' | *[!0-9a-f]*) short_sha= ;;
             esac
             {
               echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"
-              printf '%s\\n' '<!-- archweave-verdict -->' "ℹ️ $notice"
+              printf '%s\\n' '<!-- archweave-verdict -->' "$1"
               if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>커밋 \`'"$short_sha"'\` · 이 코멘트는 리뷰 라운드마다 갱신됩니다.</sub>'; fi
               echo "ARCHWEAVE_NOT_RUN_EOF"
               echo "run=false"
             } >> "$GITHUB_OUTPUT"
+          }
+          not_run() {
+            case "$1" in
+              secret) annotation='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(CLAUDE_CODE_OAUTH_TOKEN 시크릿이 등록되지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(Dependabot 실행은 Dependabot 시크릿만 받는데, CLAUDE_CODE_OAUTH_TOKEN는 그중에 없음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+            esac
+            echo "::notice title=AI review did not run::$annotation"
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "ℹ️ $notice"
+          }
+          round_limit() {
+            notice='AI 리뷰가 이 커밋을 리뷰하지 않았습니다. 자동 리뷰 라운드 한도(5)에 도달해 verdict가 없고, review 체크는 실패합니다. 머지하려면 브랜치 ruleset의 bypass를 쓰거나, maxRounds를 올리고 add-review를 다시 실행하세요.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "⛔ $notice"
+            echo "block-reason=rounds" >> "$GITHUB_OUTPUT"
           }
           if [ "$AI_REVIEW_RESULT" != success ]; then
             echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
@@ -202,7 +210,7 @@ jobs:
               exit 0
               ;;
             true/false)
-              not_run rounds
+              round_limit
               exit 0
               ;;
             true/true)
@@ -269,18 +277,34 @@ jobs:
           if [ -x node_modules/.bin/archweave-review-verdict ]; then
             node_modules/.bin/archweave-review-verdict
           else
-            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+            echo '::error title=Verdict tool missing::The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
+            notice='AI 리뷰는 실행됐지만 이 워크스페이스에 판정 도구(@clearlydev/nx-archweave)가 설치돼 있지 않아 이 커밋의 verdict가 없고, review 체크는 실패합니다. @clearlydev/nx-archweave를 devDependency로 설치하거나, 리뷰를 끄려면 리뷰 워크플로를 지우세요.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            short_sha=$(printf '%s' "$ARCHWEAVE_HEAD_SHA" | cut -c1-7)
+            case "$short_sha" in
+              '' | *[!0-9a-f]*) short_sha= ;;
+            esac
+            {
+              echo "comment-body<<ARCHWEAVE_TOOL_MISSING_EOF"
+              printf '%s\\n' '<!-- archweave-verdict -->' "⛔ $notice"
+              if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>커밋 \`'"$short_sha"'\` · 이 코멘트는 리뷰 라운드마다 갱신됩니다.</sub>'; fi
+              echo "ARCHWEAVE_TOOL_MISSING_EOF"
+              echo "blocked=true"
+              echo "block-reason=tool-missing"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Fail the review check
-        if: steps.verdict.outputs.blocked == 'true'
+        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'
         env:
-          BLOCK_REASON: \${{ steps.verdict.outputs.block-reason }}
+          BLOCK_REASON: \${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}
         run: |
           case "$BLOCK_REASON" in
             block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;
             no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
             unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
+            tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;
+            rounds) echo "The automated review round limit (5) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;
             *) echo "The review check failed. See the verdict comment on this pull request." ;;
           esac
           exit 1
@@ -462,26 +486,34 @@ jobs:
           REPOSITORY: \${{ github.repository }}
           PR_AUTHOR: \${{ github.event.pull_request.user.login }}
         run: |
-          not_run() {
-            case "$1" in
-              secret) annotation='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.' ;;
-              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
-              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.' ;;
-              rounds) annotation='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.' ;;
-            esac
-            echo "::notice title=AI review did not run::$annotation"
-            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+          write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
             case "$short_sha" in
               '' | *[!0-9a-f]*) short_sha= ;;
             esac
             {
               echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"
-              printf '%s\\n' '<!-- archweave-verdict -->' "ℹ️ $notice"
+              printf '%s\\n' '<!-- archweave-verdict -->' "$1"
               if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>Commit \`'"$short_sha"'\` · this comment is updated on every review round.</sub>'; fi
               echo "ARCHWEAVE_NOT_RUN_EOF"
               echo "run=false"
             } >> "$GITHUB_OUTPUT"
+          }
+          not_run() {
+            case "$1" in
+              secret) annotation='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.' ;;
+              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
+              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.' ;;
+            esac
+            echo "::notice title=AI review did not run::$annotation"
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "ℹ️ $notice"
+          }
+          round_limit() {
+            notice='The AI review did not review this commit: the automated review round limit (3) is reached, so there is no verdict and the review check fails. To merge, use your branch ruleset'\\''s bypass, or raise maxRounds and run add-review again.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "⛔ $notice"
+            echo "block-reason=rounds" >> "$GITHUB_OUTPUT"
           }
           if [ "$AI_REVIEW_RESULT" != success ]; then
             echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
@@ -496,7 +528,7 @@ jobs:
               exit 0
               ;;
             true/false)
-              not_run rounds
+              round_limit
               exit 0
               ;;
             true/true)
@@ -563,18 +595,34 @@ jobs:
           if [ -x node_modules/.bin/archweave-review-verdict ]; then
             node_modules/.bin/archweave-review-verdict
           else
-            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+            echo '::error title=Verdict tool missing::The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
+            notice='The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            short_sha=$(printf '%s' "$ARCHWEAVE_HEAD_SHA" | cut -c1-7)
+            case "$short_sha" in
+              '' | *[!0-9a-f]*) short_sha= ;;
+            esac
+            {
+              echo "comment-body<<ARCHWEAVE_TOOL_MISSING_EOF"
+              printf '%s\\n' '<!-- archweave-verdict -->' "⛔ $notice"
+              if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>Commit \`'"$short_sha"'\` · this comment is updated on every review round.</sub>'; fi
+              echo "ARCHWEAVE_TOOL_MISSING_EOF"
+              echo "blocked=true"
+              echo "block-reason=tool-missing"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Fail the review check
-        if: steps.verdict.outputs.blocked == 'true'
+        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'
         env:
-          BLOCK_REASON: \${{ steps.verdict.outputs.block-reason }}
+          BLOCK_REASON: \${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}
         run: |
           case "$BLOCK_REASON" in
             block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;
             no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
             unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
+            tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;
+            rounds) echo "The automated review round limit (3) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;
             *) echo "The review check failed. See the verdict comment on this pull request." ;;
           esac
           exit 1
@@ -756,26 +804,34 @@ jobs:
           REPOSITORY: \${{ github.repository }}
           PR_AUTHOR: \${{ github.event.pull_request.user.login }}
         run: |
-          not_run() {
-            case "$1" in
-              secret) annotation='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.' ;;
-              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
-              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.' ;;
-              rounds) annotation='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the automated review round limit (3) is reached). A green check here does not mean the change was reviewed.' ;;
-            esac
-            echo "::notice title=AI review did not run::$annotation"
-            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+          write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
             case "$short_sha" in
               '' | *[!0-9a-f]*) short_sha= ;;
             esac
             {
               echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"
-              printf '%s\\n' '<!-- archweave-verdict -->' "ℹ️ $notice"
+              printf '%s\\n' '<!-- archweave-verdict -->' "$1"
               if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>Commit \`'"$short_sha"'\` · this comment is updated on every review round.</sub>'; fi
               echo "ARCHWEAVE_NOT_RUN_EOF"
               echo "run=false"
             } >> "$GITHUB_OUTPUT"
+          }
+          not_run() {
+            case "$1" in
+              secret) annotation='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the CLAUDE_CODE_OAUTH_TOKEN secret is not registered). A green check here does not mean the change was reviewed.' ;;
+              fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
+              dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.' ;;
+            esac
+            echo "::notice title=AI review did not run::$annotation"
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "ℹ️ $notice"
+          }
+          round_limit() {
+            notice='The AI review did not review this commit: the automated review round limit (3) is reached, so there is no verdict and the review check fails. To merge, use your branch ruleset'\\''s bypass, or raise maxRounds and run add-review again.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "⛔ $notice"
+            echo "block-reason=rounds" >> "$GITHUB_OUTPUT"
           }
           if [ "$AI_REVIEW_RESULT" != success ]; then
             echo "::error title=AI review did not succeed::The AI review job ended with '$AI_REVIEW_RESULT'."
@@ -790,7 +846,7 @@ jobs:
               exit 0
               ;;
             true/false)
-              not_run rounds
+              round_limit
               exit 0
               ;;
             true/true)
@@ -857,18 +913,34 @@ jobs:
           if [ -x node_modules/.bin/archweave-review-verdict ]; then
             node_modules/.bin/archweave-review-verdict
           else
-            echo "nx-archweave is not installed in this workspace - skipping the verdict gate."
+            echo '::error title=Verdict tool missing::The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
+            notice='The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            short_sha=$(printf '%s' "$ARCHWEAVE_HEAD_SHA" | cut -c1-7)
+            case "$short_sha" in
+              '' | *[!0-9a-f]*) short_sha= ;;
+            esac
+            {
+              echo "comment-body<<ARCHWEAVE_TOOL_MISSING_EOF"
+              printf '%s\\n' '<!-- archweave-verdict -->' "⛔ $notice"
+              if [ -n "$short_sha" ]; then printf '\\n%s\\n' '<sub>Commit \`'"$short_sha"'\` · this comment is updated on every review round.</sub>'; fi
+              echo "ARCHWEAVE_TOOL_MISSING_EOF"
+              echo "blocked=true"
+              echo "block-reason=tool-missing"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Fail the review check
-        if: steps.verdict.outputs.blocked == 'true'
+        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'
         env:
-          BLOCK_REASON: \${{ steps.verdict.outputs.block-reason }}
+          BLOCK_REASON: \${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}
         run: |
           case "$BLOCK_REASON" in
             block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;
             no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
             unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
+            tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;
+            rounds) echo "The automated review round limit (3) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;
             *) echo "The review check failed. See the verdict comment on this pull request." ;;
           esac
           exit 1

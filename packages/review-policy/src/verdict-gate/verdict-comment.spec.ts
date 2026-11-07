@@ -1,4 +1,4 @@
-import { renderNoRoundNotice, renderNotRunNotice, renderUnparseableNotice, renderVerdictComment, VERDICT_MARKER } from './verdict-comment.ts';
+import { renderNoRoundNotice, renderNotRunNotice, renderRoundLimitNotice, renderUnparseableNotice, renderVerdictComment, renderVerdictToolMissingNotice, VERDICT_MARKER } from './verdict-comment.ts';
 
 describe('renderVerdictComment', () => {
   const history = [
@@ -49,14 +49,34 @@ describe('the head commit line (the verdict comment is edited in place)', () => 
 });
 
 describe('renderNotRunNotice', () => {
-  it.each(['secret', 'fork', 'dependabot', 'rounds'] as const)('%s: names the reason and says green is not a review (en, ko)', (reason) => {
-    const en = renderNotRunNotice('en', reason, 'MY_SECRET', 3);
+  it.each(['secret', 'fork', 'dependabot'] as const)('%s: names the reason and says green is not a review (en, ko)', (reason) => {
+    const en = renderNotRunNotice('en', reason, 'MY_SECRET');
     expect(en).toMatch(/^AI review did not run for this commit \(.+\)\. A green check here does not mean the change was reviewed\.$/);
-    expect(renderNotRunNotice('ko', reason, 'MY_SECRET', 3)).toContain('리뷰되었다는 뜻이 아닙니다');
+    expect(renderNotRunNotice('ko', reason, 'MY_SECRET')).toContain('리뷰되었다는 뜻이 아닙니다');
   });
 
-  it('names the secret and the round limit', () => {
-    expect(renderNotRunNotice('en', 'secret', 'MY_SECRET', 3)).toContain('the MY_SECRET secret is not registered');
-    expect(renderNotRunNotice('en', 'rounds', 'MY_SECRET', 5)).toContain('round limit (5)');
+  it('names the secret', () => {
+    expect(renderNotRunNotice('en', 'secret', 'MY_SECRET')).toContain('the MY_SECRET secret is not registered');
+  });
+});
+
+describe('renderRoundLimitNotice', () => {
+  it.each(['en', 'ko'] as const)('%s: names the limit, says the check fails and how to merge', (locale) => {
+    const notice = renderRoundLimitNotice(locale, 5);
+    expect(notice).toContain('(5)');
+    expect(notice).toContain('bypass');
+    expect(notice).toContain('maxRounds');
+    expect(notice).not.toContain('green');
+  });
+});
+
+describe('renderVerdictToolMissingNotice', () => {
+  it.each(['en', 'ko'] as const)('%s: says the check fails, and names both fixes', (locale) => {
+    const notice = renderVerdictToolMissingNotice(locale);
+    expect(notice).toContain('@clearlydev/nx-archweave');
+    expect(notice).toContain('devDependency');
+    expect(notice).toContain(locale === 'en' ? 'delete the review workflow' : '리뷰 워크플로를 지우세요');
+    expect(notice).toContain(locale === 'en' ? 'the review check fails' : 'review 체크는 실패합니다');
+    expect(notice).not.toContain('green');
   });
 });

@@ -46,18 +46,19 @@ const INSTALL_SCRIPTS_OFF: Record<SupportedPackageManager, string[]> = {
 };
 
 describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[])('%s workflow security', (providerId) => {
-  it('runs the verdict bin only after the AI review ran in this run; a switched-off review ends green', () => {
+  it('runs the verdict bin only after the AI review ran in this run; a switched-off review ends green, the round limit fails', () => {
     const yaml = render(providerId, 'pnpm');
     // no secret, or the round limit: nothing to judge, the bin never runs
     expect(yaml).toMatch(/^ +false\/\*\)\n/m);
-    expect(yaml).toMatch(/^ +true\/false\)\n +not_run rounds\n/m);
+    expect(yaml).toMatch(/^ +true\/false\)\n +round_limit\n/m);
     expect(yaml).toMatch(/^ +echo "run=false"\n/m);
+    expect(yaml).toContain('echo "block-reason=rounds" >> "$GITHUB_OUTPUT"');
     // the bin, and the step that fails the check, only run when run=true
     const compute = yaml.slice(yaml.indexOf('- name: Compute review verdict'));
     expect(compute).toMatch(/^ {8}if: steps\.ai-review-result\.outputs\.run == 'true'$/m);
     expect(yaml).toContain("ARCHWEAVE_VERDICT_OUTPUT: 'github-output'");
     expect(yaml).toContain('ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}');
-    expect(yaml).toContain("if: steps.verdict.outputs.blocked == 'true'");
+    expect(yaml).toContain("if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'");
   });
 
   it('says "AI review did not run" from the review job alone: no secret, no AI review, nothing inline', () => {

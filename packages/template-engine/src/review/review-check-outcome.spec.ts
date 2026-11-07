@@ -49,7 +49,7 @@ function parseOutputs(text: string): Record<string, string> {
 
 /** Runs a script with bash the way a step does; returns its exit code, the outputs it wrote, its
  * job summary and its log. */
-function runStep(script: string, env: Record<string, string>): { exitCode: number; outputs: Record<string, string>; summary: string; stdout: string } {
+function runStep(script: string, env: Record<string, string>, cwd?: string): { exitCode: number; outputs: Record<string, string>; summary: string; stdout: string } {
   const dir = mkdtempSync(join(tmpdir(), 'review-check-'));
   const outputFile = join(dir, 'output');
   const summaryFile = join(dir, 'summary');
@@ -59,6 +59,7 @@ function runStep(script: string, env: Record<string, string>): { exitCode: numbe
     const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
       env: { PATH: process.env['PATH'] ?? '', ...env, GITHUB_OUTPUT: outputFile, GITHUB_STEP_SUMMARY: summaryFile },
       encoding: 'utf-8',
+      ...(cwd === undefined ? {} : { cwd }),
     });
     return {
       exitCode: result.status ?? 1,
@@ -77,7 +78,8 @@ interface Scenario {
   aiReview: { result: 'success' | 'failure' | 'cancelled' | 'skipped'; enabled: string; allowed: string; lastCommentId: string };
   /** What the verdict bin reports, when the verdict runs. */
   blocked?: boolean;
-  /** The single-job workflow's check result for the same run. */
+  /** The single-job workflow's check result for the same run; a commit after the round limit,
+   * green there, now fails: it has no verdict. */
   singleJob: 'success' | 'failure';
 }
 
@@ -90,7 +92,7 @@ const SCENARIOS: Scenario[] = [
   { name: 'an AI review stopped by its timeout (cancelled)', aiReview: { result: 'cancelled', enabled: 'true', allowed: 'true', lastCommentId: '42' }, singleJob: 'failure' },
   { name: 'an AI review stopped by its timeout (failure)', aiReview: { result: 'failure', enabled: 'true', allowed: 'true', lastCommentId: '42' }, singleJob: 'failure' },
   { name: 'no provider secret', aiReview: { result: 'success', enabled: 'false', allowed: '', lastCommentId: '' }, singleJob: 'success' },
-  { name: 'the round limit reached', aiReview: { result: 'success', enabled: 'true', allowed: 'false', lastCommentId: '42' }, singleJob: 'success' },
+  { name: 'the round limit reached', aiReview: { result: 'success', enabled: 'true', allowed: 'false', lastCommentId: '42' }, singleJob: 'failure' },
   // A PR with no comments yet: the round gate's watermark is 0, a number like any other.
   { name: 'a BLOCK on a PR with no comments yet', aiReview: { result: 'success', enabled: 'true', allowed: 'true', lastCommentId: '0' }, blocked: true, singleJob: 'failure' },
   { name: 'a clean verdict on a PR with no comments yet', aiReview: { result: 'success', enabled: 'true', allowed: 'true', lastCommentId: '0' }, blocked: false, singleJob: 'success' },
@@ -108,8 +110,9 @@ const MISSING_RESULTS: Scenario[] = [
   { name: 'a skipped AI review', aiReview: { result: 'skipped', enabled: 'true', allowed: 'true', lastCommentId: '42' }, singleJob: 'failure' },
 ];
 
-/** The `review` check's result: the first step decides whether the verdict runs; the verdict
- * reports `blocked`; the last step fails the job on it. Install and checkout are taken as passing. */
+/** The `review` check's result: the first step decides whether the verdict runs, or reports the
+ * round limit; the verdict reports `blocked`; the last step fails the job on either. Install and
+ * checkout are taken as passing. */
 function reviewCheck(providerId: keyof typeof REVIEW_PROVIDERS, scenario: Scenario): 'success' | 'failure' {
   const steps = reviewJobSteps(providerId);
   const first = runStep(scriptOf(stepNamed(steps, 'Check the AI review result')), {
@@ -119,10 +122,13 @@ function reviewCheck(providerId: keyof typeof REVIEW_PROVIDERS, scenario: Scenar
     LAST_COMMENT_ID: scenario.aiReview.lastCommentId,
   });
   if (first.exitCode !== 0) return 'failure';
-  if (first.outputs['run'] !== 'true') return 'success';
-  if (scenario.blocked === undefined) throw new Error(`${scenario.name}: the verdict ran but the scenario gives no verdict`);
   const blockStep = stepNamed(steps, 'Fail the review check');
-  expect(blockStep).toContain("if: steps.verdict.outputs.blocked == 'true'");
+  expect(blockStep).toContain("if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'");
+  if (first.outputs['run'] !== 'true') {
+    if (first.outputs['block-reason'] !== 'rounds') return 'success';
+    return runStep(scriptOf(blockStep), { BLOCK_REASON: 'rounds' }).exitCode === 0 ? 'success' : 'failure';
+  }
+  if (scenario.blocked === undefined) throw new Error(`${scenario.name}: the verdict ran but the scenario gives no verdict`);
   if (!scenario.blocked) return 'success';
   return runStep(scriptOf(blockStep), {}).exitCode === 0 ? 'success' : 'failure';
 }
@@ -164,10 +170,49 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     expect(outputs['notice-body']).toContain('Commit `abcdef0`');
   });
 
-  it('the round limit: green, and says the limit was reached', () => {
-    const { exitCode, stdout } = notRun(providerId, { result: 'success', enabled: 'true', allowed: 'false', lastCommentId: '42' });
+  it('the round limit: hands over the comment, then fails the check and says how to merge', () => {
+    const { exitCode, outputs, summary } = notRun(providerId, { result: 'success', enabled: 'true', allowed: 'false', lastCommentId: '42' });
     expect(exitCode).toBe(0);
-    expect(stdout).toContain('the automated review round limit (3) is reached');
+    expect(outputs['run']).toBe('false');
+    expect(outputs['block-reason']).toBe('rounds');
+    expect(outputs['notice-body']).toContain('<!-- archweave-verdict -->');
+    expect(outputs['notice-body']).toContain('⛔ The AI review did not review this commit: the automated review round limit (3) is reached');
+    expect(outputs['notice-body']).toContain('Commit `abcdef0`');
+    expect(outputs['notice-body']).not.toContain(GREEN_IS_NOT_A_REVIEW);
+    expect(summary).toContain('round limit (3)');
+    const failStep = runStep(scriptOf(stepNamed(reviewJobSteps(providerId), 'Fail the review check')), { BLOCK_REASON: 'rounds' });
+    expect(failStep.exitCode).toBe(1);
+    expect(failStep.stdout).toContain('The automated review round limit (3) is reached');
+    expect(failStep.stdout).toContain("use your branch ruleset's bypass, or raise maxRounds and run add-review again");
+  });
+
+  it('a workspace without the plugin: once the AI review ran, the check fails and says how to fix it', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'review-no-plugin-'));
+    try {
+      const { exitCode, outputs, summary, stdout } = runStep(
+        scriptOf(stepNamed(reviewJobSteps(providerId), 'Compute review verdict')),
+        { ARCHWEAVE_HEAD_SHA: 'abcdef0123456789abcdef0123456789abcdef01' },
+        workspace,
+      );
+      expect(exitCode).toBe(0);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['block-reason']).toBe('tool-missing');
+      expect(stdout).toContain('::error title=Verdict tool missing::The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace');
+      expect(summary).toContain('the review check fails');
+      expect(outputs['comment-body']).toContain('<!-- archweave-verdict -->');
+      expect(outputs['comment-body']).toContain('⛔ The AI review ran, but the verdict tool');
+      expect(outputs['comment-body']).toContain('Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.');
+      expect(outputs['comment-body']).toContain('Commit `abcdef0`');
+      const failStep = runStep(scriptOf(stepNamed(reviewJobSteps(providerId), 'Fail the review check')), { BLOCK_REASON: 'tool-missing' });
+      expect(failStep.exitCode).toBe(1);
+      expect(failStep.stdout).toContain('Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off.');
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('a commit the secret gate switched off is not reported as the round limit', () => {
+    expect(notRun(providerId, NO_SECRET).outputs['block-reason']).toBeUndefined();
   });
 
   it('a head SHA that is not hex is left out of the comment', () => {
@@ -214,6 +259,7 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     ['block', 'The AI verdict is BLOCK'],
     ['no-summary', 'posted no summary for this commit'],
     ['unreadable', 'no readable findings block'],
+    ['rounds', 'round limit (3) is reached'],
     ['', 'See the verdict comment'],
   ])('the failing step names the reason (%s)', (reason, text) => {
     const result = spawnSync('bash', ['-e', '-c', scriptOf(stepNamed(reviewJobSteps(providerId), 'Fail the review check'))], { env: { PATH: process.env['PATH'] ?? '', BLOCK_REASON: reason }, encoding: 'utf-8' });
@@ -227,5 +273,60 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     const [first, ...rest] = reviewJobSteps(providerId);
     expect(first).toContain('- name: Check the AI review result');
     for (const step of rest) expect(step).toMatch(/^\s+if: steps\.(ai-review-result|verdict)\.outputs\./m);
+  });
+});
+
+/** The `review` check in a workspace without the plugin, step by step as the runner takes them:
+ * the first step, then (only when it says `run=true`) the verdict step, then the last step under
+ * its own condition. */
+function reviewCheckWithoutPlugin(
+  providerId: keyof typeof REVIEW_PROVIDERS,
+  aiReview: Scenario['aiReview'],
+  pr: { headRepository?: string; author?: string } = {},
+): { result: 'success' | 'failure'; blockReason?: string; noticeBody?: string } {
+  const steps = reviewJobSteps(providerId);
+  const first = notRun(providerId, aiReview, pr);
+  if (first.exitCode !== 0) return { result: 'failure' };
+  let verdictOutputs: Record<string, string> = {};
+  if (first.outputs['run'] === 'true') {
+    const verdictStep = stepNamed(steps, 'Compute review verdict');
+    expect(verdictStep).toContain("if: steps.ai-review-result.outputs.run == 'true'");
+    const workspace = mkdtempSync(join(tmpdir(), 'review-no-plugin-'));
+    try {
+      const verdict = runStep(scriptOf(verdictStep), { ARCHWEAVE_HEAD_SHA: 'abcdef0123456789abcdef0123456789abcdef01' }, workspace);
+      if (verdict.exitCode !== 0) return { result: 'failure' };
+      verdictOutputs = verdict.outputs;
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+  const blockReason = verdictOutputs['block-reason'] || first.outputs['block-reason'];
+  const fails = verdictOutputs['blocked'] === 'true' || first.outputs['block-reason'] === 'rounds';
+  if (!fails) return { result: 'success', noticeBody: first.outputs['notice-body'] };
+  const failStep = runStep(scriptOf(stepNamed(steps, 'Fail the review check')), { BLOCK_REASON: blockReason ?? '' });
+  return { result: failStep.exitCode === 0 ? 'success' : 'failure', blockReason };
+}
+
+describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[])('%s: a workspace without the plugin fails only where a verdict is needed', (providerId) => {
+  it.each([
+    ['the secret is not registered', {}],
+    ['a pull request from a fork', { headRepository: 'someone/fork' }],
+    ['a Dependabot pull request', { author: 'dependabot[bot]' }],
+  ] as const)('%s: still green, with the notice that the AI review did not run', (_name, pr) => {
+    const { result, noticeBody } = reviewCheckWithoutPlugin(providerId, NO_SECRET, pr);
+    expect(result).toBe('success');
+    expect(noticeBody).toContain(GREEN_IS_NOT_A_REVIEW);
+  });
+
+  it('the round limit: red for the round limit, not for the missing plugin', () => {
+    const { result, blockReason } = reviewCheckWithoutPlugin(providerId, { result: 'success', enabled: 'true', allowed: 'false', lastCommentId: '42' });
+    expect(result).toBe('failure');
+    expect(blockReason).toBe('rounds');
+  });
+
+  it('the AI review ran: red, because nothing can judge it', () => {
+    const { result, blockReason } = reviewCheckWithoutPlugin(providerId, { result: 'success', enabled: 'true', allowed: 'true', lastCommentId: '42' });
+    expect(result).toBe('failure');
+    expect(blockReason).toBe('tool-missing');
   });
 });
