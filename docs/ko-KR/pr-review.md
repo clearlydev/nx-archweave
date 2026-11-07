@@ -45,14 +45,15 @@
 | 게이트 | 하는 일 | 결과 |
 | --- | --- | --- |
 | **시크릿 게이트** | 프로바이더 시크릿 등록 여부 확인 | 없으면 **green-skip** |
-| **라운드 게이트** | PR의 리뷰 마커 수 세기 | `maxRounds`에 도달하면 중단 |
+| **라운드 게이트** | PR의 리뷰 마커 수 세기 | `maxRounds`에 도달하면 중단, **이후 커밋은 check 실패** |
 | **verdict 게이트** | findings 파싱, verdict 계산 | **BLOCK이면 check를 실패** |
 
 ### 시크릿 게이트
 
 - 프로바이더 시크릿이 없으면 잡이 `AI review is not active: register the <SECRET> secret to enable it.`를 출력하고 **green-skip** 해요.
 - 그래서 AI를 쓰지 않는 워크스페이스에는 빨간 X가 뜨지 않아요.
-- 이 green 체크는 자기가 무엇인지 밝혀요. `review` 잡이 notice, 잡 요약 한 줄, verdict 코멘트로 `AI review did not run for this commit (<reason>). A green check here does not mean the change was reviewed.`를 남겨요. 포크나 Dependabot pull request이면 사유에 그렇다고 적어요. GitHub가 두 경우 모두 Actions 시크릿을 넘기지 않기 때문이에요. 라운드 한도에 도달했을 때도 같은 notice가 남아요. 코멘트는 실행 토큰에 쓰기 권한이 있을 때만 게시돼서, 포크 pull request에는 달리지 않아요.
+- 이 green 체크는 자기가 무엇인지 밝혀요. `review` 잡이 notice, 잡 요약 한 줄, verdict 코멘트로 `AI review did not run for this commit (<reason>). A green check here does not mean the change was reviewed.`를 남겨요. 포크나 Dependabot pull request이면 사유에 그렇다고 적어요. GitHub가 두 경우 모두 Actions 시크릿을 넘기지 않기 때문이에요. 코멘트는 실행 토큰에 쓰기 권한이 있을 때만 게시돼서, 포크 pull request에는 달리지 않아요.
+- 포크와 Dependabot pull request는 같은 이유로 녹색으로 끝나요. 두 실행은 프로바이더 시크릿을 받지 못해서, 워크플로가 리뷰를 꺼 둔 저장소와 구별할 수 없어요. 이런 pull request를 지키는 방법은 [AI verdict 없이 커밋 머지하기](#ai-verdict-없이-커밋-머지하기)를 보세요.
 
 > [!WARNING]
 > **claude 전용 엣지케이스.** `claude` 프로바이더는 시크릿을 GitHub App 토큰으로 교환해요. 그래서 시크릿은 있는데 [Claude GitHub App](https://github.com/apps/claude)이 리포에 설치되어 있지 않으면, green-skip 대신 `401 — Claude Code is not installed on this repository`로 실패해요. 리포에 앱을 설치하면 해결돼요. 나머지 프로바이더 3종에는 앱 교환 단계가 없어요.
@@ -63,6 +64,7 @@
 - 워크플로가 PR의 마커 수를 세고, `maxRounds`에 도달하면 멈춰요. 그래서 활발한 PR에서도 리뷰가 끝없이 반복되지 않아요.
 - 봇 계정이 쓴 코멘트의 마커만 세요. 그렇지 않으면 PR에 코멘트를 달 수 있는 누구나 마커를 `maxRounds`만큼 달아 리뷰를 꺼 버릴 수 있어요.
 - `maxRounds`는 `1`–`5`를 받고 기본값은 `3`이에요.
+- 한도 이후의 커밋에는 AI verdict가 없어서 `review` check가 **실패**해요. verdict 코멘트와 실패한 스텝이 그 이유와 두 가지 방법을 알려 줘요. 브랜치 ruleset의 bypass로 머지하거나([AI verdict 없이 커밋 머지하기](#ai-verdict-없이-커밋-머지하기) 참고), `maxRounds`를 올리고 `add-review`를 다시 실행하세요. 잡을 다시 실행해도 소용없어요. 라운드 게이트가 다시 리뷰를 멈춰요.
 
 ### 워크플로 보안
 
@@ -81,7 +83,7 @@
 
 ### 보안 범위
 
-이 보호 장치들은 pull request의 코드가 닿을 수 있는 범위를 줄여요. 워크플로를 바꿀 수 있는 사람으로부터 워크플로를 지켜 주지는 않아요. GitHub는 포크에서 온 pull request의 워크플로 실행에 시크릿을 넘기지 않고 읽기 전용 토큰만 줘요. 그래서 포크의 pull request는 리뷰되지 않고, 시크릿 게이트가 green-skip 해요. 저장소에 push 권한이 있는 사람은 브랜치에서 워크플로 파일을 고쳐 프로바이더 시크릿으로 원하는 것을 실행할 수 있어요. 그러니 쓰기 권한은 그 시크릿을 맡겨도 되는 사람에게만 주세요.
+이 보호 장치들은 pull request의 코드가 닿을 수 있는 범위를 줄여요. 워크플로를 바꿀 수 있는 사람으로부터 워크플로를 지켜 주지는 않아요. GitHub는 포크에서 온 pull request의 워크플로 실행에 시크릿을 넘기지 않고 읽기 전용 토큰만 줘요. 그래서 포크의 pull request는 리뷰되지 않고, 시크릿 게이트가 green-skip 해요. 게다가 포크의 `review` check는 애초에 게이트가 아니에요. 포크에서 온 pull request는 작성자가 고칠 수 있는 자기 쪽 워크플로로 실행되기 때문이에요. 이런 pull request는 **Required approvals**와 포크 pull request 워크플로 실행 승인 설정으로 지키세요([AI verdict 없이 커밋 머지하기](#ai-verdict-없이-커밋-머지하기) 참고). 저장소에 push 권한이 있는 사람은 브랜치에서 워크플로 파일을 고쳐 프로바이더 시크릿으로 원하는 것을 실행할 수 있어요. 그러니 쓰기 권한은 그 시크릿을 맡겨도 되는 사람에게만 주세요.
 
 `cursor` 프로바이더는 고정의 예외예요. 실행할 때마다 그 시점에 Cursor가 배포한 버전이 설치돼요. 설치 단계 자체에는 시크릿이 없지만, 설치된 바이너리는 다음 단계에서 `CURSOR_API_KEY`와 pull request 코멘트를 쓸 수 있는 `GH_TOKEN`을 받아 실행돼요. 다운로드가 변조되면 둘 다 넘어가요. 이 위험을 감수할 수 없는 저장소라면 다른 프로바이더를 고르세요.
 
@@ -92,7 +94,7 @@
 1. 모델이 요약 코멘트 끝에 기계 판독용 `archweave/findings@1` JSON 블록을 덧붙여요.
 2. `review` 잡이 플러그인의 `archweave-review-verdict` bin으로 이 JSON 블록을 파싱해 verdict를 계산해요. P0/P1이 하나라도 있으면 `BLOCK`이에요.
 3. `review-comment` 잡은 PR마다 짧은 verdict 코멘트 하나를 유지해요. 이 코멘트를 라운드마다 고치고, 라운드별 해결/잔존 이력과 판정한 커밋을 함께 적어요.
-4. `review` 잡은 **BLOCK이면 check를 실패**시켜요. 그래서 `review`를 required check로 지정하면 P0/P1이 실제로 머지를 막아요. AI 리뷰가 성공하지 않았거나 판독할 수 있는 요약을 남기지 않아도 실패해요. 녹색으로 끝나는 건 이번 실행의 요약을 판정했는데 BLOCK이 아닐 때, 또는 시크릿 게이트나 라운드 게이트가 리뷰를 끈 경우뿐이에요.
+4. `review` 잡은 **BLOCK이면 check를 실패**시켜요. 그래서 `review`를 required check로 지정하면 P0/P1이 실제로 머지를 막아요. AI 리뷰가 성공하지 않았거나, 판독할 수 있는 요약을 남기지 않았거나, 판정 도구가 없는 워크스페이스에서 돌았어도 실패해요. 녹색으로 끝나는 건 이번 실행의 요약을 판정했는데 BLOCK이 아닐 때, 또는 시크릿 게이트가 리뷰를 끈 경우뿐이에요.
 
 verdict는 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 리뷰가 요약을 남기지 않으면, 그 실행은 이전 커밋의 라운드를 다시 판정하지 않아요.
 
@@ -110,19 +112,32 @@ verdict는 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 �
 
 | 상황 | 결과 |
 | --- | --- |
-| 플러그인이 제거된 레포 | 스텝 skip |
 | verdict 코멘트 게시 실패 | 로그만 |
 | 0.2.2 이전에 생성된 워크플로(verdict 스텝이 코멘트를 직접 게시) | 요약 없음·판독 불가여도 "사람이 직접 리뷰" 고지만 남아요. `doctor`가 이런 워크플로를 error(`review-workflow-fail-open`)로 알려 줘요. `add-review --onConflict=overwrite`를 다시 실행해 현재 워크플로로 바꾸세요 |
 
 `review` check는 파싱된 차단 finding 말고도 다음 경우에 빨간색이 돼요. 모두 BLOCK인지 아닌지 알 수 없는 경우라서, BLOCK을 녹색으로 통과시키지 않으려고 실패로 끝나요.
 
 - AI 리뷰가 성공하지 않은 경우(실패, 취소, skip).
+- 라운드 한도 이후의 커밋이라 AI 리뷰가 돌지 않은 경우([라운드 게이트](#라운드-게이트) 참고).
+- AI 리뷰는 돌았지만, 리뷰 워크플로는 있는데 판정 도구(`@clearlydev/nx-archweave`)가 설치돼 있지 않아 커밋을 판정할 수 없는 경우. `@clearlydev/nx-archweave`를 devDependency로 설치하거나, 리뷰를 끄려면 리뷰 워크플로를 지우세요.
+- verdict 게이트의 환경 변수가 없거나 형식이 잘못된 경우(저장소, pull request 번호가 없거나, 라운드 한도가 1 이상의 정수가 아님). 예를 들어 워크플로를 손으로 고친 경우예요. `add-review --onConflict=overwrite`로 다시 만드세요.
 - AI 리뷰는 돌았지만 이번 실행이 이 커밋에 대한 요약을 남기지 않았거나, findings 블록을 판독할 수 없는 요약을 남긴 경우(위 표).
 - AI 리뷰 잡의 결과가 `review` 잡에 전달되지 않은 경우(예: 다시 실행할 때). 모든 잡을 다시 실행하세요(AI 리뷰도 다시 돌고 비용도 다시 들어요).
 - `review` 잡이 pull request 코멘트를 읽지 못한 경우. 실패한 잡을 다시 실행하세요. 또 실패하면 `review` 잡에 `pull-requests: read`가 있는지 확인하세요.
 
 > [!NOTE]
 > `review` 잡의 설치 스텝은 락파일 불일치처럼 워크스페이스 자체가 깨진 경우 빨간색이 될 수 있어요. 이 빨간 X는 워크스페이스 결함이 드러난 것이고, verdict가 아니에요.
+
+### AI verdict 없이 커밋 머지하기
+
+AI 리뷰가 돌았는데 head 커밋에 verdict를 남기지 않았거나(판독할 수 있는 요약이 없거나, 워크스페이스에 판정 도구가 없음), 커밋이 라운드 한도 이후에 왔으면 `review`가 실패해요. nx-archweave는 자기 check를 우회하는 방법을 따로 두지 않아요. 이런 커밋은 사람이 GitHub 자체 기능으로 통과시키고, 누가 했는지는 GitHub가 기록해요.
+
+- **Bypass(모든 저장소).** ruleset의 bypass 목록에 자신, 역할(admin, maintain, write) 또는 팀을 **For pull requests only**로 추가하세요. 그다음 **Merge without waiting for requirements to be met (bypass branch protections)**로 머지해요. `review` check는 빨간색으로 남고, 그게 사실 그대로예요. ruleset의 **Rule insights**에 bypass가 기록돼요. 기존 branch protection에서는 **Do not allow bypassing the above settings**가 꺼져 있으면 admin이 bypass할 수 있어요.
+- **Required approvals(팀 저장소).** ruleset에 **Require a pull request before merging → Required approvals**를 추가하면, AI verdict가 있든 없든 모든 pull request에 사람의 승인이 필요해요. **Dismiss stale pull request approvals when new commits are pushed**도 켜서 승인이 그 승인을 받은 커밋에만 적용되게 하세요. 승인한다고 빨간 `review`가 녹색이 되지는 않아요. AI verdict가 없는 커밋에는 여전히 bypass가 필요해요.
+
+시크릿이 등록되지 않은 경우, 포크 pull request, Dependabot pull request는 AI 리뷰가 돌지 않았다는 notice와 함께 여전히 녹색으로 끝나요. 포크와 Dependabot 실행은 프로바이더 시크릿을 받지 못해서, 워크플로가 리뷰를 꺼 둔 저장소와 구별할 수 없어요. 포크의 경우 check는 애초에 게이트가 아니에요. 포크에서 온 pull request는 자기 쪽 워크플로로 실행돼요. 이런 pull request는 Required approvals와 **Settings → Actions → General → Approval for running fork pull request workflows**로 지키세요.
+
+0.4.0 이전에 생성된 워크플로는 플러그인을 올린 뒤에도 라운드 한도 이후의 커밋과, 판정 도구가 없는 워크스페이스의 리뷰를 녹색으로 끝내요. 워크플로 파일이 저장소에 있기 때문이에요. `doctor`가 이런 워크플로를 warning(`review-workflow-no-verdict`)으로 알려 줘요. `nx g @clearlydev/nx-archweave:add-review --onConflict=overwrite --dryRun`으로 현재 워크플로를 먼저 미리 보고, `--dryRun` 없이 실행하세요.
 
 ## 모드와 발견 항목
 
