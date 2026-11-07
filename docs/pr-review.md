@@ -45,14 +45,15 @@ Register the secret under the repository's **Settings → Secrets and variables 
 | Gate | What it does | Outcome |
 | --- | --- | --- |
 | **Secret gate** | checks that the provider's secret is registered | missing → **green-skips** |
-| **Round gate** | counts review markers on the PR | stops once `maxRounds` is reached |
+| **Round gate** | counts review markers on the PR | stops once `maxRounds` is reached; **later commits fail the check** |
 | **Verdict gate** | parses the findings and computes a verdict | **fails the check on BLOCK** |
 
 ### Secret gate
 
 - If the provider's secret isn't registered, the job prints `AI review is not active: register the <SECRET> secret to enable it.` and **green-skips**.
 - So a workspace without AI access never sees a red X.
-- The green check says what it is. The `review` job adds a notice, a line in the job summary and a verdict comment: `AI review did not run for this commit (<reason>). A green check here does not mean the change was reviewed.` The reason names a fork or a Dependabot pull request when it is one, since GitHub passes neither the Actions secret. The same notice appears when the round limit is reached. The comment is posted only where the run's token may write, so not on a fork's pull request.
+- The green check says what it is. The `review` job adds a notice, a line in the job summary and a verdict comment: `AI review did not run for this commit (<reason>). A green check here does not mean the change was reviewed.` The reason names a fork or a Dependabot pull request when it is one, since GitHub passes neither the Actions secret. The comment is posted only where the run's token may write, so not on a fork's pull request.
+- A fork's and a Dependabot pull request end green for that reason: their runs receive no provider secret, so the workflow can't tell them from a repository that has review switched off. See [Merging a commit without an AI verdict](#merging-a-commit-without-an-ai-verdict) for what protects them.
 
 > [!WARNING]
 > **Claude-only edge case.** The `claude` provider exchanges its secret for a GitHub App token. So if a repository has the secret but **not** the [Claude GitHub App](https://github.com/apps/claude), the job fails with `401 — Claude Code is not installed on this repository` instead of green-skipping. To fix it, install the app on the repository. The other three providers have no app-exchange step.
@@ -63,6 +64,7 @@ Register the secret under the repository's **Settings → Secrets and variables 
 - The workflow counts the markers on the PR and stops once it reaches `maxRounds`. That way, review can't loop forever on an active PR.
 - Only markers in comments written by a bot account count. Anyone who can comment on the PR could otherwise post the marker until `maxRounds` is reached and switch review off.
 - `maxRounds` accepts `1`–`5` and defaults to `3`.
+- A commit after the limit has no AI verdict, so the `review` check **fails** on it. The verdict comment and the failing step say so, and name the two ways forward: merge with your branch ruleset's bypass (see [Merging a commit without an AI verdict](#merging-a-commit-without-an-ai-verdict)), or raise `maxRounds` and run `add-review` again. Re-running the jobs doesn't help: the round gate stops the review again.
 
 ### Workflow hardening
 
@@ -81,7 +83,7 @@ Register the secret under the repository's **Settings → Secrets and variables 
 
 ### Security scope
 
-These protections limit what code from a pull request can reach. They don't protect the workflow from people who can change it. GitHub passes no secrets to a workflow run for a pull request from a fork and gives it a read-only token, so a fork's pull request is never reviewed: the secret gate green-skips it. Anyone with push access to the repository can edit the workflow file in a branch and run whatever they like with the provider secret, so give write access only to people you would trust with that secret.
+These protections limit what code from a pull request can reach. They don't protect the workflow from people who can change it. GitHub passes no secrets to a workflow run for a pull request from a fork and gives it a read-only token, so a fork's pull request is never reviewed: the secret gate green-skips it. Its `review` check isn't a gate in any case, because a pull request from a fork runs its own copy of the workflow, which its author can change. Protect such pull requests with **Required approvals** and the approval setting for fork pull request workflows (see [Merging a commit without an AI verdict](#merging-a-commit-without-an-ai-verdict)). Anyone with push access to the repository can edit the workflow file in a branch and run whatever they like with the provider secret, so give write access only to people you would trust with that secret.
 
 The `cursor` provider is the exception to pinning. Each run installs whatever version Cursor publishes at that moment. The install step itself holds no secret, but the binary it installs runs in the next step with `CURSOR_API_KEY` and a `GH_TOKEN` that can write pull request comments. A tampered download would get both. If that risk is too high for your repository, pick another provider.
 
@@ -92,7 +94,7 @@ The `gemini` and `cursor` CLIs refuse to run in a folder they haven't been told 
 1. The model appends a machine-readable `archweave/findings@1` JSON block to its summary comment.
 2. The `review` job parses that JSON block with the plugin's `archweave-review-verdict` bin and computes the verdict. Any P0/P1 finding → `BLOCK`.
 3. The `review-comment` job keeps one short verdict comment per PR. It edits that comment every round, with the fixed/remaining history of each round and the commit it judged.
-4. The `review` job **fails the check on BLOCK**. So you can make `review` a required check, and P0/P1 findings then actually block the merge. It also fails when the AI review didn't succeed or left no readable summary. It ends green only when this run's summary was judged and isn't a BLOCK, or when the secret gate or the round gate switched the review off.
+4. The `review` job **fails the check on BLOCK**. So you can make `review` a required check, and P0/P1 findings then actually block the merge. It also fails when the AI review didn't succeed, left no readable summary, or ran in a workspace without the verdict tool. It ends green only when this run's summary was judged and isn't a BLOCK, or when the secret gate switched the review off.
 
 The verdict only counts a summary posted by the same run. If a run's review posts no summary, the step never judges an earlier commit's round again.
 
@@ -110,19 +112,32 @@ These still end green:
 
 | Situation | Result |
 | --- | --- |
-| a workspace that removed the plugin | the step is skipped |
 | the verdict comment can't be posted | only logs |
 | a workflow generated before 0.2.2 (its verdict step posts the comment itself) | no summary or an unreadable one still only posts a "please review manually" notice. `doctor` reports such a workflow as an error (`review-workflow-fail-open`); run `add-review --onConflict=overwrite` to get the current workflow |
 
 Besides a parsed blocking finding, the `review` check goes red in these cases, each time because it can't tell a BLOCK from a clean verdict and won't pass a BLOCK as green:
 
 - The AI review didn't succeed (it failed, was cancelled or was skipped).
+- The commit comes after the round limit, so the AI review didn't run for it (see [Round gate](#round-gate)).
+- The AI review ran, but the workspace has the review workflow without the verdict tool (`@clearlydev/nx-archweave` isn't installed), so nothing can judge the commit. Install `@clearlydev/nx-archweave` as a devDependency, or delete the review workflow to switch review off.
+- The verdict gate's environment is missing or malformed (no repository, no pull request number, or a round limit that isn't a whole number from 1), for example in a workflow edited by hand. Regenerate it with `add-review --onConflict=overwrite`.
 - The AI review ran, but this run posted no summary for the commit, or one whose findings block can't be read (the table above).
 - The AI review job's results didn't reach the `review` job, for example on a re-run. Re-run all jobs (the AI review runs, and costs, again).
 - The `review` job can't read the pull request comments. Re-run the failed jobs to retry. If it fails again, check that the `review` job has `pull-requests: read`.
 
 > [!NOTE]
 > The `review` job's install step can go red if the workspace is genuinely broken, for example when a lockfile is out of sync. That red X shows a defect in the workspace. It isn't a verdict.
+
+### Merging a commit without an AI verdict
+
+`review` fails when the AI review ran but left no verdict for the head commit (no readable summary, or no verdict tool in the workspace), and when the commit comes after the round limit. nx-archweave adds no way around its own check: a person passes such a commit with GitHub's own tools, which record who did it.
+
+- **Bypass (any repository).** Add yourself, a role (admin, maintain or write) or a team to the ruleset's bypass list, as **For pull requests only**. You then merge with **Merge without waiting for requirements to be met (bypass branch protections)**. The `review` check stays red, which is the truth, and the ruleset's **Rule insights** lists the bypass. With classic branch protection, admins can bypass unless **Do not allow bypassing the above settings** is on.
+- **Required approvals (team repositories).** Add **Require a pull request before merging → Required approvals** to the ruleset, so every pull request needs a person's approval, with or without an AI verdict. Turn on **Dismiss stale pull request approvals when new commits are pushed** so an approval covers the commit it was given for. An approval does not turn a red `review` green: a commit without an AI verdict still needs the bypass.
+
+A secret that isn't registered, a fork's pull request and a Dependabot pull request still end green, with the notice that the AI review didn't run. Neither a fork's nor a Dependabot run receives the provider secret, so the workflow can't tell them from a repository that has review switched off. For a fork, the check isn't a gate in any case: a pull request from a fork runs its own copy of the workflow. Protect those with Required approvals and **Settings → Actions → General → Approval for running fork pull request workflows**.
+
+A workflow generated before 0.4.0 keeps ending green, after the plugin upgrade, a commit after the round limit and a review in a workspace without the verdict tool, because the workflow file lives in your repository. `doctor` reports such a workflow as a warning (`review-workflow-no-verdict`). Preview the current one with `nx g @clearlydev/nx-archweave:add-review --onConflict=overwrite --dryRun`, then run it without `--dryRun`.
 
 ## Modes and findings
 

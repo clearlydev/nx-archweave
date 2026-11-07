@@ -209,7 +209,7 @@ Review is fully optional and isn't tied to one provider.
 
 - If review is disabled, zero review artifacts are generated.
 - If review is enabled, the workflow **green-skips** (it never fails) until you register the provider's secret.
-- A round marker stops the workflow after `--maxRounds` reviews per PR (1–5, default 3).
+- A round marker stops the workflow after `--maxRounds` reviews per PR (1–5, default 3). A later commit has no AI verdict, so the `review` check fails on it; merge it with your branch ruleset's bypass.
 
 | `--provider` | Workflow file | Required secret |
 | --- | --- | --- |

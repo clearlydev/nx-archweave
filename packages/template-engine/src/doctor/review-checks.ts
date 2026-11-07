@@ -111,6 +111,7 @@ export const REVIEW_CHECK_IDS = [
   'review-workflow-providers',
   'review-workflow-pnpm',
   'review-workflow-fail-open',
+  'review-workflow-no-verdict',
 ] as const;
 
 const WORKFLOWS_DIR = '.github/workflows';
@@ -205,6 +206,40 @@ function buildReviewFailOpenCheck(root: string, workflows: string[]): DoctorChec
   });
 }
 
+/** The step outputs that fail the review check on a commit with no AI verdict: one after the
+ * round limit, and one the AI review judged in a workspace without the verdict tool. Workflows
+ * generated before 0.4.0 end both green. */
+const NO_VERDICT_FAILS = ['echo "block-reason=rounds" >> "$GITHUB_OUTPUT"', 'echo "block-reason=tool-missing"'];
+
+function buildReviewNoVerdictCheck(root: string, workflows: string[]): DoctorCheck {
+  const id = 'review-workflow-no-verdict';
+  const label = 'Review check fails when a commit has no AI verdict';
+  if (workflows.length === 0) return createDoctorCheck({ id, label, status: 'not-applicable', message: 'no nx-archweave review workflow', evidence: [] });
+  const passing = workflows.filter((path) => {
+    const text = readFileSync(join(root, path), 'utf-8');
+    return !NO_VERDICT_FAILS.every((line) => text.includes(line));
+  });
+  if (passing.length === 0) {
+    return createDoctorCheck({
+      id,
+      label,
+      status: 'pass',
+      message: 'a commit after the round limit, and a review in a workspace without the verdict tool, fail the review check',
+      evidence: workflows,
+    });
+  }
+  return createDoctorCheck({
+    id,
+    label,
+    status: 'warning',
+    message:
+      'generated before nx-archweave 0.4.0: a commit after the round limit, or a review in a workspace without the verdict tool, passes the review check green, although nothing judged it',
+    evidence: passing,
+    suggestedAction:
+      'Preview the current workflow with nx g @clearlydev/nx-archweave:add-review --onConflict=overwrite --dryRun, then run it without --dryRun. Such a commit then fails the check; merge it with your branch ruleset\'s bypass, raise maxRounds, or install @clearlydev/nx-archweave.',
+  });
+}
+
 /** Read-only review-state diagnostics: whether the main review workflow is installed,
  * whether an alternate-filename file coexists with (or is orphaned without) it, and whether
  * the installed workflow still matches what toolkit.config.json's `review` field
@@ -225,6 +260,7 @@ export function buildReviewChecks(root: string): DoctorCheck[] {
     buildReviewProvidersCheck(workflows),
     buildReviewPnpmCheck(root, workflows),
     buildReviewFailOpenCheck(root, workflows),
+    buildReviewNoVerdictCheck(root, workflows),
   ];
 }
 

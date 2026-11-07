@@ -2,6 +2,8 @@ import type { SupportedPackageManager } from '../environment/package-manager.ts'
 import {
   renderCommitLine,
   renderNotRunNotice,
+  renderRoundLimitNotice,
+  renderVerdictToolMissingNotice,
   ROUND_MARKER,
   VERDICT_MARKER,
   type NotRunReason,
@@ -111,35 +113,45 @@ export function shellQuote(text: string): string {
   return `'${text.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The shell function the `review` job's first step calls when the AI review did not run but the
- * check ends green: the color stays, and an annotation, the job summary and the verdict comment
- * (handed to the review-comment job, which posts it where the token may write) say that this green
- * is not a review. Every text is rendered here; at run time only the abbreviated head SHA, checked
- * to be hex, is filled in. */
+/** The shell functions the `review` job's first step calls when the AI review did not run.
+ * `not_run` keeps the check green: an annotation, the job summary and the verdict comment (handed
+ * to the review-comment job, which posts it where the token may write) say that this green is not
+ * a review. `round_limit` hands over the comment and `block-reason=rounds`, and the job's last
+ * step fails the check: a commit after the round limit has no verdict. Every text is rendered
+ * here; at run time only the abbreviated head SHA, checked to be hex, is filled in. */
 function renderNotRunFunction(secretName: string, maxRounds: ReviewMaxRounds, locale: ReviewLocale): string[] {
-  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot', 'rounds'];
+  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot'];
   const [commitBefore, commitAfter] = renderCommitLine(locale, '\u0000').split('\u0000');
   return [
-    'not_run() {',
-    '  case "$1" in',
-    ...reasons.map(
-      (reason) =>
-        `    ${reason}) annotation=${shellQuote(renderNotRunNotice('en', reason, secretName, maxRounds))}; notice=${shellQuote(renderNotRunNotice(locale, reason, secretName, maxRounds))} ;;`,
-    ),
-    '  esac',
-    '  echo "::notice title=AI review did not run::$annotation"',
-    '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
+    'write_notice() {',
     '  short_sha=$(printf \'%s\' "$HEAD_SHA" | cut -c1-7)',
     '  case "$short_sha" in',
     "    '' | *[!0-9a-f]*) short_sha= ;;",
     '  esac',
     '  {',
     '    echo "notice-body<<ARCHWEAVE_NOT_RUN_EOF"',
-    `    printf '%s\\n' ${shellQuote(VERDICT_MARKER)} "ℹ️ $notice"`,
+    `    printf '%s\\n' ${shellQuote(VERDICT_MARKER)} "$1"`,
     `    if [ -n "$short_sha" ]; then printf '\\n%s\\n' ${shellQuote(commitBefore)}"$short_sha"${shellQuote(commitAfter)}; fi`,
     '    echo "ARCHWEAVE_NOT_RUN_EOF"',
     '    echo "run=false"',
     '  } >> "$GITHUB_OUTPUT"',
+    '}',
+    'not_run() {',
+    '  case "$1" in',
+    ...reasons.map(
+      (reason) =>
+        `    ${reason}) annotation=${shellQuote(renderNotRunNotice('en', reason, secretName))}; notice=${shellQuote(renderNotRunNotice(locale, reason, secretName))} ;;`,
+    ),
+    '  esac',
+    '  echo "::notice title=AI review did not run::$annotation"',
+    '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
+    '  write_notice "ℹ️ $notice"',
+    '}',
+    'round_limit() {',
+    `  notice=${shellQuote(renderRoundLimitNotice(locale, maxRounds))}`,
+    '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
+    '  write_notice "⛔ $notice"',
+    '  echo "block-reason=rounds" >> "$GITHUB_OUTPUT"',
     '}',
   ];
 }
@@ -147,11 +159,12 @@ function renderNotRunFunction(secretName: string, maxRounds: ReviewMaxRounds, lo
 /** The condition of every step in the `review` job after it checked the AI review's result. */
 export const JUDGE_CONDITION = "steps.ai-review-result.outputs.run == 'true'";
 
-/** First step of the `review` job, which runs whatever the AI review job did (`if: always()`):
- * the check then ends exactly as the single job did. Only explicit values count. A review the
- * secret gate (`enabled=false`) or the round gate (`allowed=false`) switched off ends green
+/** First step of the `review` job, which runs whatever the AI review job did (`if: always()`).
+ * Only explicit values count. A review the secret gate (`enabled=false`) switched off ends green
  * without judging, and says so (renderNotRunFunction): a missing secret is named as a fork run
- * or a Dependabot run when it is one, since those never receive the Actions secret. A review that
+ * or a Dependabot run when it is one, since those never receive the Actions secret. A review the
+ * round gate (`allowed=false`) stopped hands over `block-reason=rounds`, and the job's last step
+ * fails the check: that commit has no verdict. A review that
  * ran must also hand over its watermark (a number, 0 on a PR with no comments). Anything else — a
  * failed, cancelled or skipped AI review, or results that did not reach this job — fails, so a
  * BLOCK can never pass as "review switched off". The job's outputs and the event's fields reach
@@ -184,7 +197,7 @@ export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMa
     '        exit 0',
     '        ;;',
     '      true/false)',
-    '        not_run rounds',
+    '        round_limit',
     '        exit 0',
     '        ;;',
     '      true/true)',
@@ -204,9 +217,12 @@ export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMa
 
 /** The verdict gate step: judges the posted findings block via the plugin's bin, in the `review`
  * job. The bin hands the verdict comment to the `review-comment` job (step outputs) instead of
- * posting it, so this job needs no write token. A workspace that removed the plugin green-skips
- * — same stance as the secret gate. */
+ * posting it, so this job needs no write token. The step runs only after the AI review ran, so a
+ * workspace without the bin has a review nothing can judge: the step hands over the comment and
+ * `block-reason=tool-missing`, and the job's last step fails the check. Review is switched off by
+ * leaving the secret unregistered or deleting the workflow, never by removing the plugin. */
 export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: ReviewLocale): string {
+  const [commitBefore, commitAfter] = renderCommitLine(locale, '\u0000').split('\u0000');
   return [
     '- name: Compute review verdict',
     '  id: verdict',
@@ -224,24 +240,41 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
     '    if [ -x node_modules/.bin/archweave-review-verdict ]; then',
     '      node_modules/.bin/archweave-review-verdict',
     '    else',
-    '      echo "nx-archweave is not installed in this workspace - skipping the verdict gate."',
+    `      echo ${shellQuote(`::error title=Verdict tool missing::${renderVerdictToolMissingNotice('en')}`)}`,
+    `      notice=${shellQuote(renderVerdictToolMissingNotice(locale))}`,
+    '      printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
+    '      short_sha=$(printf \'%s\' "$ARCHWEAVE_HEAD_SHA" | cut -c1-7)',
+    '      case "$short_sha" in',
+    "        '' | *[!0-9a-f]*) short_sha= ;;",
+    '      esac',
+    '      {',
+    '        echo "comment-body<<ARCHWEAVE_TOOL_MISSING_EOF"',
+    `        printf '%s\\n' ${shellQuote(VERDICT_MARKER)} "⛔ $notice"`,
+    `        if [ -n "$short_sha" ]; then printf '\\n%s\\n' ${shellQuote(commitBefore)}"$short_sha"${shellQuote(commitAfter)}; fi`,
+    '        echo "ARCHWEAVE_TOOL_MISSING_EOF"',
+    '        echo "blocked=true"',
+    '        echo "block-reason=tool-missing"',
+    '      } >> "$GITHUB_OUTPUT"',
     '    fi',
   ].join('\n');
 }
 
-/** The ONLY red path of the pipeline: a parsed BLOCK. The bin reports it as an output (so the
- * comment is handed over first) and this step fails the job. */
-export function renderBlockStep(): string {
+/** Fails the job once its comment is handed over: a parsed BLOCK or a verdict the bin couldn't
+ * compute (reported by the bin as outputs), a workspace without the bin (reported by the verdict
+ * step), or a commit after the round limit (reported by the job's first step). */
+export function renderBlockStep(maxRounds: ReviewMaxRounds): string {
   return [
     '- name: Fail the review check',
-    "  if: steps.verdict.outputs.blocked == 'true'",
+    "  if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'",
     '  env:',
-    '    BLOCK_REASON: ${{ steps.verdict.outputs.block-reason }}',
+    '    BLOCK_REASON: ${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}',
     '  run: |',
     '    case "$BLOCK_REASON" in',
     '      block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;',
     '      no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
+    '      tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;',
+    `      rounds) echo "The automated review round limit (${maxRounds}) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;`,
     '      *) echo "The review check failed. See the verdict comment on this pull request." ;;',
     '    esac',
     '    exit 1',
@@ -404,7 +437,7 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     renderCheckoutStep(JUDGE_CONDITION),
     renderWorkspaceSetupSteps(input.packageManager),
     renderVerdictGateStep(input.maxRounds, input.locale),
-    renderBlockStep(),
+    renderBlockStep(input.maxRounds),
   ];
   return [
     `name: ${parts.name}`,

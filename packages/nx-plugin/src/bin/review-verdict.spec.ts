@@ -183,6 +183,21 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
     return outputs;
   };
 
+  it.each([
+    ['the repository missing', { GITHUB_REPOSITORY: '' }],
+    ['the PR number missing', { ARCHWEAVE_PR_NUMBER: '' }],
+    ['a round limit that is not a number', { ARCHWEAVE_MAX_ROUNDS: 'three' }],
+    ['a round limit below 1', { ARCHWEAVE_MAX_ROUNDS: '0' }],
+  ])('%s: fails closed, reads nothing, writes no outputs', (_name, broken) => {
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const written: string[] = [];
+    const result = runReviewVerdictBin({ ...OUTPUT, ...broken }, stubExec('[]', calls), (path) => written.push(path));
+    expect(result.exitCode).toBe(1);
+    expect(result.logs.join('\n')).toContain('::error title=Review verdict not computed::The verdict gate is missing');
+    expect(calls).toEqual([]);
+    expect(written).toEqual([]);
+  });
+
   it('BLOCK: writes the comment, the earlier verdict id and blocked=true, posts nothing, exits 0', () => {
     const calls: { args: string[]; stdin?: string }[] = [];
     const written: { path: string; text: string }[] = [];
@@ -338,5 +353,15 @@ describe('runReviewVerdictBin — a comment fetch that fails', () => {
   ])('default mode (an earlier workflow): %s → the same log line as before, no annotation', (_case, exec, line) => {
     const result = runReviewVerdictBin(ENV, exec);
     expect(result).toEqual({ exitCode: 0, logs: [line] });
+  });
+});
+
+describe('runReviewVerdictBin — a misconfigured environment in the default mode', () => {
+  it('keeps its green skip: workflows generated before output mode still pass', () => {
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const result = runReviewVerdictBin({ ...ENV, ARCHWEAVE_PR_NUMBER: '' }, stubExec('[]', calls));
+    expect(result.exitCode).toBe(0);
+    expect(result.logs).toEqual(['verdict gate: required environment missing or malformed — skipping (check stays green).']);
+    expect(calls).toEqual([]);
   });
 });

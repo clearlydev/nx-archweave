@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildReviewChecks } from './review-checks.ts';
@@ -110,6 +110,42 @@ describe('buildReviewChecks', () => {
       const check = checkFor(join(FIXTURES, 'review-gemini-matches-workflow'), 'review-config-consistency');
       expect(check?.status).toBe('pass');
       expect(check?.evidence).toContain('.github/workflows/gemini-code-review.yml');
+    });
+  });
+
+  describe('review-workflow-no-verdict', () => {
+    it('warns about a workflow that passes a commit without an AI verdict green, and says how to preview the current one', () => {
+      const check = checkFor(join(FIXTURES, 'review-workflow-earlier-version'), 'review-workflow-no-verdict');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toMatch(/before nx-archweave 0\.4\.0/);
+      expect(check?.message).toContain('without the verdict tool');
+      expect(check?.evidence).toEqual(['.github/workflows/claude-code-review.yml']);
+      expect(check?.suggestedAction).toContain('nx g @clearlydev/nx-archweave:add-review --onConflict=overwrite --dryRun');
+    });
+
+    it.each(['review-config-matches-workflow', 'review-npm-matches-workflow', 'review-gemini-matches-workflow'])('passes for a current workflow (%s)', (fixture) => {
+      expect(checkFor(join(FIXTURES, fixture), 'review-workflow-no-verdict')?.status).toBe('pass');
+    });
+
+    it('warns about a workflow that fails the round limit but still passes a workspace without the verdict tool', () => {
+      const root = mkdtempSync(join(tmpdir(), 'no-verdict-'));
+      try {
+        const workflows = join(root, '.github/workflows');
+        mkdirSync(workflows, { recursive: true });
+        const current = readFileSync(join(FIXTURES, 'review-config-matches-workflow/.github/workflows/claude-code-review.yml'), 'utf-8');
+        const edited = current.replace(/^\s*echo "block-reason=tool-missing"\n/m, '');
+        expect(edited).not.toBe(current);
+        writeFileSync(join(workflows, 'claude-code-review.yml'), edited);
+        const check = checkFor(root, 'review-workflow-no-verdict');
+        expect(check?.status).toBe('warning');
+        expect(check?.evidence).toEqual(['.github/workflows/claude-code-review.yml']);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('is not-applicable without an nx-archweave review workflow', () => {
+      expect(checkFor(join(FIXTURES, 'review-nothing-installed'), 'review-workflow-no-verdict')?.status).toBe('not-applicable');
     });
   });
 

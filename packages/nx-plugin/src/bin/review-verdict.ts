@@ -50,6 +50,14 @@ const UNREAD_COMMENTS_ERROR =
   '::error title=Review verdict not computed::Could not read PR comments, so the verdict could not be computed. ' +
   'Re-run the failed jobs to retry. If it fails again, check that the review job has pull-requests: read.';
 
+/** Output mode fails closed on an environment the workflow should always set: without the
+ * repository, the PR number or a valid round limit nothing is judged, and green would pass an
+ * unjudged commit. The default mode keeps its green skip. */
+const MISCONFIGURED_ERROR =
+  '::error title=Review verdict not computed::The verdict gate is missing GITHUB_REPOSITORY or ARCHWEAVE_PR_NUMBER, ' +
+  'or ARCHWEAVE_MAX_ROUNDS is not a whole number from 1, so no verdict was computed. ' +
+  'Regenerate the workflow with add-review --onConflict=overwrite if it was edited by hand.';
+
 /** Every adapter-level failure is a warning + exit 0 in the default mode. In output mode the
  * review job runs this bin only after the AI review ran in the same workflow run (the secret is
  * set, rounds remain, and the round gate's watermark arrived), so a green check there means this
@@ -66,7 +74,9 @@ export function runReviewVerdictBin(
   const pr = env['ARCHWEAVE_PR_NUMBER'];
   const maxRounds = Number(env['ARCHWEAVE_MAX_ROUNDS']);
   const locale: ReviewLocale = env['ARCHWEAVE_LOCALE'] === 'ko' ? 'ko' : 'en';
+  const outputPath = outputModePath(env);
   if (!repo || !pr || !Number.isInteger(maxRounds) || maxRounds < 1) {
+    if (outputPath !== undefined) return { exitCode: 1, logs: [MISCONFIGURED_ERROR] };
     logs.push('verdict gate: required environment missing or malformed — skipping (check stays green).');
     return { exitCode: 0, logs };
   }
@@ -76,7 +86,6 @@ export function runReviewVerdictBin(
   const roundAfterId = watermark !== undefined && /^\d+$/.test(watermark) ? Number(watermark) : undefined;
   const sha = env['ARCHWEAVE_HEAD_SHA'];
   const headSha = sha !== undefined && /^[0-9a-f]{7,40}$/i.test(sha) ? sha : undefined;
-  const outputPath = outputModePath(env);
   const fetched = exec('gh', ['api', `repos/${repo}/issues/${pr}/comments`, '--paginate']);
   const pages = fetched.status === 0 ? splitConcatenatedJson(fetched.stdout) : null;
   if (pages === null) {

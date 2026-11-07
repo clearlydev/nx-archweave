@@ -57,7 +57,7 @@ describe('workflow skeleton', () => {
 });
 
 describe('renderVerdictGateStep', () => {
-  it('guards on plugin presence, hands the verdict over as outputs, and carries the env contract', () => {
+  it('fails without the plugin, hands the verdict over as outputs, and carries the env contract', () => {
     const step = renderVerdictGateStep(3, 'ko');
     expect(step).toContain("if: steps.ai-review-result.outputs.run == 'true'");
     expect(step).toContain('id: verdict');
@@ -67,7 +67,9 @@ describe('renderVerdictGateStep', () => {
     expect(step).toContain('ARCHWEAVE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}');
     expect(step).toContain('ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}');
     expect(step).toContain('node_modules/.bin/archweave-review-verdict');
-    expect(step).toContain('skipping the verdict gate');
+    expect(step).toContain('::error title=Verdict tool missing::');
+    expect(step).toContain('echo "block-reason=tool-missing"');
+    expect(step).toContain('판정 도구(@clearlydev/nx-archweave)가 설치돼 있지 않아');
   });
 });
 
