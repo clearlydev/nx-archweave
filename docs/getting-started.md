@@ -16,14 +16,14 @@ npx create-nx-archweave my-app
 
 ### Existing Nx workspace
 
-Not an Nx workspace yet? Run `npx nx@latest init` in the repository first — it turns a plain app repository into one (and rewrites some `package.json` scripts to go through Nx). Don't run `create-nx-archweave` inside it: that makes a second, nested workspace, and the CLI stops unless you pass `--allow-nested`.
+Not an Nx workspace yet? Run `nx init` in the repository first, at the Nx version create-nx-archweave validates — it turns a plain app repository into one (and rewrites some `package.json` scripts to go through Nx). To get the exact commands for the repository's package manager, run `create-nx-archweave` in it: it changes nothing there, and prints `nx init`, the plugin install and a `--dryRun` of `init`. Don't run `create-nx-archweave` inside it: that makes a second, nested workspace, and the CLI stops unless you pass `--allow-nested`.
 
 Add the plugin as a dev dependency at the workspace root. That's where Nx plugins belong. Use the workspace's package manager:
 
 ```bash
 npm install -D @clearlydev/nx-archweave        # npm
-pnpm add -D -w @clearlydev/nx-archweave        # pnpm
-yarn add -D @clearlydev/nx-archweave           # yarn berry (yarn 1: add -W)
+pnpm add -D @clearlydev/nx-archweave           # pnpm (with a pnpm-workspace.yaml: add -D -w)
+yarn add -D @clearlydev/nx-archweave           # yarn berry (yarn 1 with workspaces: add -D -W)
 bun add -d @clearlydev/nx-archweave            # bun
 ```
 
