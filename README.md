@@ -25,7 +25,7 @@ npx create-nx-archweave my-app
 # The same with pnpm
 pnpm dlx create-nx-archweave my-app
 
-# Or add the plugin to an existing workspace (pnpm: add -D -w)
+# Or add the plugin to an existing workspace (pnpm with a pnpm-workspace.yaml: add -D -w)
 npm install -D @clearlydev/nx-archweave
 ```
 

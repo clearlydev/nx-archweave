@@ -16,14 +16,14 @@ npx create-nx-archweave my-app
 
 ### 기존 Nx 워크스페이스
 
-아직 Nx 워크스페이스가 아니라면 저장소에서 먼저 `npx nx@latest init`을 실행하세요. 일반 앱 저장소를 Nx 워크스페이스로 바꿔 줘요(`package.json`의 일부 스크립트가 Nx를 거치도록 바뀌어요). 그 저장소 안에서 `create-nx-archweave`를 실행하지는 마세요. 중첩된 두 번째 워크스페이스가 생기기 때문에, `--allow-nested`를 주지 않으면 CLI가 멈춰요.
+아직 Nx 워크스페이스가 아니라면 저장소에서 먼저 `nx init`을 실행하세요. create-nx-archweave가 검증한 Nx 버전으로 실행하면 돼요. 일반 앱 저장소를 Nx 워크스페이스로 바꿔 줘요(`package.json`의 일부 스크립트가 Nx를 거치도록 바뀌어요). 저장소의 패키지 매니저에 맞는 정확한 명령이 필요하면 그 저장소에서 `create-nx-archweave`를 실행해 보세요. 저장소에는 아무것도 바꾸지 않고, `nx init`, 플러그인 설치, `init`의 `--dryRun` 명령을 출력해요. 그 저장소 안에서 `create-nx-archweave`를 실행하지는 마세요. 중첩된 두 번째 워크스페이스가 생기기 때문에, `--allow-nested`를 주지 않으면 CLI가 멈춰요.
 
 플러그인을 워크스페이스 루트에 devDependency로 추가하세요. Nx 플러그인은 원래 루트에 둬요. 워크스페이스의 패키지 매니저로 실행하면 돼요.
 
 ```bash
 npm install -D @clearlydev/nx-archweave        # npm
-pnpm add -D -w @clearlydev/nx-archweave        # pnpm
-yarn add -D @clearlydev/nx-archweave           # yarn berry (yarn 1은 add -W)
+pnpm add -D @clearlydev/nx-archweave           # pnpm (pnpm-workspace.yaml이 있으면 add -D -w)
+yarn add -D @clearlydev/nx-archweave           # yarn berry (workspaces를 쓰는 yarn 1은 add -D -W)
 bun add -d @clearlydev/nx-archweave            # bun
 ```
 
