@@ -25,7 +25,7 @@ npx create-nx-archweave my-app
 # pnpm으로 같은 작업
 pnpm dlx create-nx-archweave my-app
 
-# 또는 기존 워크스페이스에 플러그인 추가 (pnpm: add -D -w)
+# 또는 기존 워크스페이스에 플러그인 추가 (pnpm-workspace.yaml이 있는 pnpm: add -D -w)
 npm install -D @clearlydev/nx-archweave
 ```
 
