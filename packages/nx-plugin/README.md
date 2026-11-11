@@ -16,8 +16,8 @@ Run one of these at the workspace root, with the workspace's package manager:
 
 ```bash
 npm install -D @clearlydev/nx-archweave        # npm
-pnpm add -D @clearlydev/nx-archweave           # pnpm (with a pnpm-workspace.yaml: add -D -w)
-yarn add -D @clearlydev/nx-archweave           # yarn berry (yarn 1 with workspaces: add -D -W)
+pnpm add -D -w @clearlydev/nx-archweave        # pnpm
+yarn add -D @clearlydev/nx-archweave           # yarn berry (yarn 1: add -W)
 bun add -d @clearlydev/nx-archweave            # bun
 ```
 
