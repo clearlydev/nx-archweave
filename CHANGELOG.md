@@ -1,3 +1,9 @@
+## 0.4.1 (2026-11-11)
+
+### 🩹 Fixes
+
+- print working setup commands for an existing repo ([47a4e1e](https://github.com/clearlydev/nx-archweave/commit/47a4e1e))
+
 ## 0.4.0 (2026-11-07)
 
 ### 🚀 Features
