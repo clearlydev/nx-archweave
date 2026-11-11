@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { execFile, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseCliArgs } from './cli/parse-args.ts';
-import { checkInvocationDirectory, renderLocationRefusal } from './cli/location-check.ts';
+import { checkInvocationDirectory, readExistingRepository, renderLocationRefusal } from './cli/location-check.ts';
 import { collectMissingInputs, reviewProviderConflict } from './cli/prompts.ts';
 import { buildPlan, nxGenerateCommand } from './cli/plan.ts';
 import { detectInstalledHosts } from './cli/host-probe.ts';
@@ -50,7 +50,17 @@ async function main(argv: readonly string[]): Promise<number> {
   if (!args.allowNested) {
     const location = checkInvocationDirectory(process.cwd(), { gitRoot, hasPackageJson: (dir) => existsSync(join(dir, 'package.json')) });
     if (!location.ok) {
-      console.error(renderLocationRefusal(location));
+      const readFile = (file: string): string | undefined => {
+        try {
+          return readFileSync(join(location.at, file), 'utf-8');
+        } catch {
+          return undefined;
+        }
+      };
+      const repo = readExistingRepository(readFile, args.packageManager, process.env['npm_config_user_agent']);
+      console.error(
+        renderLocationRefusal(location, repo, { preset: args.preset, frontend: args.frontend, backend: args.backend, locale: args.locale }),
+      );
       return 1;
     }
   }
