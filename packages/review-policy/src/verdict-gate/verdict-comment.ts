@@ -40,6 +40,21 @@ const SEVERAL_SUMMARIES_NOTICE: Record<ReviewLocale, string> = {
   ko: '⛔ 이번 실행이 이 커밋에 대한 리뷰 요약을 두 개 이상 게시해서 하나의 verdict로 정할 수 없고, review 체크는 실패합니다. 모든 잡을 다시 실행해 다시 리뷰받거나, 이 PR을 직접 리뷰하세요.',
 };
 
+/** The summary for this commit came from an account other than the review account the workflow
+ * names, so it isn't judged. Logins are shown only in GitHub's login shape. */
+export function renderReviewAccountNotice(locale: ReviewLocale, logins: readonly string[], reviewAuthors: readonly string[], headSha?: string): string {
+  const shown = (list: readonly string[]) =>
+    list
+      .filter((login) => /^[A-Za-z0-9-]{1,39}(\[bot\])?$/.test(login))
+      .map((login) => `\`${login}\``)
+      .join(', ') || '?';
+  const text =
+    locale === 'en'
+      ? `⛔ The AI review summary for this commit was posted by ${shown(logins)}, not by the review account (${shown(reviewAuthors)}), so there is no verdict and the review check fails. Regenerate the review workflow with add-review --onConflict=overwrite, or, if the review posts as another account on purpose, set ARCHWEAVE_REVIEW_AUTHOR in the workflow to that account.`
+      : `⛔ 이 커밋의 AI 리뷰 요약을 리뷰 계정(${shown(reviewAuthors)})이 아니라 ${shown(logins)}이(가) 게시해서 verdict가 없고, review 체크는 실패합니다. add-review --onConflict=overwrite로 리뷰 워크플로를 다시 생성하거나, 리뷰가 일부러 다른 계정으로 게시된다면 워크플로의 ARCHWEAVE_REVIEW_AUTHOR를 그 계정으로 설정하세요.`;
+  return withHead([VERDICT_MARKER, text], locale, headSha);
+}
+
 /** The line naming the judged commit, for an abbreviated SHA (or a placeholder a workflow script
  * fills in). */
 export function renderCommitLine(locale: ReviewLocale, shortSha: string): string {

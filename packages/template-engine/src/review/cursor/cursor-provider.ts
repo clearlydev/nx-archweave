@@ -82,6 +82,8 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     secretName: SECRET_NAME,
     // An API key: the Cursor CLI needs no OIDC token.
     idToken: false,
+    // The workflow's token posts the summary (renderPostReviewStep).
+    reviewAuthor: 'github-actions[bot]',
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION),
       // The CLI reads rules, MCP servers and permissions from .cursor/ in the checkout.

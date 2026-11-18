@@ -77,6 +77,8 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     secretName: SECRET_NAME,
     // An API key: run-gemini-cli uses OIDC only for Google Cloud workload identity federation.
     idToken: false,
+    // The workflow's token posts the summary (renderPostReviewStep).
+    reviewAuthor: 'github-actions[bot]',
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION),
       // The CLI reads project settings, extensions and .env files from the checkout; only the

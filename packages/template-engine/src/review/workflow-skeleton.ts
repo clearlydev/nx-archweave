@@ -149,11 +149,16 @@ export function renderSecretGateStep(secretName: string): string {
   ].join('\n');
 }
 
+/** The workflow-level env naming the account(s) the review summary is posted as, comma-separated.
+ * The round gate and the verdict bin both read it, so a workflow that makes the provider post as
+ * another account (its own GitHub App, say) changes this one line. */
+export const REVIEW_AUTHOR_ENV = 'ARCHWEAVE_REVIEW_AUTHOR';
+
 /** Counts marker-tagged PR comments BEFORE the provider step runs, so a PR at
- * the cap costs zero tokens. Only bot-authored comments count: anyone who can comment could
- * otherwise post the marker until the cap is reached and switch the review off. It also
- * outputs the newest comment id as a watermark: the verdict gate judges only a round posted
- * after it — this run's, for this commit. */
+ * the cap costs zero tokens. Only comments by the review's own account (REVIEW_AUTHOR_ENV) count:
+ * anyone who can comment could otherwise post the marker until the cap is reached and switch the
+ * review off. It also outputs the newest comment id as a watermark: the verdict gate judges only
+ * a round posted after it — this run's, for this commit. */
 export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
   return [
     '- name: Check review round limit',
@@ -162,7 +167,7 @@ export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
     '  env:',
     '    GH_TOKEN: ${{ github.token }}',
     '  run: |',
-    `    counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("${ROUND_MARKER}"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')`,
+    `    counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | .user.login as $login | select(env.${REVIEW_AUTHOR_ENV} | split(",") | map(ltrimstr(" ") | rtrimstr(" ")) | any(. == $login)) | select(.body | contains("${ROUND_MARKER}"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')`,
     '    rounds=$(printf \'%s\' "$counts" | cut -f1)',
     '    echo "last-comment-id=$(printf \'%s\' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"',
     `    if [ "$rounds" -ge ${maxRounds} ]; then`,
@@ -351,6 +356,7 @@ export function renderBlockStep(maxRounds: ReviewMaxRounds): string {
     '      block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;',
     '      no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
+    '      review-account) echo "The AI review summary for this commit was not posted by the review account, so there is no verdict. Regenerate the review workflow, or set ARCHWEAVE_REVIEW_AUTHOR to the account the review posts as." ;;',
     '      bot-run) echo "A bot account started this run on a pull request a person opened or wrote commits in, so the AI review did not run and there is no verdict. A person should re-run all jobs on the latest commit." ;;',
     '      several-summaries) echo "The AI review posted more than one summary for this commit, so there is no single verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;',
@@ -494,6 +500,8 @@ export interface ReviewWorkflowParts {
   reviewSteps: string[];
   /** The provider's action exchanges a GitHub OIDC token (see renderReviewPermissions). */
   idToken: boolean;
+  /** The account the review summary is posted as: only its comments count as review rounds. */
+  reviewAuthor: string;
 }
 
 /**
@@ -527,6 +535,9 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     renderConcurrencyBlock(),
     '',
     'permissions: {}',
+    '',
+    'env:',
+    `  ${REVIEW_AUTHOR_ENV}: '${parts.reviewAuthor}'`,
     '',
     'jobs:',
     '  ai-review:',

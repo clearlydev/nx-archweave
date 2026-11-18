@@ -25,9 +25,9 @@ function outputModePath(env: Record<string, string | undefined>): string | undef
 
 /** Step outputs in GitHub's heredoc form; the delimiter is random, so no line of the comment can
  * end the value early. */
-/** Why the review check fails: an AI BLOCK, no summary from this run, one nobody can read, or
- * more than one summary from this run. */
-type BlockReason = 'block' | 'no-summary' | 'unreadable' | 'several-summaries';
+/** Why the review check fails: an AI BLOCK, no summary from this run, one nobody can read, more
+ * than one summary from this run, or a summary from an account that isn't the review account. */
+type BlockReason = 'block' | 'no-summary' | 'unreadable' | 'several-summaries' | 'review-account';
 
 /** The accounts whose comments count as review rounds: the Claude GitHub App for `claude`, and
  * the workflow's own token for the providers whose summary is posted with it. A workflow names
@@ -124,13 +124,20 @@ export function runReviewVerdictBin(
         typeof (c as { body?: unknown }).body === 'string' &&
         (c as { user?: { type?: unknown } }).user?.type === 'Bot',
     )
-    .map((c) => ({ body: c.body, id: typeof c.id === 'number' ? c.id : undefined, login: typeof c.user.login === 'string' ? c.user.login : '' }));
-  // Rounds count only from the review's own account; the verdict comment is found among every bot
-  // comment, since the workflow's token posts it whichever provider reviewed.
-  const authors = reviewAuthors(env);
-  const rounds = comments.filter((c) => authors.includes(c.login));
+    .map((c) => ({ body: c.body, id: typeof c.id === 'number' ? c.id : undefined, author: typeof c.user.login === 'string' ? c.user.login : '' }));
+  // Rounds count only from the review's own account, and one from another bot account that would
+  // count for this commit fails the check with that reason; the verdict comment is found among
+  // every bot comment, since the workflow's token posts it whichever provider reviewed.
   const reviewRan = outputPath !== undefined && roundAfterId !== undefined;
-  const result = runVerdictGate({ comments: rounds, maxRounds: maxRounds as ReviewMaxRounds, locale, roundAfterId, headSha, reviewRan });
+  const result = runVerdictGate({
+    comments,
+    reviewAuthors: reviewAuthors(env),
+    maxRounds: maxRounds as ReviewMaxRounds,
+    locale,
+    roundAfterId,
+    headSha,
+    reviewRan,
+  });
   if (result.kind === 'no-review') {
     logs.push('verdict gate: no review rounds found on this PR — nothing to judge.');
     return { exitCode: 0, logs };
@@ -138,7 +145,11 @@ export function runReviewVerdictBin(
   // One verdict comment per PR, edited every round: the newest earlier one is updated, and a
   // new one is posted only when there is none or the edit is refused (e.g. another app's).
   const previous = [...comments].reverse().find((c) => c.body.includes(VERDICT_MARKER) && c.id !== undefined);
-  const failedReview = result.kind === 'no-summary' || result.kind === 'several-summaries' || (result.kind === 'unparseable' && result.failClosed);
+  const failedReview =
+    result.kind === 'no-summary' ||
+    result.kind === 'several-summaries' ||
+    result.kind === 'review-account' ||
+    (result.kind === 'unparseable' && result.failClosed);
   const settled = !failedReview && (result.kind === 'no-round' || result.kind === 'unparseable');
   const blocked = failedReview || (result.kind === 'verdict' && result.exitCode !== 0);
   if (outputPath !== undefined) {
@@ -147,7 +158,9 @@ export function runReviewVerdictBin(
         ? 'no-summary'
         : result.kind === 'several-summaries'
           ? 'several-summaries'
-          : result.kind === 'unparseable'
+          : result.kind === 'review-account'
+            ? 'review-account'
+            : result.kind === 'unparseable'
             ? 'unreadable'
             : 'block';
     writeOutput(outputPath, renderStepOutputs(result.commentBody, previous?.id, blocked, reason));
@@ -167,9 +180,14 @@ export function runReviewVerdictBin(
         ? '::error title=AI review posted no summary::The AI review ran but posted no summary for this commit, so there is no verdict. Review the PR manually, or re-run all jobs.'
         : result.kind === 'several-summaries'
           ? '::error title=Several AI review summaries::The AI review posted more than one summary for this commit, so there is no single verdict. Review the PR manually, or re-run all jobs.'
-          : '::error title=AI review summary unreadable::The AI review summary has no readable findings block, so there is no verdict. Review the PR manually, or re-run all jobs.',
+          : result.kind === 'review-account'
+            ? '::error title=AI review summary from another account::The AI review summary for this commit was not posted by the review account, so there is no verdict. Regenerate the review workflow with add-review --onConflict=overwrite, or set ARCHWEAVE_REVIEW_AUTHOR in the workflow to the account the review posts as.'
+            : '::error title=AI review summary unreadable::The AI review summary has no readable findings block, so there is no verdict. Review the PR manually, or re-run all jobs.',
     );
-    return { exitCode: 0, logs };
+    // The default mode has no later step to fail the job, so a summary from another account fails
+    // it here: a workflow generated before the account was checked kept judging such a summary,
+    // which may have blocked.
+    return { exitCode: outputPath === undefined && result.kind === 'review-account' ? 1 : 0, logs };
   }
   if (settled) {
     logs.push(

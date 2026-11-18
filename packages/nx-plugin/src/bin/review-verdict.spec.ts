@@ -101,6 +101,16 @@ describe('runReviewVerdictBin — paginated gh output', () => {
   });
 });
 
+describe('runReviewVerdictBin — a summary from another account in the default mode', () => {
+  it('fails the check (exit 1) and posts the reason, instead of judging it', () => {
+    const other = JSON.stringify([{ ...JSON.parse(blockComment('P2'))[0], user: { login: 'my-app[bot]', type: 'Bot' } }]);
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const result = runReviewVerdictBin(ENV, stubExec(other, calls));
+    expect(result.exitCode).toBe(1);
+    expect(calls.find((c) => c.args.includes('POST'))?.stdin).toContain('`my-app[bot]`');
+  });
+});
+
 describe('runReviewVerdictBin — only bot-authored rounds count', () => {
   it('ignores marker comments from human authors — the gate cannot be spoofed into APPROVE', () => {
     const spoof = JSON.stringify([
@@ -291,11 +301,19 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       expect(logs).toContain('::error title=Several AI review summaries::');
     });
 
-    it("a round from another app's bot account does not count", () => {
+    it("a round from another app's bot account isn't judged, and fails with that reason", () => {
       const other = { ...round(70), user: { login: 'other-app[bot]', type: 'Bot' } };
-      const { outputs } = run([other]);
+      const { result, outputs, logs } = run([other]);
+      expect(result.exitCode).toBe(0);
       expect(outputs['blocked']).toBe('true');
-      expect(outputs['block-reason']).toBe('no-summary');
+      expect(outputs['block-reason']).toBe('review-account');
+      expect(outputs['comment-body']).toContain('`other-app[bot]`');
+      expect(logs).toContain('::error title=AI review summary from another account::');
+    });
+
+    it("another app's round before the watermark is history only", () => {
+      const earlier = { ...round(50, [{ priority: 'P1', category: 'c', title: 't', file: 'f.ts', lineRange: { start: 1 }, evidence: '', impact: '', reproductionCondition: '', recommendation: '', confidence: 'confirmed' }]), user: { login: 'other-app[bot]', type: 'Bot' } };
+      expect(run([earlier, round(70)]).outputs['blocked']).toBe('false');
     });
 
     it('rounds from the workflow token count, as for the providers that post with it', () => {
@@ -303,13 +321,15 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       expect(run([posted]).outputs['blocked']).toBe('false');
     });
 
-    it('ARCHWEAVE_REVIEW_AUTHOR narrows the rounds to that one account', () => {
-      const written: string[] = [];
+    it('ARCHWEAVE_REVIEW_AUTHOR narrows the rounds to the accounts it names', () => {
       const posted = { ...round(70), user: { login: 'github-actions[bot]', type: 'Bot' } };
-      runReviewVerdictBin({ ...RAN, ARCHWEAVE_REVIEW_AUTHOR: 'claude[bot]' }, stubExec(JSON.stringify([posted]), []), (_p, text) => written.push(text));
-      const outputs = parseOutputs(written.join(''));
-      expect(outputs['blocked']).toBe('true');
-      expect(outputs['block-reason']).toBe('no-summary');
+      const outputsFor = (author: string) => {
+        const written: string[] = [];
+        runReviewVerdictBin({ ...RAN, ARCHWEAVE_REVIEW_AUTHOR: author }, stubExec(JSON.stringify([posted]), []), (_p, text) => written.push(text));
+        return parseOutputs(written.join(''));
+      };
+      expect(outputsFor('claude[bot]')['block-reason']).toBe('review-account');
+      expect(outputsFor('my-review-app[bot], github-actions[bot]')['blocked']).toBe('false');
     });
 
     it('the verdict comment is still found when the rounds are narrowed to another account', () => {

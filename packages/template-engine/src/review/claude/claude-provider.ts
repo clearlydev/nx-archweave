@@ -26,6 +26,9 @@ const SECRET_NAME = 'CLAUDE_CODE_OAUTH_TOKEN';
 export const ALLOWED_TOOLS =
   'mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file -),Bash(gh pr diff:*),Bash(gh pr view:*)';
 
+/** The Claude GitHub App: the action's own sign-in posts the summary as this account. */
+const REVIEW_AUTHOR = 'claude[bot]';
+
 /** The id of the step that runs the action; its `execution_file` output feeds the denial report. */
 const CLAUDE_STEP_ID = 'claude-review';
 
@@ -107,6 +110,7 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     secretName: SECRET_NAME,
     // The Claude GitHub App signs in with the workflow's OIDC token (claude-code-action's FAQ).
     idToken: true,
+    reviewAuthor: REVIEW_AUTHOR,
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION),
       [

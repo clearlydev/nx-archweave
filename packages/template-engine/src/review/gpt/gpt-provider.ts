@@ -68,6 +68,8 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     secretName: SECRET_NAME,
     // An API key: codex-action needs no OIDC token.
     idToken: false,
+    // The workflow's token posts the summary (the "Post review comment" step).
+    reviewAuthor: 'github-actions[bot]',
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION, ['ref: refs/pull/${{ github.event.pull_request.number }}/merge']),
       [

@@ -43,6 +43,11 @@ describe('workflow skeleton', () => {
     expect(step).toContain('skip-reason=bot-run');
   });
 
+  it('round gate counts only marker comments from the accounts the workflow env names', () => {
+    const step = renderRoundGateStep(3);
+    expect(step).toContain('select(.user.type == "Bot") | .user.login as $login | select(env.ARCHWEAVE_REVIEW_AUTHOR | split(",")');
+  });
+
   it('round gate counts marker comments and caps at the given maxRounds', () => {
     const step = renderRoundGateStep(4);
     expect(step).toContain('id: round-gate');

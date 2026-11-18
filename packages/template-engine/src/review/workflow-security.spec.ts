@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { SupportedPackageManager } from '../environment/package-manager.ts';
 import { ACTION_PINS } from './action-pins.ts';
 import { REVIEW_PROVIDERS } from './provider.ts';
-import { REVIEW_JOB_TIMEOUT_MINUTES, ROUND_MARKER } from './workflow-skeleton.ts';
+import { REVIEW_JOB_TIMEOUT_MINUTES } from './workflow-skeleton.ts';
 
 const PACKAGE_MANAGERS: SupportedPackageManager[] = ['pnpm', 'npm', 'yarn', 'bun'];
 const PINNED_USES = /^\s*(- )?uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+(\.\d+)*$/;
@@ -97,7 +97,7 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
 
   it('counts only bot-authored round markers', () => {
     const yaml = render(providerId, 'npm');
-    expect(yaml).toContain(`[.[] | select(.user.type == "Bot") | select(.body | contains("${ROUND_MARKER}"))]`);
+    expect(yaml).toContain('[.[] | select(.user.type == "Bot") | .user.login as $login | select(env.ARCHWEAVE_REVIEW_AUTHOR | split(",") | map(ltrimstr(" ") | rtrimstr(" ")) | any(. == $login)) | select(.body | contains("<!-- archweave-review-round -->"))]');
   });
 
   it.each(PACKAGE_MANAGERS)('grants no permission at the top level; each job asks for its own (%s)', (packageManager) => {
@@ -330,6 +330,20 @@ describe('gemini and cursor workflows: the agent step reads prepared files and h
     const postText = stepNamed(render('gemini', 'pnpm'), 'Post review comment');
     expect(postText).toContain('REVIEW_BODY: ${{ steps.gemini-review.outputs.summary }}');
     expect(postText).toContain('printf %s "$REVIEW_BODY" | gh pr comment "$PR_NUMBER" --body-file -');
+  });
+});
+
+describe('every provider counts only its own account\'s rounds', () => {
+  it.each([
+    ['claude', 'claude[bot]'],
+    ['gemini', 'github-actions[bot]'],
+    ['gpt', 'github-actions[bot]'],
+    ['cursor', 'github-actions[bot]'],
+  ] as const)('%s: %s', (providerId, author) => {
+    const yaml = render(providerId, 'pnpm');
+    // One workflow-level line, read by the round gate and the verdict step alike.
+    expect(yaml).toContain(`\nenv:\n  ARCHWEAVE_REVIEW_AUTHOR: '${author}'\n`);
+    expect(yaml.match(/ARCHWEAVE_REVIEW_AUTHOR:/g)).toHaveLength(1);
   });
 });
 
