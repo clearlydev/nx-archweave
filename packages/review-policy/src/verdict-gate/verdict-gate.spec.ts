@@ -193,6 +193,35 @@ describe('runVerdictGate — the AI review ran in this workflow run (reviewRan)'
     if (result.kind === 'unparseable') expect(result.commentBody).toContain('review check fails');
   });
 
+  it('more than one round after the watermark is no single verdict: several-summaries, whatever they say', () => {
+    const both = [{ ...roundComment([f('P1')]), id: 70 }, { ...roundComment([]), id: 80 }];
+    const result = runVerdictGate({ ...ran, comments: both, roundAfterId: 60 });
+    expect(result.kind).toBe('several-summaries');
+    if (result.kind === 'several-summaries') {
+      expect(result.commentBody).toContain('more than one review summary');
+      expect(result.commentBody).toContain('Commit `abcdef1`');
+    }
+  });
+
+  it('rounds before the watermark do not count toward several', () => {
+    const result = runVerdictGate({ ...ran, comments: [{ ...roundComment([]), id: 40 }, { ...roundComment([]), id: 70 }], roundAfterId: 60 });
+    expect(result.kind).toBe('verdict');
+  });
+
+  it('without reviewRan, several rounds after the watermark are judged by the most severe one', () => {
+    const judge = (comments: { body: string; id: number }[]) => runVerdictGate({ maxRounds: 3, locale: 'en', comments, roundAfterId: 60 });
+    expect(judge([{ ...roundComment([f('P1')]), id: 70 }, { ...roundComment([]), id: 80 }])).toMatchObject({ kind: 'verdict', verdict: 'BLOCK', exitCode: 1 });
+    expect(judge([{ ...roundComment([]), id: 70 }, { ...roundComment([f('P2')]), id: 80 }])).toMatchObject({ kind: 'verdict', verdict: 'CHANGES_RECOMMENDED' });
+    expect(judge([{ body: `${ROUND_MARKER}\nx`, id: 70 }, { body: `${ROUND_MARKER}\ny`, id: 80 }])).toMatchObject({ kind: 'unparseable', failClosed: false });
+  });
+
+  it('without reviewRan, findings blocks that disagree are judged by the most severe one', () => {
+    const block = (findings: unknown[]) => `${FINDINGS_MARKER}\n\`\`\`json\n${JSON.stringify({ schema: 'archweave/findings@1', findings })}\n\`\`\``;
+    const body = [ROUND_MARKER, block([f('P1')]), block([])].join('\n');
+    expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [{ body }] })).toMatchObject({ kind: 'verdict', verdict: 'BLOCK', exitCode: 1 });
+    expect(runVerdictGate({ ...ran, comments: [{ body, id: 70 }], roundAfterId: 60 })).toMatchObject({ kind: 'unparseable', failClosed: true });
+  });
+
   it('without reviewRan nothing changes: no-review, no-round and a green unparseable', () => {
     expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [] }).kind).toBe('no-review');
     expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [{ ...roundComment([]), id: 40 }], roundAfterId: 60 }).kind).toBe('no-round');
@@ -203,5 +232,48 @@ describe('runVerdictGate — the AI review ran in this workflow run (reviewRan)'
     const result = runVerdictGate({ ...ran, locale: 'ko', comments: [], roundAfterId: 0 });
     if (result.kind === 'no-summary') expect(result.commentBody).toContain('review 체크는 실패합니다');
     else throw new Error(`expected no-summary, got ${result.kind}`);
+  });
+});
+
+describe('runVerdictGate — rounds from the review account only', () => {
+  const own = (id: number, findings: unknown[] = []) => ({ ...roundComment(findings), id, author: 'claude[bot]' });
+  const other = (id: number, findings: unknown[] = []) => ({ ...roundComment(findings), id, author: 'other-app[bot]' });
+  const gate = (comments: { body: string; id: number; author: string }[], extra: { roundAfterId?: number; reviewRan?: boolean } = {}) =>
+    runVerdictGate({ maxRounds: 3, locale: 'en', comments, reviewAuthors: ['claude[bot]'], ...extra });
+
+  it('a summary from another account after the watermark fails, naming both accounts', () => {
+    for (const comments of [[other(70)], [own(70), other(80)], [other(70), own(80)]]) {
+      const result = gate(comments, { roundAfterId: 60, reviewRan: true });
+      expect(result.kind).toBe('review-account');
+      if (result.kind === 'review-account') {
+        expect(result.logins).toEqual(['other-app[bot]']);
+        expect(result.commentBody).toContain('`other-app[bot]`');
+        expect(result.commentBody).toContain('`claude[bot]`');
+        expect(result.commentBody).toContain('ARCHWEAVE_REVIEW_AUTHOR');
+      }
+    }
+  });
+
+  it('another account before the watermark is history only: the own round is judged', () => {
+    expect(gate([other(50, [f('P1')]), own(70)], { roundAfterId: 60, reviewRan: true })).toMatchObject({ kind: 'verdict', verdict: 'APPROVE' });
+  });
+
+  it('without a watermark, another account after the last own round fails; before it, the own round is judged', () => {
+    expect(gate([own(10), other(20)]).kind).toBe('review-account');
+    expect(gate([other(20)]).kind).toBe('review-account');
+    expect(gate([other(10), own(20, [f('P1')])])).toMatchObject({ kind: 'verdict', verdict: 'BLOCK' });
+  });
+
+  it('a login outside GitHub\'s login shape is never shown', () => {
+    const odd = { ...roundComment([]), id: 70, author: 'x`y [bot]' };
+    const result = gate([odd], { roundAfterId: 60, reviewRan: true });
+    expect(result.kind).toBe('review-account');
+    if (result.kind === 'review-account') expect(result.commentBody).not.toContain('x`y');
+  });
+
+  it('the notice exists in Korean too', () => {
+    const result = runVerdictGate({ maxRounds: 3, locale: 'ko', comments: [other(70)], reviewAuthors: ['claude[bot]'], roundAfterId: 60, reviewRan: true });
+    if (result.kind === 'review-account') expect(result.commentBody).toContain('ARCHWEAVE_REVIEW_AUTHOR');
+    else throw new Error(`expected review-account, got ${result.kind}`);
   });
 });

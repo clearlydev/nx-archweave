@@ -2,7 +2,15 @@ import { computeVerdict, type ReviewFinding, type ReviewVerdict } from '../schem
 import type { ReviewLocale, ReviewMaxRounds } from '../schema/review-policy-config.ts';
 import type { RoundHistoryEntry } from '../renderers/render-review-comment.ts';
 import { extractFindingsBlock, findingKey, type FindingsBlockResult } from './findings-block.ts';
-import { renderNoRoundNotice, renderNoSummaryNotice, renderUnparseableNotice, renderVerdictComment, VERDICT_MARKER } from './verdict-comment.ts';
+import {
+  renderNoRoundNotice,
+  renderNoSummaryNotice,
+  renderReviewAccountNotice,
+  renderSeveralSummariesNotice,
+  renderUnparseableNotice,
+  renderVerdictComment,
+  VERDICT_MARKER,
+} from './verdict-comment.ts';
 
 /** Moved here from template-engine's workflow-skeleton (single source — the
  * gate and the workflow renderer must agree on it); template-engine re-exports. */
@@ -15,6 +23,12 @@ export type VerdictGateResult =
   /** `failClosed` is reviewRan: the summary exists but its verdict can't be read, so it fails. */
   | { kind: 'unparseable'; commentBody: string; failClosed: boolean }
   | { kind: 'no-round'; commentBody: string }
+  /** reviewRan, and this run left more than one round for the commit: no single verdict, so the
+   * check fails. */
+  | { kind: 'several-summaries'; commentBody: string }
+  /** A summary that counts for this commit came from an account other than the review account:
+   * nothing is judged, and the check fails. */
+  | { kind: 'review-account'; commentBody: string; logins: string[] }
   | { kind: 'verdict'; verdict: ReviewVerdict; commentBody: string; exitCode: 0 | 1 };
 
 interface Round {
@@ -23,10 +37,44 @@ interface Round {
   extraction: FindingsBlockResult;
 }
 
+function isRound(comment: { body: string }): boolean {
+  return comment.body.includes(ROUND_MARKER) && !comment.body.includes(VERDICT_MARKER);
+}
+
 export function collectRounds(comments: readonly { body: string; id?: number }[]): Round[] {
-  return comments
-    .filter((c) => c.body.includes(ROUND_MARKER) && !c.body.includes(VERDICT_MARKER))
-    .map((c, index) => ({ round: index + 1, id: c.id, extraction: extractFindingsBlock(c.body) }));
+  return comments.filter(isRound).map((c, index) => ({ round: index + 1, id: c.id, extraction: extractFindingsBlock(c.body) }));
+}
+
+const VERDICT_SEVERITY: Record<ReviewVerdict, number> = { BLOCK: 3, CHANGES_RECOMMENDED: 2, APPROVE_WITH_NOTES: 1, APPROVE: 0 };
+
+/** Of every readable block in these rounds (each block of a conflicting round too), the one with
+ * the most severe verdict; undefined when none is readable. */
+function strictestFindings(rounds: readonly Round[]): ReviewFinding[] | undefined {
+  const blocks = rounds.flatMap((round) =>
+    round.extraction.status === 'ok' ? [round.extraction.findings] : round.extraction.status === 'conflict' ? round.extraction.blocks : [],
+  );
+  let strictest: ReviewFinding[] | undefined;
+  for (const block of blocks) {
+    if (strictest === undefined || VERDICT_SEVERITY[computeVerdict(block)] > VERDICT_SEVERITY[computeVerdict(strictest)]) strictest = block;
+  }
+  return strictest;
+}
+
+/** Summaries that would count for this commit but came from another account: posted after the
+ * watermark, or, without one, after the last summary from the review account. */
+function foreignRoundLogins(
+  comments: readonly { body: string; id?: number; author?: string }[],
+  reviewAuthors: readonly string[],
+  roundAfterId: number | undefined,
+): string[] {
+  const rounds = comments.filter(isRound);
+  const lastOwn = rounds.reduce((last, c, index) => (reviewAuthors.includes(c.author ?? '') ? index : last), -1);
+  const foreign = rounds.filter(
+    (c, index) =>
+      !reviewAuthors.includes(c.author ?? '') &&
+      (roundAfterId === undefined ? index > lastOwn : c.id === undefined || c.id > roundAfterId),
+  );
+  return [...new Set(foreign.map((c) => c.author ?? ''))];
 }
 
 /** Lines two reports of one defect may drift apart between rounds (an edit above it, or the
@@ -68,11 +116,16 @@ export function computeRoundHistory(rounds: readonly Round[]): RoundHistoryEntry
 }
 
 /** Red for a parsed BLOCK, and, once `reviewRan` says the AI review ran in this workflow run,
- * for anything short of a readable round from that run (`no-summary`, a fail-closed
- * `unparseable`). Without `reviewRan` (a run that skipped the review, or a workflow generated
- * before the review job gated the bin on it) those degrade green as before. */
+ * for anything short of a single readable round from that run (`no-summary`, a fail-closed
+ * `unparseable`, `several-summaries`). Without `reviewRan` (a workflow generated before the
+ * review job gated the bin on it) those degrade green as before, except that disagreeing blocks
+ * or several rounds are judged by the most severe one, so nothing that blocked before passes.
+ * With `reviewAuthors`, rounds count only from those accounts, and a round from any other
+ * account that would count for this commit fails the check (`review-account`). */
 export function runVerdictGate(input: {
-  comments: readonly { body: string; id?: number }[];
+  comments: readonly { body: string; id?: number; author?: string }[];
+  /** The accounts the review posts as; unset, every comment counts. */
+  reviewAuthors?: readonly string[];
   maxRounds: ReviewMaxRounds;
   locale: ReviewLocale;
   /** The newest comment id before this run's review step (the round gate's watermark). Set, the
@@ -84,8 +137,15 @@ export function runVerdictGate(input: {
    * missing or unreadable round is a review that failed, never a review that was switched off. */
   reviewRan?: boolean;
 }): VerdictGateResult {
-  const rounds = collectRounds(input.comments);
   const reviewRan = input.reviewRan === true;
+  const authors = input.reviewAuthors;
+  if (authors !== undefined) {
+    const logins = foreignRoundLogins(input.comments, authors, input.roundAfterId);
+    if (logins.length > 0) {
+      return { kind: 'review-account', logins, commentBody: renderReviewAccountNotice(input.locale, logins, authors, input.headSha) };
+    }
+  }
+  const rounds = collectRounds(authors === undefined ? input.comments : input.comments.filter((c) => authors.includes(c.author ?? '')));
   if (rounds.length === 0) {
     return reviewRan ? { kind: 'no-summary', commentBody: renderNoSummaryNotice(input.locale, input.headSha) } : { kind: 'no-review' };
   }
@@ -96,10 +156,30 @@ export function runVerdictGate(input: {
       ? { kind: 'no-summary', commentBody: renderNoSummaryNotice(input.locale, input.headSha) }
       : { kind: 'no-round', commentBody: renderNoRoundNotice(input.locale, input.headSha) };
   }
+  if (input.roundAfterId !== undefined) {
+    const afterId = input.roundAfterId;
+    const thisRun = rounds.filter((round) => round.id !== undefined && round.id > afterId);
+    if (thisRun.length > 1) {
+      if (reviewRan) return { kind: 'several-summaries', commentBody: renderSeveralSummariesNotice(input.locale, input.headSha) };
+      const strictest = strictestFindings(thisRun);
+      return strictest === undefined
+        ? { kind: 'unparseable', commentBody: renderUnparseableNotice(input.locale, input.headSha, false), failClosed: false }
+        : judged(strictest, rounds, input);
+    }
+  }
+  if (latest.extraction.status === 'conflict' && !reviewRan) return judged(strictestFindings([latest]) ?? [], rounds, input);
   if (latest.extraction.status !== 'ok') {
     return { kind: 'unparseable', commentBody: renderUnparseableNotice(input.locale, input.headSha, reviewRan), failClosed: reviewRan };
   }
-  const verdict = computeVerdict(latest.extraction.findings);
+  return judged(latest.extraction.findings, rounds, input);
+}
+
+function judged(
+  findings: readonly ReviewFinding[],
+  rounds: readonly Round[],
+  input: { maxRounds: ReviewMaxRounds; locale: ReviewLocale; headSha?: string },
+): VerdictGateResult {
+  const verdict = computeVerdict(findings);
   const commentBody = renderVerdictComment({
     verdict,
     history: computeRoundHistory(rounds),

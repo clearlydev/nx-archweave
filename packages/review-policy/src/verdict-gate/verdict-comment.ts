@@ -35,6 +35,26 @@ const UNREADABLE_SUMMARY_NOTICE: Record<ReviewLocale, string> = {
   ko: '⛔ AI 리뷰 요약의 findings 블록을 기계 판독하지 못해(누락 또는 손상) 이 커밋의 verdict가 없고, review 체크는 실패합니다. 이 PR을 직접 리뷰하거나, 모든 잡을 다시 실행해 다시 리뷰받으세요.',
 };
 
+const SEVERAL_SUMMARIES_NOTICE: Record<ReviewLocale, string> = {
+  en: '⛔ This run posted more than one review summary for this commit, so there is no single verdict and the review check fails. Re-run all jobs to review it again, or review this PR manually.',
+  ko: '⛔ 이번 실행이 이 커밋에 대한 리뷰 요약을 두 개 이상 게시해서 하나의 verdict로 정할 수 없고, review 체크는 실패합니다. 모든 잡을 다시 실행해 다시 리뷰받거나, 이 PR을 직접 리뷰하세요.',
+};
+
+/** The summary for this commit came from an account other than the review account the workflow
+ * names, so it isn't judged. Logins are shown only in GitHub's login shape. */
+export function renderReviewAccountNotice(locale: ReviewLocale, logins: readonly string[], reviewAuthors: readonly string[], headSha?: string): string {
+  const shown = (list: readonly string[]) =>
+    list
+      .filter((login) => /^[A-Za-z0-9-]{1,39}(\[bot\])?$/.test(login))
+      .map((login) => `\`${login}\``)
+      .join(', ') || '?';
+  const text =
+    locale === 'en'
+      ? `⛔ The AI review summary for this commit was posted by ${shown(logins)}, not by the review account (${shown(reviewAuthors)}), so there is no verdict and the review check fails. Regenerate the review workflow with add-review --onConflict=overwrite, or, if the review posts as another account on purpose, set ARCHWEAVE_REVIEW_AUTHOR in the workflow to that account.`
+      : `⛔ 이 커밋의 AI 리뷰 요약을 리뷰 계정(${shown(reviewAuthors)})이 아니라 ${shown(logins)}이(가) 게시해서 verdict가 없고, review 체크는 실패합니다. add-review --onConflict=overwrite로 리뷰 워크플로를 다시 생성하거나, 리뷰가 일부러 다른 계정으로 게시된다면 워크플로의 ARCHWEAVE_REVIEW_AUTHOR를 그 계정으로 설정하세요.`;
+  return withHead([VERDICT_MARKER, text], locale, headSha);
+}
+
 /** The line naming the judged commit, for an abbreviated SHA (or a placeholder a workflow script
  * fills in). */
 export function renderCommitLine(locale: ReviewLocale, shortSha: string): string {
@@ -49,19 +69,28 @@ const HEAD_LINE: Record<ReviewLocale, (sha: string) => string> = {
 };
 
 /** Why the AI review did not run although the check ends green: the run received no provider
- * secret, so it can't tell a repository with review switched off from one with it on. */
-export type NotRunReason = 'secret' | 'fork' | 'dependabot';
+ * secret, so it can't tell a repository with review switched off from one with it on; a bot
+ * account opened the pull request and wrote every commit in it, and the review runs only for
+ * changes from people; or the repository variable switched the review off. */
+export type NotRunReason = 'secret' | 'fork' | 'dependabot' | 'bot' | 'disabled';
+
+/** The repository variable that switches the AI review off without removing anything. */
+export const REVIEW_DISABLED_VARIABLE = 'ARCHWEAVE_REVIEW_DISABLED';
 
 const NOT_RUN_REASON: Record<ReviewLocale, Record<NotRunReason, (secretName: string) => string>> = {
   en: {
     secret: (secretName) => `the ${secretName} secret is not registered`,
     fork: () => 'this pull request comes from a fork, and GitHub passes no secrets to runs from forks',
     dependabot: (secretName) => `Dependabot runs receive only Dependabot secrets, and ${secretName} is not one of them`,
+    bot: () => 'a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people',
+    disabled: () => `the ${REVIEW_DISABLED_VARIABLE} repository variable is set to true`,
   },
   ko: {
     secret: (secretName) => `${secretName} 시크릿이 등록되지 않음`,
     fork: () => '포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음',
     dependabot: (secretName) => `Dependabot 실행은 Dependabot 시크릿만 받는데, ${secretName}는 그중에 없음`,
+    bot: () => '봇 계정이 이 pull request를 열고 모든 커밋을 작성했고, AI 리뷰는 사람이 만든 변경에만 실행됨',
+    disabled: () => `저장소 변수 ${REVIEW_DISABLED_VARIABLE}가 true로 설정됨`,
   },
 };
 
@@ -82,6 +111,15 @@ export function renderVerdictToolMissingNotice(locale: ReviewLocale): string {
   return locale === 'en'
     ? 'The AI review ran, but the verdict tool (@clearlydev/nx-archweave) is not installed in this workspace, so there is no verdict for this commit and the review check fails. Install @clearlydev/nx-archweave as a devDependency, or, to switch review off, delete the review workflow.'
     : 'AI 리뷰는 실행됐지만 이 워크스페이스에 판정 도구(@clearlydev/nx-archweave)가 설치돼 있지 않아 이 커밋의 verdict가 없고, review 체크는 실패합니다. @clearlydev/nx-archweave를 devDependency로 설치하거나, 리뷰를 끄려면 리뷰 워크플로를 지우세요.';
+}
+
+/** A bot account started this run on a pull request a person opened or wrote commits in: the
+ * AI review does not run for a bot, and the person's commits have no verdict, so the review
+ * check fails until a person runs it again. */
+export function renderBotRunNotice(locale: ReviewLocale): string {
+  return locale === 'en'
+    ? 'The AI review did not run for this commit: a bot account started this run, on a pull request a person opened or wrote commits in, so there is no verdict and the review check fails. A person should re-run all jobs on the latest commit of this pull request.'
+    : '이 커밋에는 AI 리뷰가 실행되지 않았습니다. 사람이 열었거나 커밋한 pull request에서 봇 계정이 이 실행을 시작해 verdict가 없고, review 체크는 실패합니다. 사람이 이 pull request의 최신 커밋에서 모든 잡을 다시 실행하세요.';
 }
 
 /** A commit after the round limit has no AI verdict, so the review check fails; the text names
@@ -112,6 +150,12 @@ export function renderNoSummaryNotice(locale: ReviewLocale, headSha?: string): s
  * or none at all): the latest round belongs to an earlier commit and is not judged again. */
 export function renderNoRoundNotice(locale: ReviewLocale, headSha?: string): string {
   return withHead([VERDICT_MARKER, NO_ROUND_NOTICE[locale]], locale, headSha);
+}
+
+/** This run's review left more than one round for the commit; the check fails (see
+ * runVerdictGate). */
+export function renderSeveralSummariesNotice(locale: ReviewLocale, headSha?: string): string {
+  return withHead([VERDICT_MARKER, SEVERAL_SUMMARIES_NOTICE[locale]], locale, headSha);
 }
 
 /** The verdict comment is deliberately terse: the model's own summary carries

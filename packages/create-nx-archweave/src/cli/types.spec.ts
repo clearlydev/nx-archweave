@@ -53,3 +53,13 @@ describe('review provider literals', () => {
     }
   });
 });
+
+describe('review provider values', () => {
+  it('the question leaves cursor out, the flag still takes it, with a warning to print', async () => {
+    const { REVIEW_PROVIDER_CHOICES, REVIEW_PROVIDER_VALUES, CURSOR_PROVIDER_WARNING } = await import('./types.ts');
+    expect(REVIEW_PROVIDER_CHOICES.map((choice) => choice.id)).toEqual(['claude', 'gemini', 'gpt']);
+    expect(REVIEW_PROVIDER_VALUES).toEqual(['claude', 'gemini', 'gpt', 'cursor']);
+    expect(CURSOR_PROVIDER_WARNING).toContain("require a person's approval on every pull request");
+    expect(CURSOR_PROVIDER_WARNING).not.toContain('private');
+  });
+});

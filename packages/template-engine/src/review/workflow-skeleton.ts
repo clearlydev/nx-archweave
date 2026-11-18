@@ -1,9 +1,11 @@
 import type { SupportedPackageManager } from '../environment/package-manager.ts';
 import {
+  renderBotRunNotice,
   renderCommitLine,
   renderNotRunNotice,
   renderRoundLimitNotice,
   renderVerdictToolMissingNotice,
+  REVIEW_DISABLED_VARIABLE,
   ROUND_MARKER,
   VERDICT_MARKER,
   type NotRunReason,
@@ -64,17 +66,96 @@ export function renderCheckoutStep(gateCondition?: string, extraWith: string[] =
   ].join('\n');
 }
 
-/** Green-skips the whole job when the provider secret is absent:
- * emits enabled=false and exits 0 — never a red check. */
+/** The version of the contract between a generated review workflow and the plugin's verdict bin:
+ * which env the verdict step passes and how the bin reads the comments. It changes only when that
+ * contract does (1: the bin posting its own comment, 2: output mode, 3: the review account's
+ * rounds). The bin refuses a number it doesn't know, and doctor flags a workflow without the
+ * current one. */
+export const REVIEW_WORKFLOW_CONTRACT = 3;
+
+/** Where the review material is written for providers whose agent step gets no GitHub token. */
+export const REVIEW_MATERIAL_DIR = '.archweave-review';
+
+/** Writes what the review reads (the pull request's diff, and its title and description) into
+ * files with the workflow's token, so the provider step that follows needs no GitHub token. Only
+ * the title and body are requested: `gh pr view`'s default output also reads the commit's check
+ * status, which this job's token has no permission for.
+ * `removePaths` is configuration the provider's CLI would read from the checkout; it is removed
+ * so only the settings this workflow passes apply. */
+export function renderReviewMaterialStep(removePaths: readonly string[]): string {
+  return [
+    '- name: Prepare review material',
+    `  if: ${REVIEW_GATE_CONDITION}`,
+    '  env:',
+    '    GH_TOKEN: ${{ github.token }}',
+    '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+    '  run: |',
+    ...(removePaths.length > 0 ? [`    rm -rf -- ${removePaths.map(shellQuote).join(' ')}`] : []),
+    `    mkdir -p ${REVIEW_MATERIAL_DIR}`,
+    `    gh pr diff "$PR_NUMBER" > ${REVIEW_MATERIAL_DIR}/pr.diff`,
+    `    gh pr view "$PR_NUMBER" --json title,body --jq '"# " + .title + "\\n\\n" + (.body // "")' > ${REVIEW_MATERIAL_DIR}/pr.md`,
+  ].join('\n');
+}
+
+/** Posts the provider's review as the one top-level summary comment, with the workflow's token:
+ * from an expression passed through env (never inline in the script), or from a file. */
+export function renderPostReviewStep(source: { expression: string } | { file: string }): string {
+  return [
+    '- name: Post review comment',
+    `  if: ${REVIEW_GATE_CONDITION}`,
+    '  env:',
+    '    GH_TOKEN: ${{ github.token }}',
+    '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+    ...('expression' in source ? [`    REVIEW_BODY: ${source.expression}`] : []),
+    '  run: |',
+    'expression' in source
+      ? '    printf %s "$REVIEW_BODY" | gh pr comment "$PR_NUMBER" --body-file -'
+      : `    gh pr comment "$PR_NUMBER" --body-file ${shellQuote(source.file)}`,
+  ].join('\n');
+}
+
+/** Switches the whole job off (enabled=false) when the repository variable says so, when the
+ * provider secret is absent, or when a bot account would get the review:
+ * - a bot account opened the pull request and wrote every commit in it: `skip-reason=bot`, and
+ *   the check ends green with a notice (the review runs only for changes from people);
+ * - a bot account started this run on a pull request a person opened or wrote commits in:
+ *   `skip-reason=bot-run`, and the check fails, since the person's commits have no verdict until
+ *   a person runs it again.
+ * Who opened the pull request and who wrote its commits are read from the API, not from the
+ * event. A commit whose author has no GitHub account counts as a person's. A failed lookup fails
+ * the step, so the AI review fails and the check goes red. */
 export function renderSecretGateStep(secretName: string): string {
   return [
     '- name: Check review secret',
     '  id: secret-gate',
     '  env:',
     `    REVIEW_SECRET: \${{ secrets.${secretName} }}`,
+    `    REVIEW_DISABLED: \${{ vars.${REVIEW_DISABLED_VARIABLE} }}`,
+    '    GH_TOKEN: ${{ github.token }}',
+    '    REPOSITORY: ${{ github.repository }}',
+    '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+    // The account that started this run: on a re-run, the person who re-ran it.
+    '    RUN_ACTOR: ${{ github.triggering_actor }}',
     '  run: |',
+    '    if [ "$REVIEW_DISABLED" = true ]; then',
+    `      echo "AI review is switched off: the ${REVIEW_DISABLED_VARIABLE} repository variable is true."`,
+    '      echo "enabled=false" >> "$GITHUB_OUTPUT"',
+    '      exit 0',
+    '    fi',
     '    if [ -z "$REVIEW_SECRET" ]; then',
     `      echo "AI review is not active: register the ${secretName} secret to enable it."`,
+    '      echo "enabled=false" >> "$GITHUB_OUTPUT"',
+    '      exit 0',
+    '    fi',
+    `    opener=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.user.type')`,
+    `    people=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" --paginate --jq '[.[] | select(.author.type != "Bot")] | length' | jq -s 'add // 0')`,
+    '    if [ "$opener" = Bot ] && [ "$people" -eq 0 ]; then',
+    '      echo "AI review skipped: a bot account opened this pull request and wrote all of its commits."',
+    '      echo "skip-reason=bot" >> "$GITHUB_OUTPUT"',
+    '      echo "enabled=false" >> "$GITHUB_OUTPUT"',
+    `    elif case "$RUN_ACTOR" in *'[bot]') true ;; *) false ;; esac; then`,
+    '      echo "AI review skipped: a bot account started this run on a pull request a person opened or wrote commits in."',
+    '      echo "skip-reason=bot-run" >> "$GITHUB_OUTPUT"',
     '      echo "enabled=false" >> "$GITHUB_OUTPUT"',
     '    else',
     '      echo "enabled=true" >> "$GITHUB_OUTPUT"',
@@ -82,11 +163,16 @@ export function renderSecretGateStep(secretName: string): string {
   ].join('\n');
 }
 
+/** The workflow-level env naming the account(s) the review summary is posted as, comma-separated.
+ * The round gate and the verdict bin both read it, so a workflow that makes the provider post as
+ * another account (its own GitHub App, say) changes this one line. */
+export const REVIEW_AUTHOR_ENV = 'ARCHWEAVE_REVIEW_AUTHOR';
+
 /** Counts marker-tagged PR comments BEFORE the provider step runs, so a PR at
- * the cap costs zero tokens. Only bot-authored comments count: anyone who can comment could
- * otherwise post the marker until the cap is reached and switch the review off. It also
- * outputs the newest comment id as a watermark: the verdict gate judges only a round posted
- * after it — this run's, for this commit. */
+ * the cap costs zero tokens. Only comments by the review's own account (REVIEW_AUTHOR_ENV) count:
+ * anyone who can comment could otherwise post the marker until the cap is reached and switch the
+ * review off. It also outputs the newest comment id as a watermark: the verdict gate judges only
+ * a round posted after it — this run's, for this commit. */
 export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
   return [
     '- name: Check review round limit',
@@ -95,7 +181,7 @@ export function renderRoundGateStep(maxRounds: ReviewMaxRounds): string {
     '  env:',
     '    GH_TOKEN: ${{ github.token }}',
     '  run: |',
-    `    counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | select(.body | contains("${ROUND_MARKER}"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')`,
+    `    counts=$(gh api "repos/\${{ github.repository }}/issues/\${{ github.event.pull_request.number }}/comments" --paginate --jq '[([.[] | select(.user.type == "Bot") | .user.login as $login | select(env.${REVIEW_AUTHOR_ENV} | split(",") | map(ltrimstr(" ") | rtrimstr(" ")) | any(. == $login)) | select(.body | contains("${ROUND_MARKER}"))] | length), ([.[].id] | max // 0)]' | jq -s -r '[(map(.[0]) | add // 0), (map(.[1]) | max // 0)] | @tsv')`,
     '    rounds=$(printf \'%s\' "$counts" | cut -f1)',
     '    echo "last-comment-id=$(printf \'%s\' "$counts" | cut -f2)" >> "$GITHUB_OUTPUT"',
     `    if [ "$rounds" -ge ${maxRounds} ]; then`,
@@ -120,7 +206,7 @@ export function shellQuote(text: string): string {
  * step fails the check: a commit after the round limit has no verdict. Every text is rendered
  * here; at run time only the abbreviated head SHA, checked to be hex, is filled in. */
 function renderNotRunFunction(secretName: string, maxRounds: ReviewMaxRounds, locale: ReviewLocale): string[] {
-  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot'];
+  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot', 'bot', 'disabled'];
   const [commitBefore, commitAfter] = renderCommitLine(locale, '\u0000').split('\u0000');
   return [
     'write_notice() {',
@@ -147,6 +233,12 @@ function renderNotRunFunction(secretName: string, maxRounds: ReviewMaxRounds, lo
     '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
     '  write_notice "ℹ️ $notice"',
     '}',
+    'bot_run() {',
+    `  notice=${shellQuote(renderBotRunNotice(locale))}`,
+    '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
+    '  write_notice "⛔ $notice"',
+    '  echo "block-reason=bot-run" >> "$GITHUB_OUTPUT"',
+    '}',
     'round_limit() {',
     `  notice=${shellQuote(renderRoundLimitNotice(locale, maxRounds))}`,
     '  printf \'%s\\n\' "$notice" >> "$GITHUB_STEP_SUMMARY"',
@@ -161,8 +253,10 @@ export const JUDGE_CONDITION = "steps.ai-review-result.outputs.run == 'true'";
 
 /** First step of the `review` job, which runs whatever the AI review job did (`if: always()`).
  * Only explicit values count. A review the secret gate (`enabled=false`) switched off ends green
- * without judging, and says so (renderNotRunFunction): a missing secret is named as a fork run
- * or a Dependabot run when it is one, since those never receive the Actions secret. A review the
+ * without judging, and says so (renderNotRunFunction): the repository variable, a bot's own pull
+ * request, or a missing secret, named as a fork run or a Dependabot run when it is one, since
+ * those never receive the Actions secret. A bot's run on a person's pull request hands over
+ * `block-reason=bot-run`, and the job's last step fails the check. A review the
  * round gate (`allowed=false`) stopped hands over `block-reason=rounds`, and the job's last step
  * fails the check: that commit has no verdict. A review that
  * ran must also hand over its watermark (a number, 0 on a PR with no comments). Anything else — a
@@ -182,6 +276,8 @@ export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMa
     '    HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}',
     '    REPOSITORY: ${{ github.repository }}',
     '    PR_AUTHOR: ${{ github.event.pull_request.user.login }}',
+    '    SKIP_REASON: ${{ needs.ai-review.outputs.skip-reason }}',
+    `    REVIEW_DISABLED: \${{ vars.${REVIEW_DISABLED_VARIABLE} }}`,
     '  run: |',
     ...renderNotRunFunction(secretName, maxRounds, locale).map((line) => `    ${line}`),
     '    if [ "$AI_REVIEW_RESULT" != success ]; then',
@@ -190,7 +286,10 @@ export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMa
     '    fi',
     '    case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in',
     '      false/*)',
-    '        if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork',
+    '        if [ "$REVIEW_DISABLED" = true ]; then not_run disabled',
+    '        elif [ "$SKIP_REASON" = bot-run ]; then bot_run',
+    '        elif [ "$SKIP_REASON" = bot ]; then not_run bot',
+    '        elif [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork',
     "        elif [ \"$PR_AUTHOR\" = 'dependabot[bot]' ]; then not_run dependabot",
     '        else not_run secret',
     '        fi',
@@ -236,6 +335,7 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
     '    ARCHWEAVE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
     '    ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}',
     "    ARCHWEAVE_VERDICT_OUTPUT: 'github-output'",
+    `    ARCHWEAVE_WORKFLOW_CONTRACT: '${REVIEW_WORKFLOW_CONTRACT}'`,
     '  run: |',
     '    if [ -x node_modules/.bin/archweave-review-verdict ]; then',
     '      node_modules/.bin/archweave-review-verdict',
@@ -265,7 +365,7 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
 export function renderBlockStep(maxRounds: ReviewMaxRounds): string {
   return [
     '- name: Fail the review check',
-    "  if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'",
+    "  if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason != ''",
     '  env:',
     '    BLOCK_REASON: ${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}',
     '  run: |',
@@ -273,6 +373,9 @@ export function renderBlockStep(maxRounds: ReviewMaxRounds): string {
     '      block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;',
     '      no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
+    '      review-account) echo "The AI review summary for this commit was not posted by the review account, so there is no verdict. Regenerate the review workflow, or set ARCHWEAVE_REVIEW_AUTHOR to the account the review posts as." ;;',
+    '      bot-run) echo "A bot account started this run on a pull request a person opened or wrote commits in, so the AI review did not run and there is no verdict. A person should re-run all jobs on the latest commit." ;;',
+    '      several-summaries) echo "The AI review posted more than one summary for this commit, so there is no single verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;',
     `      rounds) echo "The automated review round limit (${maxRounds}) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;`,
     '      *) echo "The review check failed. See the verdict comment on this pull request." ;;',
@@ -414,6 +517,8 @@ export interface ReviewWorkflowParts {
   reviewSteps: string[];
   /** The provider's action exchanges a GitHub OIDC token (see renderReviewPermissions). */
   idToken: boolean;
+  /** The account the review summary is posted as: only its comments count as review rounds. */
+  reviewAuthor: string;
 }
 
 /**
@@ -448,6 +553,9 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     '',
     'permissions: {}',
     '',
+    'env:',
+    `  ${REVIEW_AUTHOR_ENV}: '${parts.reviewAuthor}'`,
+    '',
     'jobs:',
     '  ai-review:',
     '    runs-on: ubuntu-latest',
@@ -455,6 +563,7 @@ export function renderReviewWorkflow(input: ReviewWorkflowInput, parts: ReviewWo
     indentBlock(renderReviewPermissions(parts.idToken), 4),
     '    outputs:',
     '      enabled: ${{ steps.secret-gate.outputs.enabled }}',
+    '      skip-reason: ${{ steps.secret-gate.outputs.skip-reason }}',
     '      allowed: ${{ steps.round-gate.outputs.allowed }}',
     '      last-comment-id: ${{ steps.round-gate.outputs.last-comment-id }}',
     '    steps:',

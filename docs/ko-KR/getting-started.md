@@ -262,7 +262,7 @@ api에는 Nx 24.0 기준으로 기존 앱에 e2e 프로젝트를 추가하는 �
 | `--backend` | `express` \| `nest` \| `none` |
 | `--locale` | `ko` \| `en` |
 | `--review` / `--no-review` | — |
-| `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` |
+| `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor`(beta, 질문에는 없음) |
 | `--plugin-source` | 패키지 스펙·경로·tarball |
 | `--allow-nested` | git 저장소나 `package.json`이 있는 폴더 안에서도 워크스페이스를 만들어요. 없으면 CLI가 거기서 멈추고, 기존 저장소에는 `nx init`을 쓰라고 안내해요 |
 | `--ai-hosts` | `claude-code`, `codex`, `cursor`, `gemini-cli` |
@@ -301,7 +301,7 @@ stdin이 TTY가 아니고 필수 입력이 빠졌다면, CLI는 명확한 메시
 #### `--review-provider`
 
 - 리뷰가 켜지면 CLI가 물어요. 번호로 고르세요.
-- 엔터를 누르면 첫 번째로 고른 AI 도구의 프로바이더를 써요(예: Codex → GPT).
+- 엔터를 누르면 첫 번째로 고른 AI 도구의 프로바이더를 써요(예: Codex → GPT). Cursor는 Claude로 이어져요. `cursor` 프로바이더는 `--review-provider=cursor`로만 골라요.
 - 터미널이 아니면 이 기본값을 써요.
 - 리뷰가 결국 꺼진 상태면 이 플래그를 거부해요.
 

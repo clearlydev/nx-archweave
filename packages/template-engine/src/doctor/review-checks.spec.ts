@@ -149,6 +149,52 @@ describe('buildReviewChecks', () => {
     });
   });
 
+  describe('review-workflow-contract', () => {
+    const withWorkflow = (text: string, check: (root: string) => void) => {
+      const root = mkdtempSync(join(tmpdir(), 'contract-'));
+      try {
+        mkdirSync(join(root, '.github/workflows'), { recursive: true });
+        writeFileSync(join(root, '.github/workflows/claude-code-review.yml'), text);
+        check(root);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    };
+    const current = () => readFileSync(join(FIXTURES, 'review-config-matches-workflow/.github/workflows/claude-code-review.yml'), 'utf-8');
+
+    it.each(['review-config-matches-workflow', 'review-npm-matches-workflow', 'review-gemini-matches-workflow'])('passes for a current workflow (%s)', (fixture) => {
+      expect(checkFor(join(FIXTURES, fixture), 'review-workflow-contract')?.status).toBe('pass');
+    });
+
+    it('warns about a workflow generated before the contract existed, and says how to preview the current one', () => {
+      const check = checkFor(join(FIXTURES, 'review-workflow-earlier-version'), 'review-workflow-contract');
+      expect(check?.status).toBe('warning');
+      expect(check?.message).toContain('earlier nx-archweave release');
+      expect(check?.suggestedAction).toContain('add-review --onConflict=overwrite --dryRun');
+    });
+
+    it('warns about a workflow that references actions by version tag and has no contract', () => {
+      const tagged = current()
+        .replace(/^\s*ARCHWEAVE_WORKFLOW_CONTRACT: .*\n/m, '')
+        .replace(/(uses: [\w.-]+\/[\w.-]+)@[0-9a-f]{40} # (v\d+)[.\d]*/g, '$1@$2');
+      expect(tagged).toContain('anthropics/claude-code-action@v1');
+      withWorkflow(tagged, (root) => expect(checkFor(root, 'review-workflow-contract')?.status).toBe('warning'));
+    });
+
+    it('warns about a workflow from a newer release, pointing at an upgrade', () => {
+      const newer = current().replace("ARCHWEAVE_WORKFLOW_CONTRACT: '3'", "ARCHWEAVE_WORKFLOW_CONTRACT: '99'");
+      withWorkflow(newer, (root) => {
+        const check = checkFor(root, 'review-workflow-contract');
+        expect(check?.status).toBe('warning');
+        expect(check?.suggestedAction).toContain('Upgrade @clearlydev/nx-archweave');
+      });
+    });
+
+    it('is not-applicable without an nx-archweave review workflow', () => {
+      expect(checkFor(join(FIXTURES, 'review-nothing-installed'), 'review-workflow-contract')?.status).toBe('not-applicable');
+    });
+  });
+
   describe('review-workflow-fail-open', () => {
     it('errors on a workflow generated before 0.2.2, whose verdict step has no fail-closed output mode', () => {
       const check = checkFor(join(FIXTURES, 'review-workflow-earlier-version'), 'review-workflow-fail-open');

@@ -199,7 +199,7 @@ describe('review provider question', () => {
 
   it("is numbered, with the first AI tool's provider as the default", () => {
     expect(reviewProviderQuestion('codex')).toBe(
-      ['? AI PR review provider', '  1) Claude', '  2) Gemini (beta)', '  3) GPT (beta)  (default — Codex)', '  4) Cursor (beta)', 'Choose 1-4 [3]: '].join('\n'),
+      ['? AI PR review provider', '  1) Claude', '  2) Gemini (beta)', '  3) GPT (beta)  (default — Codex)', 'Choose 1-3 [3]: '].join('\n'),
     );
   });
 
@@ -237,8 +237,8 @@ describe('review provider question', () => {
   it.each([
     ['', undefined],
     ['3', 'gpt'],
-    ['Cursor', 'cursor'],
-    ['5', null],
+    ['Cursor', null], // not offered: --review-provider=cursor picks it, with a warning
+    ['4', null],
     ['openai', null],
   ])('%j → %j', (answer, expected) => {
     expect(parseReviewProviderAnswer(answer)).toBe(expected);

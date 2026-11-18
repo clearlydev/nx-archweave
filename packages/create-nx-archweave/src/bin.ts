@@ -12,6 +12,7 @@ import { choosePlugins, resolvePluginFlag } from './cli/plugins.ts';
 import { spawnableCommand } from './cli/spawnable-command.ts';
 import { createProcessExec, executePlan, renderExecuteReport, renderStepTimings } from './cli/execute.ts';
 import { choosePackageManager, describeResolution, type CliPackageManager } from './cli/package-manager.ts';
+import { CURSOR_PROVIDER_WARNING } from './cli/types.ts';
 import { renderUsage, renderVersion } from './render-usage.ts';
 
 class NonInteractiveInputError extends Error {}
@@ -94,6 +95,7 @@ async function main(argv: readonly string[]): Promise<number> {
     console.error(earlyConflict);
     return 1;
   }
+  if (args.reviewProvider === 'cursor') console.error(CURSOR_PROVIDER_WARNING);
   const interactive = process.stdin.isTTY === true;
   // Probed only for the questions: the host list shows what is installed, and plugins are
   // offered only for a host whose CLI is here. A run with nothing to ask probes nothing.

@@ -144,6 +144,8 @@ export function renderAddReviewReport(report: AddReviewReport): string {
   if (report.betaProvider !== undefined) {
     lines.push(`Note: the ${report.betaProvider} provider is in beta — its workflow hasn't finished a review end to end on`);
     lines.push(`GitHub Actions yet. Status, costs and known issues: ${PROVIDER_STATUS_URL}`);
+    lines.push("Warning: the AI review doesn't replace a person's code review. Require a person's approval on every pull");
+    lines.push('request.');
   }
   lines.push('Note: this workflow runs with elevated permissions only after it is merged to the default branch —');
   lines.push('merging is the first real validation.');

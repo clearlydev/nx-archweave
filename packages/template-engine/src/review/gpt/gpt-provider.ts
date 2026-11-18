@@ -2,6 +2,7 @@ import {
   buildCorrectnessSecurityPrompt,
   renderFindingsBlockInstruction,
   buildOverEngineeringPrompt,
+  renderContentIsDataInstruction,
   REVIEW_MODES,
   type ReviewLocale,
 } from '@nx-archweave/review-policy';
@@ -51,7 +52,7 @@ function renderWorkflowInstructions(locale: ReviewLocale): string {
 
 function composePrompt(input: ReviewWorkflowInput): string {
   const mode = REVIEW_MODES[input.mode];
-  const sections = [renderWorkflowInstructions(input.locale), buildCorrectnessSecurityPrompt(input.locale, mode.promptStyle)];
+  const sections = [renderWorkflowInstructions(input.locale), renderContentIsDataInstruction(input.locale), buildCorrectnessSecurityPrompt(input.locale, mode.promptStyle)];
   if (mode.includesOverEngineering) {
     sections.push(buildOverEngineeringPrompt(input.locale));
   }
@@ -67,6 +68,8 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     secretName: SECRET_NAME,
     // An API key: codex-action needs no OIDC token.
     idToken: false,
+    // The workflow's token posts the summary (the "Post review comment" step).
+    reviewAuthor: 'github-actions[bot]',
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION, ['ref: refs/pull/${{ github.event.pull_request.number }}/merge']),
       [

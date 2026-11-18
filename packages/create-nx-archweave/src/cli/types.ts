@@ -32,19 +32,27 @@ export type CliReviewProvider = 'claude' | 'gemini' | 'gpt' | 'cursor';
 export const AI_HOST_CHOICES: readonly { id: CliAiHost; label: string; nxAgent: string; reviewProvider: CliReviewProvider }[] = [
   { id: 'claude-code', label: 'Claude Code', nxAgent: 'claude', reviewProvider: 'claude' },
   { id: 'codex', label: 'Codex', nxAgent: 'codex', reviewProvider: 'gpt' },
-  { id: 'cursor', label: 'Cursor', nxAgent: 'cursor', reviewProvider: 'cursor' },
+  // The cursor review provider is picked only with --review-provider=cursor, so it is never a default.
+  { id: 'cursor', label: 'Cursor', nxAgent: 'cursor', reviewProvider: 'claude' },
   { id: 'gemini-cli', label: 'Gemini CLI', nxAgent: 'gemini', reviewProvider: 'gemini' },
 ];
 
 /** init's `reviewProvider` enum (types.spec.ts keeps it equal), with display labels. */
+/** The providers the review-provider question offers. `cursor` is left out: it is picked only
+ * with --review-provider=cursor, which prints CURSOR_PROVIDER_WARNING. */
 export const REVIEW_PROVIDER_CHOICES: readonly { id: CliReviewProvider; label: string }[] = [
   { id: 'claude', label: 'Claude' },
   { id: 'gemini', label: 'Gemini (beta)' },
   { id: 'gpt', label: 'GPT (beta)' },
-  { id: 'cursor', label: 'Cursor (beta)' },
 ];
 
-export const REVIEW_PROVIDER_VALUES: readonly CliReviewProvider[] = REVIEW_PROVIDER_CHOICES.map((provider) => provider.id);
+/** The values --review-provider accepts. */
+export const REVIEW_PROVIDER_VALUES: readonly CliReviewProvider[] = [...REVIEW_PROVIDER_CHOICES.map((provider) => provider.id), 'cursor'];
+
+/** Printed when --review-provider=cursor is passed. */
+export const CURSOR_PROVIDER_WARNING =
+  "Warning: the cursor review provider is in beta and hasn't been verified end to end. " +
+  "The AI review doesn't replace a person's code review: require a person's approval on every pull request.";
 
 export const AI_HOST_VALUES: readonly CliAiHost[] = AI_HOST_CHOICES.map((host) => host.id);
 

@@ -2,6 +2,7 @@ import {
   buildCorrectnessSecurityPrompt,
   renderFindingsBlockInstruction,
   buildOverEngineeringPrompt,
+  renderContentIsDataInstruction,
   REVIEW_MODES,
   type ReviewLocale,
 } from '@nx-archweave/review-policy';
@@ -19,9 +20,14 @@ const SECRET_NAME = 'CLAUDE_CODE_OAUTH_TOKEN';
 
 /** The tool list of claude-code-action's own PR-review examples (examples/pr-review-comprehensive.yml):
  * inline comments, the summary comment, and reading the PR. Reading files and the read-only git
- * commands need no entry; nothing here can edit the tree or call the API at large (`gh api`). */
+ * commands need no entry; nothing here can edit the tree or call the API at large (`gh api`).
+ * The summary comment is allowed in exactly the form the prompt asks for (body on stdin, this pull
+ * request's number): an exact rule, with no `*`, matches that one command only. */
 export const ALLOWED_TOOLS =
-  'mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)';
+  'mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file -),Bash(gh pr diff:*),Bash(gh pr view:*)';
+
+/** The Claude GitHub App: the action's own sign-in posts the summary as this account. */
+const REVIEW_AUTHOR = 'claude[bot]';
 
 /** The id of the step that runs the action; its `execution_file` output feeds the denial report. */
 const CLAUDE_STEP_ID = 'claude-review';
@@ -65,7 +71,7 @@ function renderWorkflowInstructions(locale: ReviewLocale): string {
 
 function composePrompt(input: ReviewWorkflowInput): string {
   const mode = REVIEW_MODES[input.mode];
-  const sections = [renderWorkflowInstructions(input.locale), buildCorrectnessSecurityPrompt(input.locale, mode.promptStyle)];
+  const sections = [renderWorkflowInstructions(input.locale), renderContentIsDataInstruction(input.locale), buildCorrectnessSecurityPrompt(input.locale, mode.promptStyle)];
   if (mode.includesOverEngineering) {
     sections.push(buildOverEngineeringPrompt(input.locale));
   }
@@ -104,6 +110,7 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     secretName: SECRET_NAME,
     // The Claude GitHub App signs in with the workflow's OIDC token (claude-code-action's FAQ).
     idToken: true,
+    reviewAuthor: REVIEW_AUTHOR,
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION),
       [

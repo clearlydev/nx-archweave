@@ -3,7 +3,7 @@ export * from './schema/review-policy-config.ts';
 export * from './modes/review-modes.ts';
 export { buildCorrectnessSecurityPrompt } from './prompts/correctness-security-prompt.ts';
 export { buildOverEngineeringPrompt } from './prompts/over-engineering-prompt.ts';
-export { renderFindingsBlockInstruction } from './prompts/prompt-shared.ts';
+export { INSTRUCTIONS_IN_CONTENT_CATEGORY, renderContentIsDataInstruction, renderFindingsBlockInstruction } from './prompts/prompt-shared.ts';
 export * from './verdict-gate/findings-block.ts';
 export * from './verdict-gate/verdict-comment.ts';
 export * from './verdict-gate/verdict-gate.ts';

@@ -101,6 +101,16 @@ describe('runReviewVerdictBin — paginated gh output', () => {
   });
 });
 
+describe('runReviewVerdictBin — a summary from another account in the default mode', () => {
+  it('fails the check (exit 1) and posts the reason, instead of judging it', () => {
+    const other = JSON.stringify([{ ...JSON.parse(blockComment('P2'))[0], user: { login: 'my-app[bot]', type: 'Bot' } }]);
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const result = runReviewVerdictBin(ENV, stubExec(other, calls));
+    expect(result.exitCode).toBe(1);
+    expect(calls.find((c) => c.args.includes('POST'))?.stdin).toContain('`my-app[bot]`');
+  });
+});
+
 describe('runReviewVerdictBin — only bot-authored rounds count', () => {
   it('ignores marker comments from human authors — the gate cannot be spoofed into APPROVE', () => {
     const spoof = JSON.stringify([
@@ -280,6 +290,71 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       expect(outputs['comment-body']).toContain('could not be machine-read');
       expect(outputs['block-reason']).toBe('unreadable');
       expect(logs).toContain('::error title=AI review summary unreadable::');
+    });
+
+    it('more than one round from this run: blocked=true with the several-summaries notice', () => {
+      const { result, outputs, logs } = run([round(40), round(70), round(80)]);
+      expect(result.exitCode).toBe(0);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['block-reason']).toBe('several-summaries');
+      expect(outputs['comment-body']).toContain('more than one review summary');
+      expect(logs).toContain('::error title=Several AI review summaries::');
+    });
+
+    it("a round from another app's bot account isn't judged, and fails with that reason", () => {
+      const other = { ...round(70), user: { login: 'other-app[bot]', type: 'Bot' } };
+      const { result, outputs, logs } = run([other]);
+      expect(result.exitCode).toBe(0);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['block-reason']).toBe('review-account');
+      expect(outputs['comment-body']).toContain('`other-app[bot]`');
+      expect(logs).toContain('::error title=AI review summary from another account::');
+    });
+
+    it("another app's round before the watermark is history only", () => {
+      const earlier = { ...round(50, [{ priority: 'P1', category: 'c', title: 't', file: 'f.ts', lineRange: { start: 1 }, evidence: '', impact: '', reproductionCondition: '', recommendation: '', confidence: 'confirmed' }]), user: { login: 'other-app[bot]', type: 'Bot' } };
+      expect(run([earlier, round(70)]).outputs['blocked']).toBe('false');
+    });
+
+    it('rounds from the workflow token count, as for the providers that post with it', () => {
+      const posted = { ...round(70), user: { login: 'github-actions[bot]', type: 'Bot' } };
+      expect(run([posted]).outputs['blocked']).toBe('false');
+    });
+
+    it('ARCHWEAVE_REVIEW_AUTHOR narrows the rounds to the accounts it names', () => {
+      const posted = { ...round(70), user: { login: 'github-actions[bot]', type: 'Bot' } };
+      const outputsFor = (author: string) => {
+        const written: string[] = [];
+        runReviewVerdictBin({ ...RAN, ARCHWEAVE_REVIEW_AUTHOR: author }, stubExec(JSON.stringify([posted]), []), (_p, text) => written.push(text));
+        return parseOutputs(written.join(''));
+      };
+      expect(outputsFor('claude[bot]')['block-reason']).toBe('review-account');
+      expect(outputsFor('my-review-app[bot], github-actions[bot]')['blocked']).toBe('false');
+    });
+
+    it('the verdict comment is still found when the rounds are narrowed to another account', () => {
+      const written: string[] = [];
+      runReviewVerdictBin({ ...RAN, ARCHWEAVE_REVIEW_AUTHOR: 'claude[bot]' }, stubExec(JSON.stringify([verdictComment(50), round(70)]), []), (_p, text) => written.push(text));
+      const outputs = parseOutputs(written.join(''));
+      expect(outputs['blocked']).toBe('false');
+      expect(outputs['previous-comment-id']).toBe('50');
+    });
+
+    it('the current workflow contract is judged as usual', () => {
+      const written: string[] = [];
+      const result = runReviewVerdictBin({ ...RAN, ARCHWEAVE_WORKFLOW_CONTRACT: '3' }, stubExec(JSON.stringify([round(70)]), []), (_p, text) => written.push(text));
+      expect(result.exitCode).toBe(0);
+      expect(parseOutputs(written.join(''))['blocked']).toBe('false');
+    });
+
+    it.each(['4', '2', 'x'])('a workflow contract this release does not read (%s): exit 1, nothing judged or written', (contract) => {
+      const written: string[] = [];
+      const calls: { args: string[]; stdin?: string }[] = [];
+      const result = runReviewVerdictBin({ ...RAN, ARCHWEAVE_WORKFLOW_CONTRACT: contract }, stubExec(JSON.stringify([round(70)]), calls), (_p, text) => written.push(text));
+      expect(result.exitCode).toBe(1);
+      expect(written).toEqual([]);
+      expect(calls).toEqual([]);
+      expect(result.logs.join('\n')).toContain('::error title=Review verdict not computed::This review workflow was generated for another nx-archweave release');
     });
 
     it('a human comment carrying the marker never counts as the summary', () => {

@@ -1,3 +1,4 @@
+import { INSTRUCTIONS_IN_CONTENT_CATEGORY, renderContentIsDataInstruction } from './prompt-shared.ts';
 import {
   buildCorrectnessSecurityPrompt,
   CORRECTNESS_SECURITY_PRIORITIES,
@@ -146,4 +147,13 @@ it('ko fast-condensed mirrors en: explicit below-P2 ban and imperative P3 ban', 
   expect(ko).toContain('P2 미만');
   expect(ko).toContain('P3');
   expect(ko).toMatch(/P3[^\n]*보고하지 마세요/);
+});
+
+describe('renderContentIsDataInstruction', () => {
+  it.each(['en', 'ko'] as const)('%s: names what counts as content, the priority and the category', (locale) => {
+    const text = renderContentIsDataInstruction(locale);
+    expect(text).toContain('P1');
+    expect(text).toContain(`\`${INSTRUCTIONS_IN_CONTENT_CATEGORY}\``);
+    expect(INSTRUCTIONS_IN_CONTENT_CATEGORY).toMatch(/^[a-z]+(-[a-z]+)*$/);
+  });
 });

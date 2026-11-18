@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REVIEW_PROVIDERS } from './provider.ts';
@@ -123,10 +123,11 @@ function reviewCheck(providerId: keyof typeof REVIEW_PROVIDERS, scenario: Scenar
   });
   if (first.exitCode !== 0) return 'failure';
   const blockStep = stepNamed(steps, 'Fail the review check');
-  expect(blockStep).toContain("if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'");
+  expect(blockStep).toContain("if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason != ''");
   if (first.outputs['run'] !== 'true') {
-    if (first.outputs['block-reason'] !== 'rounds') return 'success';
-    return runStep(scriptOf(blockStep), { BLOCK_REASON: 'rounds' }).exitCode === 0 ? 'success' : 'failure';
+    const reason = first.outputs['block-reason'] ?? '';
+    if (reason === '') return 'success';
+    return runStep(scriptOf(blockStep), { BLOCK_REASON: reason }).exitCode === 0 ? 'success' : 'failure';
   }
   if (scenario.blocked === undefined) throw new Error(`${scenario.name}: the verdict ran but the scenario gives no verdict`);
   if (!scenario.blocked) return 'success';
@@ -134,7 +135,7 @@ function reviewCheck(providerId: keyof typeof REVIEW_PROVIDERS, scenario: Scenar
 }
 
 /** What the first step of the review job reports when the AI review did not run, for one PR. */
-function notRun(providerId: keyof typeof REVIEW_PROVIDERS, aiReview: Scenario['aiReview'], pr: { headRepository?: string; author?: string; headSha?: string } = {}) {
+function notRun(providerId: keyof typeof REVIEW_PROVIDERS, aiReview: Scenario['aiReview'], pr: { headRepository?: string; author?: string; skipReason?: string; headSha?: string; disabled?: string } = {}) {
   return runStep(scriptOf(stepNamed(reviewJobSteps(providerId), 'Check the AI review result')), {
     AI_REVIEW_RESULT: aiReview.result,
     REVIEW_ENABLED: aiReview.enabled,
@@ -144,6 +145,8 @@ function notRun(providerId: keyof typeof REVIEW_PROVIDERS, aiReview: Scenario['a
     HEAD_REPOSITORY: pr.headRepository ?? 'owner/repo',
     REPOSITORY: 'owner/repo',
     PR_AUTHOR: pr.author ?? 'someone',
+    SKIP_REASON: pr.skipReason ?? '',
+    REVIEW_DISABLED: pr.disabled ?? '',
   });
 }
 
@@ -158,6 +161,9 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     ['a pull request from a fork', { headRepository: 'someone/fork' }, 'this pull request comes from a fork'],
     ['a deleted fork (no head repository)', { headRepository: '' }, 'this pull request comes from a fork'],
     ['a Dependabot pull request', { author: 'dependabot[bot]' }, 'Dependabot runs receive only Dependabot secrets'],
+    ['a pull request a bot account opened and wrote', { author: 'renovate[bot]', skipReason: 'bot' }, 'a bot account opened this pull request and wrote all of its commits'],
+    ['the review switched off by the repository variable', { disabled: 'true' }, 'the ARCHWEAVE_REVIEW_DISABLED repository variable is set to true'],
+    ['switched off, on a fork too', { disabled: 'true', headRepository: 'someone/fork' }, 'the ARCHWEAVE_REVIEW_DISABLED repository variable is set to true'],
   ] as const)('%s: green, with the reason in the annotation, the job summary and the verdict comment', (_name, pr, reason) => {
     const { exitCode, outputs, summary, stdout } = notRun(providerId, NO_SECRET, pr);
     expect(exitCode).toBe(0);
@@ -328,5 +334,113 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     const { result, blockReason } = reviewCheckWithoutPlugin(providerId, { result: 'success', enabled: 'true', allowed: 'true', lastCommentId: '42' });
     expect(result).toBe('failure');
     expect(blockReason).toBe('tool-missing');
+  });
+});
+
+/** The ai-review job's first step: whether the review runs at all. `gh` is a stand-in that answers
+ * the two lookups the step makes: who opened the pull request, and who wrote its commits. */
+function secretGate(
+  providerId: keyof typeof REVIEW_PROVIDERS,
+  env: { secret: string; opener: 'User' | 'Bot'; commitAuthors: readonly ('User' | 'Bot' | null)[]; runActor: string; disabled?: string; lookupFails?: boolean },
+) {
+  const yaml = REVIEW_PROVIDERS[providerId].buildWorkflowYaml({ mode: 'fast', locale: 'en', maxRounds: 3, packageManager: 'npm' });
+  const job = yaml.slice(yaml.indexOf('\n  ai-review:\n'), yaml.indexOf('\n  review:\n'));
+  const steps = job.split(/\n(?=\s*- name: )/).slice(1);
+  const bin = mkdtempSync(join(tmpdir(), 'review-gh-'));
+  const calls = join(bin, 'calls');
+  // A real gh applies --jq itself; the stand-in prints what that filter would print.
+  const commits = env.commitAuthors.filter((type) => type !== 'Bot').length;
+  writeFileSync(
+    join(bin, 'gh'),
+    [
+      '#!/usr/bin/env bash',
+      `echo "$*" >> ${JSON.stringify(calls)}`,
+      env.lookupFails ? 'exit 1' : '',
+      'case "$2" in',
+      `  */commits) echo ${commits} ;;`,
+      `  *) echo ${env.opener} ;;`,
+      'esac',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  try {
+    const result = runStep(scriptOf(stepNamed(steps, 'Check review secret')), {
+      PATH: `${bin}:${process.env['PATH'] ?? ''}`,
+      REVIEW_SECRET: env.secret,
+      REVIEW_DISABLED: env.disabled ?? '',
+      GH_TOKEN: 'token',
+      REPOSITORY: 'owner/repo',
+      PR_NUMBER: '7',
+      RUN_ACTOR: env.runActor,
+    });
+    return { ...result, lookups: existsSync(calls) ? readFileSync(calls, 'utf-8').trim().split('\n') : [] };
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+}
+
+describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[])('%s: the review runs only for changes from people', (providerId) => {
+  const person = { secret: 'x', opener: 'User' as const, commitAuthors: ['User' as const], runActor: 'someone' };
+  it.each([
+    ['a person opened it and pushed', person, 'true', undefined],
+    ['a bot opened it and wrote every commit', { ...person, opener: 'Bot' as const, commitAuthors: ['Bot' as const, 'Bot' as const], runActor: 'renovate[bot]' }, 'false', 'bot'],
+    ['a bot opened it and wrote every commit, a person re-ran it', { ...person, opener: 'Bot' as const, commitAuthors: ['Bot' as const], runActor: 'someone' }, 'false', 'bot'],
+    ['a bot pushed to a person\'s pull request', { ...person, commitAuthors: ['User' as const, 'Bot' as const], runActor: 'some-app[bot]' }, 'false', 'bot-run'],
+    ['a bot opened it, a person added a commit, the bot pushed again', { ...person, opener: 'Bot' as const, commitAuthors: ['Bot' as const, 'User' as const, 'Bot' as const], runActor: 'renovate[bot]' }, 'false', 'bot-run'],
+    ['a bot opened it, a person added a commit and pushed', { ...person, opener: 'Bot' as const, commitAuthors: ['Bot' as const, 'User' as const], runActor: 'someone' }, 'true', undefined],
+    ['a commit author without a GitHub account counts as a person', { ...person, opener: 'Bot' as const, commitAuthors: ['Bot' as const, null], runActor: 'renovate[bot]' }, 'false', 'bot-run'],
+    ['a person re-ran a bot\'s push on a person\'s pull request', { ...person, commitAuthors: ['User' as const, 'Bot' as const], runActor: 'someone' }, 'true', undefined],
+  ] as const)('%s → enabled=%s, skip-reason=%s', (_name, env, enabled, skipReason) => {
+    const { exitCode, outputs, lookups } = secretGate(providerId, env);
+    expect(exitCode).toBe(0);
+    expect(outputs['enabled']).toBe(enabled);
+    expect(outputs['skip-reason']).toBe(skipReason);
+    expect(lookups).toEqual(['api repos/owner/repo/pulls/7 --jq .user.type', expect.stringContaining('api repos/owner/repo/pulls/7/commits --paginate')]);
+  });
+
+  it.each([
+    ['no secret', { ...person, secret: '' }],
+    ['switched off by the repository variable', { ...person, disabled: 'true' }],
+  ] as const)('%s → enabled=false, and nothing is looked up', (_name, env) => {
+    const { exitCode, outputs, lookups } = secretGate(providerId, env);
+    expect(exitCode).toBe(0);
+    expect(outputs['enabled']).toBe('false');
+    expect(outputs['skip-reason']).toBeUndefined();
+    expect(lookups).toEqual([]);
+  });
+
+  it('the variable set to anything but true leaves the review on', () => {
+    expect(secretGate(providerId, { ...person, disabled: 'false' }).outputs['enabled']).toBe('true');
+  });
+
+  it('a lookup that fails fails the step, so the AI review fails and the check goes red', () => {
+    const { exitCode, outputs } = secretGate(providerId, { ...person, lookupFails: true });
+    expect(exitCode).not.toBe(0);
+    expect(outputs['enabled']).toBeUndefined();
+  });
+
+  it('a bot\'s pull request ends green with the notice', () => {
+    const { exitCode, outputs } = notRun(providerId, NO_SECRET, { author: 'renovate[bot]', skipReason: 'bot' });
+    expect(exitCode).toBe(0);
+    expect(outputs['run']).toBe('false');
+    expect(outputs['block-reason']).toBeUndefined();
+  });
+
+  it('a bot\'s run on a person\'s pull request fails the check and asks a person to re-run it', () => {
+    const { exitCode, outputs, summary } = notRun(providerId, NO_SECRET, { skipReason: 'bot-run' });
+    expect(exitCode).toBe(0);
+    expect(outputs['run']).toBe('false');
+    expect(outputs['block-reason']).toBe('bot-run');
+    expect(outputs['notice-body']).toContain('⛔ The AI review did not run for this commit: a bot account started this run');
+    expect(outputs['notice-body']).toContain('A person should re-run all jobs on the latest commit of this pull request.');
+    expect(outputs['notice-body']).not.toContain(GREEN_IS_NOT_A_REVIEW);
+    expect(summary).toContain('a bot account started this run');
+    const failStep = runStep(scriptOf(stepNamed(reviewJobSteps(providerId), 'Fail the review check')), { BLOCK_REASON: 'bot-run' });
+    expect(failStep.exitCode).toBe(1);
+    expect(failStep.stdout).toContain('A person should re-run all jobs on the latest commit.');
+  });
+
+  it('the review switch comes first: switched off, a bot\'s run stays green', () => {
+    expect(notRun(providerId, NO_SECRET, { skipReason: 'bot-run', disabled: 'true' }).outputs['block-reason']).toBeUndefined();
   });
 });

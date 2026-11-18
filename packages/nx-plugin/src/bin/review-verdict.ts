@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, realpathSync } from 'node:fs';
-import { runVerdictGate, VERDICT_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/template-engine';
+import { REVIEW_WORKFLOW_CONTRACT, runVerdictGate, VERDICT_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/template-engine';
 
 export type BinExec = (command: string, args: string[], stdin?: string) => { status: number | null; stdout: string };
 
@@ -25,8 +25,23 @@ function outputModePath(env: Record<string, string | undefined>): string | undef
 
 /** Step outputs in GitHub's heredoc form; the delimiter is random, so no line of the comment can
  * end the value early. */
-/** Why the review check fails: an AI BLOCK, no summary from this run, or one nobody can read. */
-type BlockReason = 'block' | 'no-summary' | 'unreadable';
+/** Why the review check fails: an AI BLOCK, no summary from this run, one nobody can read, more
+ * than one summary from this run, or a summary from an account that isn't the review account. */
+type BlockReason = 'block' | 'no-summary' | 'unreadable' | 'several-summaries' | 'review-account';
+
+/** The accounts whose comments count as review rounds: the Claude GitHub App for `claude`, and
+ * the workflow's own token for the providers whose summary is posted with it. A workflow names
+ * its provider's account in ARCHWEAVE_REVIEW_AUTHOR (comma-separated when there are several);
+ * one generated before that keeps both. */
+const DEFAULT_REVIEW_AUTHORS = ['claude[bot]', 'github-actions[bot]'];
+
+function reviewAuthors(env: Record<string, string | undefined>): string[] {
+  const named = (env['ARCHWEAVE_REVIEW_AUTHOR'] ?? '')
+    .split(',')
+    .map((login) => login.trim())
+    .filter((login) => login !== '');
+  return named.length > 0 ? named : DEFAULT_REVIEW_AUTHORS;
+}
 
 function renderStepOutputs(commentBody: string, previousId: number | undefined, blocked: boolean, reason?: BlockReason): string {
   let delimiter: string;
@@ -58,6 +73,16 @@ const MISCONFIGURED_ERROR =
   'or ARCHWEAVE_MAX_ROUNDS is not a whole number from 1, so no verdict was computed. ' +
   'Regenerate the workflow with add-review --onConflict=overwrite if it was edited by hand.';
 
+/** A workflow generated for another release of the plugin: the env it passes may not mean what
+ * this bin reads, so nothing is judged. */
+function contractMismatchError(contract: string): string {
+  const shown = /^\d{1,4}$/.test(contract) ? contract : 'unknown';
+  return (
+    `::error title=Review verdict not computed::This review workflow was generated for another nx-archweave release (workflow contract ${shown}; this release reads ${REVIEW_WORKFLOW_CONTRACT}), so no verdict was computed. ` +
+    'Install the @clearlydev/nx-archweave version the workflow was generated with, or regenerate the workflow with add-review --onConflict=overwrite.'
+  );
+}
+
 /** Every adapter-level failure is a warning + exit 0 in the default mode. In output mode the
  * review job runs this bin only after the AI review ran in the same workflow run (the secret is
  * set, rounds remain, and the round gate's watermark arrived), so a green check there means this
@@ -75,6 +100,12 @@ export function runReviewVerdictBin(
   const maxRounds = Number(env['ARCHWEAVE_MAX_ROUNDS']);
   const locale: ReviewLocale = env['ARCHWEAVE_LOCALE'] === 'ko' ? 'ko' : 'en';
   const outputPath = outputModePath(env);
+  // A workflow names the contract it was generated for; one generated before the number existed
+  // names none and keeps the behavior it was written against.
+  const contract = env['ARCHWEAVE_WORKFLOW_CONTRACT'];
+  if (contract !== undefined && contract !== String(REVIEW_WORKFLOW_CONTRACT)) {
+    return { exitCode: 1, logs: [contractMismatchError(contract)] };
+  }
   if (!repo || !pr || !Number.isInteger(maxRounds) || maxRounds < 1) {
     if (outputPath !== undefined) return { exitCode: 1, logs: [MISCONFIGURED_ERROR] };
     logs.push('verdict gate: required environment missing or malformed — skipping (check stays green).');
@@ -103,15 +134,26 @@ export function runReviewVerdictBin(
   const comments = pages
     .flatMap((page) => (Array.isArray(page) ? page : []))
     .filter(
-      (c): c is { body: string; user: { type: string }; id?: number } =>
+      (c): c is { body: string; user: { type: string; login?: unknown }; id?: number } =>
         c !== null &&
         typeof c === 'object' &&
         typeof (c as { body?: unknown }).body === 'string' &&
         (c as { user?: { type?: unknown } }).user?.type === 'Bot',
     )
-    .map((c) => ({ body: c.body, id: typeof c.id === 'number' ? c.id : undefined }));
+    .map((c) => ({ body: c.body, id: typeof c.id === 'number' ? c.id : undefined, author: typeof c.user.login === 'string' ? c.user.login : '' }));
+  // Rounds count only from the review's own account, and one from another bot account that would
+  // count for this commit fails the check with that reason; the verdict comment is found among
+  // every bot comment, since the workflow's token posts it whichever provider reviewed.
   const reviewRan = outputPath !== undefined && roundAfterId !== undefined;
-  const result = runVerdictGate({ comments, maxRounds: maxRounds as ReviewMaxRounds, locale, roundAfterId, headSha, reviewRan });
+  const result = runVerdictGate({
+    comments,
+    reviewAuthors: reviewAuthors(env),
+    maxRounds: maxRounds as ReviewMaxRounds,
+    locale,
+    roundAfterId,
+    headSha,
+    reviewRan,
+  });
   if (result.kind === 'no-review') {
     logs.push('verdict gate: no review rounds found on this PR — nothing to judge.');
     return { exitCode: 0, logs };
@@ -119,11 +161,24 @@ export function runReviewVerdictBin(
   // One verdict comment per PR, edited every round: the newest earlier one is updated, and a
   // new one is posted only when there is none or the edit is refused (e.g. another app's).
   const previous = [...comments].reverse().find((c) => c.body.includes(VERDICT_MARKER) && c.id !== undefined);
-  const failedReview = result.kind === 'no-summary' || (result.kind === 'unparseable' && result.failClosed);
+  const failedReview =
+    result.kind === 'no-summary' ||
+    result.kind === 'several-summaries' ||
+    result.kind === 'review-account' ||
+    (result.kind === 'unparseable' && result.failClosed);
   const settled = !failedReview && (result.kind === 'no-round' || result.kind === 'unparseable');
   const blocked = failedReview || (result.kind === 'verdict' && result.exitCode !== 0);
   if (outputPath !== undefined) {
-    const reason: BlockReason = result.kind === 'no-summary' ? 'no-summary' : result.kind === 'unparseable' ? 'unreadable' : 'block';
+    const reason: BlockReason =
+      result.kind === 'no-summary'
+        ? 'no-summary'
+        : result.kind === 'several-summaries'
+          ? 'several-summaries'
+          : result.kind === 'review-account'
+            ? 'review-account'
+            : result.kind === 'unparseable'
+            ? 'unreadable'
+            : 'block';
     writeOutput(outputPath, renderStepOutputs(result.commentBody, previous?.id, blocked, reason));
   } else {
     const payload = JSON.stringify({ body: result.commentBody });
@@ -139,9 +194,16 @@ export function runReviewVerdictBin(
     logs.push(
       result.kind === 'no-summary'
         ? '::error title=AI review posted no summary::The AI review ran but posted no summary for this commit, so there is no verdict. Review the PR manually, or re-run all jobs.'
-        : '::error title=AI review summary unreadable::The AI review summary has no readable findings block, so there is no verdict. Review the PR manually, or re-run all jobs.',
+        : result.kind === 'several-summaries'
+          ? '::error title=Several AI review summaries::The AI review posted more than one summary for this commit, so there is no single verdict. Review the PR manually, or re-run all jobs.'
+          : result.kind === 'review-account'
+            ? '::error title=AI review summary from another account::The AI review summary for this commit was not posted by the review account, so there is no verdict. Regenerate the review workflow with add-review --onConflict=overwrite, or set ARCHWEAVE_REVIEW_AUTHOR in the workflow to the account the review posts as.'
+            : '::error title=AI review summary unreadable::The AI review summary has no readable findings block, so there is no verdict. Review the PR manually, or re-run all jobs.',
     );
-    return { exitCode: 0, logs };
+    // The default mode has no later step to fail the job, so a summary from another account fails
+    // it here: a workflow generated before the account was checked kept judging such a summary,
+    // which may have blocked.
+    return { exitCode: outputPath === undefined && result.kind === 'review-account' ? 1 : 0, logs };
   }
   if (settled) {
     logs.push(

@@ -408,6 +408,15 @@ describe('runAddReview — Dependabot keeps the pinned actions moving', () => {
 });
 
 describe('runAddReview — providers still in beta', () => {
+  it.each(['gemini', 'gpt', 'cursor'] as const)("%s: the report warns that the AI review doesn't replace a person's code review", (provider) => {
+    const text = renderAddReviewReport(runAddReview(createTreeWithEmptyWorkspace(), { provider }));
+    expect(text).toContain("Warning: the AI review doesn't replace a person's code review. Require a person's approval on every pull");
+  });
+
+  it('claude: no beta warning', () => {
+    expect(renderAddReviewReport(runAddReview(createTreeWithEmptyWorkspace(), { provider: 'claude' }))).not.toContain("doesn't replace a person's code review");
+  });
+
   it.each(['gemini', 'gpt', 'cursor'] as const)('%s: the report says it is in beta and links the provider status', (provider) => {
     const tree = createTreeWithEmptyWorkspace();
     const report = runAddReview(tree, { provider });
