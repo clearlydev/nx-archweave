@@ -201,7 +201,7 @@ Options: `--packages`\*, `--apply`
 | Review default | off (opt-in) | on | on |
 | Review mode | `fast` | `fast` | `standard` |
 
-Explicit flags always win over preset defaults.
+Explicit flags always win over preset defaults. create-nx-archweave passes `--review=false` for `quick-start` and `solo` unless you pass `--review`, so from the CLI only `team` starts with review on.
 
 ## AI PR review
 

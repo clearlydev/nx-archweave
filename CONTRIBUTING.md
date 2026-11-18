@@ -108,6 +108,9 @@ The end-to-end script packs both packages and runs the real create flow from the
 node tools/e2e-create.mjs --pm=pnpm
 
 node tools/e2e-create.mjs --pm=npm --frontend=next --backend=nest
+
+# AI PR review on (generated only, no secret); CI's pnpm leg runs this way
+node tools/e2e-create.mjs --pm=pnpm --review
 ```
 
 A second script covers a workspace nx-archweave did not create. Nx's own Expo preset makes the workspace, then the packed plugin is added and `init` detects the framework:

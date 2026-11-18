@@ -12,7 +12,7 @@ details are in [CONTRIBUTING.md](CONTRIBUTING.md).
   `@nx-archweave/template-engine`, `@nx-archweave/templates`, `@nx-archweave/review-policy`,
   `@nx-archweave/integrations`, `@nx-archweave/shared`).
 - Packed-tarball smoke test: `node tools/verify-tarball.mjs`.
-- Real create flow: `node tools/e2e-create.mjs --pm=<pnpm|npm|yarn|bun> [--frontend=…] [--backend=…]`
+- Real create flow: `node tools/e2e-create.mjs --pm=<pnpm|npm|yarn|bun> [--frontend=…] [--backend=…] [--review]`
   — from a clean environment: `create-nx-workspace` builds a different workspace when it sees an
   AI coding agent's environment variables. Do not `git add -A` while it runs: packing rewrites
   `packages/*/package.json` for a moment.

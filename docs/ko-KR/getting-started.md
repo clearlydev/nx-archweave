@@ -295,8 +295,11 @@ stdin이 TTY가 아니고 필수 입력이 빠졌다면, CLI는 명확한 메시
 
 둘 다 주지 않으면:
 
-- `quick-start`는 y/N으로 물어요. 터미널이 아니면 플래그를 달라며 실패해요.
-- `solo`와 `team`은 리뷰를 켜요.
+- `quick-start`는 y/N으로 묻고, 엔터는 아니요예요. 터미널이 아니면 리뷰는 꺼진 채로 둬요.
+- `solo`는 묻지 않고 리뷰를 꺼 둬요.
+- `team`은 리뷰를 켜요.
+
+AI 리뷰는 프로바이더 API 키와 저장소 secret 등록이 필요해서, 요청하지 않으면 꺼 둬요. 나중에 `npx nx g @clearlydev/nx-archweave:add-review`로 추가할 수 있어요(먼저 `--dryRun`으로 미리 보기). 리뷰가 꺼져 있으면 CLI도 같은 안내를 출력해요.
 
 #### `--review-provider`
 

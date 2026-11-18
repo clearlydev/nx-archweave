@@ -230,3 +230,4 @@ pnpm 전용이에요. pnpm이 건너뛰었거나 거부로 기록된 의존성 �
 > [!NOTE]
 > - **`frontend`/`backend`는 표에 없어요.** 두 값은 프리셋 정책이 아니라 축이에요. 프리셋 3종 모두 스택은 직접 골라요.
 > - **판정(verdict) 동작은 프리셋 3종 모두 같아요.** 설정값이 아니라 고정된 알고리즘이에요.
+> - **create-nx-archweave는 `solo`를 리뷰 없이 시작해요.** `--review`를 주지 않으면 `quick-start`와 `solo`에 `--review=false`를 넘겨서, CLI로 만들면 `team`만 기본으로 리뷰가 켜져요. `init`을 직접 실행하면 위 표대로예요.
