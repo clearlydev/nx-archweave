@@ -9,6 +9,7 @@
 //   node tools/e2e-create.mjs --pm=npm --backend=nest   (react-vite × nest)
 //   node tools/e2e-create.mjs --pm=pnpm --frontend=none --backend=express   (backend-only)
 //   node tools/e2e-create.mjs --pm=bun
+//   node tools/e2e-create.mjs --pm=pnpm --review   (AI PR review on, without a secret)
 //
 // Modes (hybrid gate):
 //   (default, strict)  every failure exits 1 — local release gate and the manual CI run.
@@ -30,7 +31,9 @@
 //   2. libs/shared-types is registered (pnpm-workspace.yaml / workspaces field)
 //   3. the generated workspace installs, `nx run-many -t build,lint` is green, then `-t typecheck,test`
 //      (bun × next skips the web app's test, a known Nx issue)
-//   4. `doctor --json --quiet` reports safe or manual-review-required
+//   4. `doctor --json --quiet` reports safe or manual-review-required (safe only with --review)
+//   5. the AI PR review workflow is generated with --review, and absent without it (the
+//      CLI's default)
 //
 // Read-only toward the repo; everything happens in a temp directory.
 
@@ -50,11 +53,14 @@ if (mode !== 'strict' && mode !== 'pr') {
 }
 const extraArgs = process.argv
   .slice(2)
-  .filter((a) => !a.startsWith('--pm=') && !a.startsWith('--mode=') && !a.startsWith('--frontend=') && !a.startsWith('--backend='));
+  .filter((a) => !a.startsWith('--pm=') && !a.startsWith('--mode=') && !a.startsWith('--frontend=') && !a.startsWith('--backend=') && a !== '--review');
 if (extraArgs.length > 0) {
-  console.error(`e2e-create: unknown arguments: ${extraArgs.join(' ')} (accepted: --pm=pnpm|npm|yarn|bun, --frontend=react-vite|next|none, --backend=express|nest|none, --mode=strict|pr)`);
+  console.error(`e2e-create: unknown arguments: ${extraArgs.join(' ')} (accepted: --pm=pnpm|npm|yarn|bun, --frontend=react-vite|next|none, --backend=express|nest|none, --mode=strict|pr, --review)`);
   process.exit(2);
 }
+// --review turns AI PR review on, as a user would; no secret is set, so the workflow is only
+// generated, never run.
+const review = process.argv.includes('--review');
 const pmArg = process.argv.find((a) => a.startsWith('--pm='));
 const pm = pmArg ? pmArg.slice('--pm='.length) : 'pnpm';
 if (pm !== 'pnpm' && pm !== 'npm' && pm !== 'yarn' && pm !== 'bun') {
@@ -168,6 +174,7 @@ const cliArgs = [
   `--backend=${backend}`,
   '--locale=en',
   `--plugin-source=${pluginSource}`,
+  ...(review ? ['--review'] : []),
 ];
 // The yarn flavor on PATH decides the yarn leg: berry launches like a user does
 // (`yarn dlx`), classic has no dlx, so it names the manager through `npm exec`.
@@ -249,6 +256,15 @@ for (const marker of ['<!-- nx-archweave:agent-rules start hash=', '<!-- nx-arch
 }
 if (readdirSync(demoDir).some((file) => file.endsWith('.generated.md'))) fail('agent rules', 'a .generated.md file was written');
 stepLog.record('agent rules');
+
+// The first AI host is Claude Code, so review defaults to the claude provider.
+const workflowsDir = join(demoDir, '.github', 'workflows');
+const reviewWorkflows = existsSync(workflowsDir) ? readdirSync(workflowsDir).filter((file) => file.endsWith('-code-review.yml')) : [];
+if (review && !reviewWorkflows.includes('claude-code-review.yml')) {
+  fail('review workflow', `--review was passed but .github/workflows/claude-code-review.yml is missing (found: ${reviewWorkflows.join(', ') || 'none'})`);
+}
+if (!review && reviewWorkflows.length > 0) fail('review workflow', `review is off by default, but found ${reviewWorkflows.join(', ')}`);
+stepLog.record('review workflow');
 
 // 4''. FSD: add-fsd-lite makes no folders — it wires the
 // archweave/fsd-boundaries rule into the frontend app's eslint config (the CLI passes
@@ -377,11 +393,14 @@ try {
   fail('doctor --json', 'stdout is not pure parseable JSON', doctorCombined);
 }
 if (report.schema !== 'archweave/doctor-report@1') fail('doctor --json', `schema: ${report.schema}`);
-if (report.overallStatus !== 'safe' && report.overallStatus !== 'manual-review-required') {
-  fail('doctor gate', `overallStatus: ${report.overallStatus}`, JSON.stringify(report, null, 2));
+console.log(`doctor overallStatus: ${report.overallStatus}`);
+// With review on, the review checks must all pass on a freshly generated workflow.
+const acceptedStatuses = review ? ['safe'] : ['safe', 'manual-review-required'];
+if (!acceptedStatuses.includes(report.overallStatus)) {
+  fail('doctor gate', `overallStatus: ${report.overallStatus} (accepted: ${acceptedStatuses.join(', ')})`, JSON.stringify(report, null, 2));
 }
 stepLog.record('doctor gate');
 
-console.log(`\ne2e-create (${pm}, ${frontend}, backend ${backend}) PASSED — ${steps.length} steps: ${steps.join(' → ')}`);
+console.log(`\ne2e-create (${pm}, ${frontend}, backend ${backend}${review ? ', review' : ''}) PASSED — ${steps.length} steps: ${steps.join(' → ')}`);
 console.log(`\ntimings:\n${stepLog.timings()}`);
 stepLog.summarize(`e2e-create (${pm}, ${frontend}, backend ${backend})${SHELL ? ' on Windows' : ''}`);
