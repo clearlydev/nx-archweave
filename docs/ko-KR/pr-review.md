@@ -21,6 +21,9 @@
 
 `claude`가 기본이에요. `gemini`, `gpt`, `cursor`는 **beta**예요. 워크플로는 GitHub Actions에서 실제로 돌았지만, 무료 등급이나 API 잔액 부족으로 중간에 멈춰서 리뷰가 끝까지 완료된 적은 아직 없어요(알려진 문제 참고). 각각 유료 등급에서 전체 실행을 확인한 뒤 표시를 뗄 거예요.
 
+> [!WARNING]
+> `gemini`, `gpt`, `cursor`는 beta라 아직 처음부터 끝까지 확인되지 않았어요(아래 표 참고). 어떤 프로바이더든 AI 리뷰는 사람의 코드 리뷰를 대신하지 않아요. 모든 pull request에 사람의 승인을 필수로 두고([AI verdict 없이 커밋 머지하기](#ai-verdict-없이-커밋-머지하기) 참고), **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**는 꺼 두세요.
+
 | 프로바이더 | 상태 | GitHub Actions 확인 결과 (2026-10-25) | 시크릿 받는 곳 | 비용 |
 | --- | --- | --- | --- | --- |
 | `claude` (기본) | — | 확인: 시크릿이 없으면 green-skip, Claude GitHub App 없이 토큰만 있으면 `401 … Claude Code is not installed on this repository`로 실패하고 `review`가 red, 깨끗한 pull request에서 요약·APPROVE verdict 코멘트·green `review`(처음부터 끝까지 약 1분 45초). 0.3.0 배포 전 빌드에서는 보안 결함 pull request가 BLOCK과 red `review`, 실패한 잡만 재실행해도 red 유지, 이후 라운드는 verdict 코멘트 하나를 수정, 요약을 남기지 않은 리뷰는 red. 0.4.0 배포 전 빌드에서는 라운드 한도 이후 커밋과 플러그인이 없는 워크스페이스의 리뷰가 필수 `review`를 red로 만들고 머지를 막음. 플러그인이 없어도 시크릿이 없으면 green, Dependabot pull request도 green이고 각각 안내가 남음 | Claude Code OAuth 토큰, 그리고 저장소에 [Claude GitHub App](https://github.com/apps/claude) 설치(**Only select repositories**) | Claude 구독. 깨끗한 리뷰 한 번에 약 $0.05 |
