@@ -360,7 +360,7 @@ pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
 pnpm nx g @clearlydev/nx-archweave:init --preset=team --project=web,admin --strict
 ```
 
-앱이 이미 자기만의 FSD 관례(`features/mypage/order` 같은 슬라이스 그룹, `shared`의 파일 직접 import, 자체 경계 태그)를 따르고 있다면, 강제를 켜기 전에 `toolkit.config.json`에 적어 주세요. [FSD Lite](fsd-lite.md#정책-트리를-얼마나-엄격하게-읽을지)와 [경계](boundaries.md)를 참고하세요. `doctor`가 import 패턴에 맞는 `sharedPublicApi` 값을 제안해요. 이미 있는 위반은 ESLint의 bulk suppressions(`eslint --suppress-all`)로 묶어 두면, 새 위반만 실패로 잡을 수 있어요.
+앱이 이미 자기만의 FSD 관례(`features/mypage/order` 같은 슬라이스 그룹, `shared`의 파일 직접 import, 자체 경계 태그)를 따르고 있다면, 강제를 켜기 전에 `toolkit.config.json`에 적어 주세요. [FSD Lite](fsd-lite.md#정책-트리를-얼마나-엄격하게-읽을지)와 [경계](boundaries.md)를 참고하세요. `doctor`가 import 패턴에 맞는 `sharedPublicApi` 값을 제안해요. 이미 있는 위반은 ESLint의 bulk suppressions(`eslint --suppress-all`)로 묶어 두면, 새 위반만 실패로 잡을 수 있어요. 단계는 [기존 앱에 도입하기](fsd-lite.md#기존-앱에-도입하기)에 있어요.
 
 > [!IMPORTANT]
 > `init`은 깨끗한 git 워킹 트리가 필요해요. 그래야 중간에 멈춘 실행을 정확히 되돌릴 수 있어요. 섹션이 중단되면 리포트가 이번 실행이 쓴 파일을 보여 줘요. 수정한 파일은 `git restore -- <파일들>` 한 줄로, 새로 만든 파일은 목록으로 보여 주고 직접 지우게 해요(`git clean -n`으로 먼저 확인할 수 있어요). `--allowDirty`를 주면 깨끗한 트리 검사를 건너뛰어요. 이때 리포트는 "수정된 파일을 복원하면 그 파일에 있던 기존 미커밋 변경까지 되돌린다"고 경고해요.
