@@ -117,7 +117,7 @@ When something goes wrong:
 | `--backend` | `express` \| `nest` \| `none` |
 | `--locale` | `ko` \| `en` |
 | `--review` / `--no-review` | — |
-| `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` |
+| `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` (beta; not offered in the questions) |
 | `--plugin-source` | package spec, path, or tarball |
 | `--ai-hosts` | `claude-code`, `codex`, `cursor`, `gemini-cli` |
 | `--plugins` | catalog ids (`ponytail`), or `none` |
@@ -153,7 +153,7 @@ If you pass neither flag:
 
 ### `--review-provider`
 
-- Asked when review is on. Enter picks the first AI tool's provider (e.g. Codex → GPT).
+- Asked when review is on. Enter picks the first AI tool's provider (e.g. Codex → GPT; Cursor → Claude, since the `cursor` provider is picked only with `--review-provider=cursor`).
 - Without a terminal, the CLI uses that default.
 - Refused when review ends up off.
 

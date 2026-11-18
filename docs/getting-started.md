@@ -262,7 +262,7 @@ If you run `add-backend` by hand on such a workspace, you get the same result.
 | `--backend` | `express` \| `nest` \| `none` |
 | `--locale` | `ko` \| `en` |
 | `--review` / `--no-review` | — |
-| `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` |
+| `--review-provider` | `claude` \| `gemini` \| `gpt` \| `cursor` (beta; not offered in the questions) |
 | `--plugin-source` | Package spec, path, or tarball |
 | `--allow-nested` | Create the workspace even inside a git repository or a folder with a `package.json`. Without it the CLI stops there and points you to `nx init` for an existing repository |
 | `--ai-hosts` | `claude-code`, `codex`, `cursor`, `gemini-cli` |
@@ -301,7 +301,7 @@ If you pass neither flag:
 #### `--review-provider`
 
 - The CLI asks when review is on. Pick by number.
-- Enter picks the provider of the first AI tool you chose, for example Codex → GPT.
+- Enter picks the provider of the first AI tool you chose, for example Codex → GPT. Cursor maps to Claude: the `cursor` provider is picked only with `--review-provider=cursor`.
 - Without a terminal, the CLI uses that same default.
 - The CLI refuses this flag when review ends up off.
 
