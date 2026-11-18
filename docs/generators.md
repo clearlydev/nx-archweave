@@ -230,3 +230,4 @@ With `--apply`, `allow-builds` sets those packages to `true` in `pnpm-workspace.
 > [!NOTE]
 > - **`frontend`/`backend` aren't in the table above.** They're axes, not preset policy. All three presets ask you for the stack.
 > - **Verdict behavior is the same in all three presets.** It's a fixed algorithm, not a configuration value.
+> - **create-nx-archweave starts `solo` without review.** Unless you pass `--review`, it passes `--review=false` to `init` for `quick-start` and `solo`, so only `team` gets review by default from the CLI. Running `init` yourself keeps the table above.

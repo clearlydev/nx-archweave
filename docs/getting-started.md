@@ -295,8 +295,11 @@ When stdin isn't a TTY and a required input is missing, the CLI fails fast with 
 
 If you pass neither flag:
 
-- `quick-start` asks y/N. Without a terminal, it fails and asks you for the flag.
-- `solo` and `team` turn review on.
+- `quick-start` asks y/N, and Enter means no. Without a terminal, review stays off.
+- `solo` leaves review off, without asking.
+- `team` turns review on.
+
+AI review needs a provider API key and a repository secret, so it is off unless you ask for it. Add it to the workspace later with `npx nx g @clearlydev/nx-archweave:add-review` (preview with `--dryRun` first); the CLI prints the same hint when review is off.
 
 #### `--review-provider`
 

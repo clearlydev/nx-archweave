@@ -148,8 +148,10 @@ Asked if omitted.
 
 If you pass neither flag:
 
-- `quick-start` asks y/N. Without a terminal, it fails and asks you for the flag.
-- `solo` / `team` turn review on.
+- `quick-start` asks y/N (Enter means no). Without a terminal, review stays off.
+- `solo` leaves review off, without asking. `team` turns review on.
+
+AI review needs a provider API key and a repository secret, so it is off unless you ask for it. Add it later with `npx nx g @clearlydev/nx-archweave:add-review` (preview with `--dryRun` first).
 
 ### `--review-provider`
 
