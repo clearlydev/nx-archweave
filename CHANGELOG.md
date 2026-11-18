@@ -1,3 +1,10 @@
+## 0.4.2 (2026-11-18)
+
+### 🩹 Fixes
+
+- bump anthropics/claude-code-action from 1.0.268 to 1.0.271 ([#23](https://github.com/clearlydev/nx-archweave/pull/23))
+- tighten the generated review workflow ([#25](https://github.com/clearlydev/nx-archweave/pull/25))
+
 ## 0.4.1 (2026-11-11)
 
 ### 🩹 Fixes
