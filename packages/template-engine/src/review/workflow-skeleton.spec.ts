@@ -32,6 +32,17 @@ describe('workflow skeleton', () => {
     expect(step).not.toContain('exit 1');
   });
 
+  it('secret gate reads who opened the pull request and who wrote its commits from the API, and who started the run', () => {
+    const step = renderSecretGateStep('CLAUDE_CODE_OAUTH_TOKEN');
+    expect(step).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(step).toContain(`gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.user.type'`);
+    expect(step).toContain(`gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" --paginate`);
+    expect(step).toContain('RUN_ACTOR: ${{ github.triggering_actor }}');
+    expect(step).not.toContain('github.event.pull_request.user.login');
+    expect(step).toContain('skip-reason=bot');
+    expect(step).toContain('skip-reason=bot-run');
+  });
+
   it('round gate counts marker comments and caps at the given maxRounds', () => {
     const step = renderRoundGateStep(4);
     expect(step).toContain('id: round-gate');

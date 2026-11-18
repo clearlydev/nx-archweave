@@ -58,7 +58,8 @@ describe.each(Object.keys(REVIEW_PROVIDERS) as (keyof typeof REVIEW_PROVIDERS)[]
     expect(compute).toMatch(/^ {8}if: steps\.ai-review-result\.outputs\.run == 'true'$/m);
     expect(yaml).toContain("ARCHWEAVE_VERDICT_OUTPUT: 'github-output'");
     expect(yaml).toContain('ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}');
-    expect(yaml).toContain("if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'");
+    expect(yaml).toContain("if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason != ''");
+    expect(yaml).toContain('echo "block-reason=bot-run" >> "$GITHUB_OUTPUT"');
   });
 
   it('says "AI review did not run" from the review job alone: no secret, no AI review, nothing inline', () => {

@@ -22,6 +22,7 @@ jobs:
       pull-requests: write
     outputs:
       enabled: \${{ steps.secret-gate.outputs.enabled }}
+      skip-reason: \${{ steps.secret-gate.outputs.skip-reason }}
       allowed: \${{ steps.round-gate.outputs.allowed }}
       last-comment-id: \${{ steps.round-gate.outputs.last-comment-id }}
     steps:
@@ -29,9 +30,25 @@ jobs:
         id: secret-gate
         env:
           REVIEW_SECRET: \${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: \${{ github.token }}
+          REPOSITORY: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+          RUN_ACTOR: \${{ github.triggering_actor }}
         run: |
           if [ -z "$REVIEW_SECRET" ]; then
             echo "AI review is not active: register the OPENAI_API_KEY secret to enable it."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          opener=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.user.type')
+          people=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" --paginate --jq '[.[] | select(.author.type != "Bot")] | length' | jq -s 'add // 0')
+          if [ "$opener" = Bot ] && [ "$people" -eq 0 ]; then
+            echo "AI review skipped: a bot account opened this pull request and wrote all of its commits."
+            echo "skip-reason=bot" >> "$GITHUB_OUTPUT"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif case "$RUN_ACTOR" in *'[bot]') true ;; *) false ;; esac; then
+            echo "AI review skipped: a bot account started this run on a pull request a person opened or wrote commits in."
+            echo "skip-reason=bot-run" >> "$GITHUB_OUTPUT"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -149,6 +166,7 @@ jobs:
           HEAD_REPOSITORY: \${{ github.event.pull_request.head.repo.full_name }}
           REPOSITORY: \${{ github.repository }}
           PR_AUTHOR: \${{ github.event.pull_request.user.login }}
+          SKIP_REASON: \${{ needs.ai-review.outputs.skip-reason }}
         run: |
           write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
@@ -168,10 +186,17 @@ jobs:
               secret) annotation='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.' ;;
               fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
               dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.' ;;
+              bot) annotation='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.' ;;
             esac
             echo "::notice title=AI review did not run::$annotation"
             printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
             write_notice "ℹ️ $notice"
+          }
+          bot_run() {
+            notice='The AI review did not run for this commit: a bot account started this run, on a pull request a person opened or wrote commits in, so there is no verdict and the review check fails. A person should re-run all jobs on the latest commit of this pull request.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "⛔ $notice"
+            echo "block-reason=bot-run" >> "$GITHUB_OUTPUT"
           }
           round_limit() {
             notice='The AI review did not review this commit: the automated review round limit (3) is reached, so there is no verdict and the review check fails. To merge, use your branch ruleset'\\''s bypass, or raise maxRounds and run add-review again.'
@@ -185,7 +210,9 @@ jobs:
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
             false/*)
-              if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
+              if [ "$SKIP_REASON" = bot-run ]; then bot_run
+              elif [ "$SKIP_REASON" = bot ]; then not_run bot
+              elif [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
               elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot
               else not_run secret
               fi
@@ -277,7 +304,7 @@ jobs:
           fi
 
       - name: Fail the review check
-        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'
+        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason != ''
         env:
           BLOCK_REASON: \${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}
         run: |
@@ -285,6 +312,7 @@ jobs:
             block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;
             no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
             unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
+            bot-run) echo "A bot account started this run on a pull request a person opened or wrote commits in, so the AI review did not run and there is no verdict. A person should re-run all jobs on the latest commit." ;;
             several-summaries) echo "The AI review posted more than one summary for this commit, so there is no single verdict. Re-run all jobs to review it again, or review it yourself." ;;
             tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;
             rounds) echo "The automated review round limit (3) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;
@@ -345,6 +373,7 @@ jobs:
       pull-requests: write
     outputs:
       enabled: \${{ steps.secret-gate.outputs.enabled }}
+      skip-reason: \${{ steps.secret-gate.outputs.skip-reason }}
       allowed: \${{ steps.round-gate.outputs.allowed }}
       last-comment-id: \${{ steps.round-gate.outputs.last-comment-id }}
     steps:
@@ -352,9 +381,25 @@ jobs:
         id: secret-gate
         env:
           REVIEW_SECRET: \${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: \${{ github.token }}
+          REPOSITORY: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+          RUN_ACTOR: \${{ github.triggering_actor }}
         run: |
           if [ -z "$REVIEW_SECRET" ]; then
             echo "AI review is not active: register the OPENAI_API_KEY secret to enable it."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          opener=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.user.type')
+          people=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" --paginate --jq '[.[] | select(.author.type != "Bot")] | length' | jq -s 'add // 0')
+          if [ "$opener" = Bot ] && [ "$people" -eq 0 ]; then
+            echo "AI review skipped: a bot account opened this pull request and wrote all of its commits."
+            echo "skip-reason=bot" >> "$GITHUB_OUTPUT"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif case "$RUN_ACTOR" in *'[bot]') true ;; *) false ;; esac; then
+            echo "AI review skipped: a bot account started this run on a pull request a person opened or wrote commits in."
+            echo "skip-reason=bot-run" >> "$GITHUB_OUTPUT"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -494,6 +539,7 @@ jobs:
           HEAD_REPOSITORY: \${{ github.event.pull_request.head.repo.full_name }}
           REPOSITORY: \${{ github.repository }}
           PR_AUTHOR: \${{ github.event.pull_request.user.login }}
+          SKIP_REASON: \${{ needs.ai-review.outputs.skip-reason }}
         run: |
           write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
@@ -513,10 +559,17 @@ jobs:
               secret) annotation='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(OPENAI_API_KEY 시크릿이 등록되지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
               fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
               dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(Dependabot 실행은 Dependabot 시크릿만 받는데, OPENAI_API_KEY는 그중에 없음). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
+              bot) annotation='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.'; notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다(봇 계정이 이 pull request를 열고 모든 커밋을 작성했고, AI 리뷰는 사람이 만든 변경에만 실행됨). 이 green 체크는 변경 사항이 리뷰되었다는 뜻이 아닙니다.' ;;
             esac
             echo "::notice title=AI review did not run::$annotation"
             printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
             write_notice "ℹ️ $notice"
+          }
+          bot_run() {
+            notice='이 커밋에는 AI 리뷰가 실행되지 않았습니다. 사람이 열었거나 커밋한 pull request에서 봇 계정이 이 실행을 시작해 verdict가 없고, review 체크는 실패합니다. 사람이 이 pull request의 최신 커밋에서 모든 잡을 다시 실행하세요.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "⛔ $notice"
+            echo "block-reason=bot-run" >> "$GITHUB_OUTPUT"
           }
           round_limit() {
             notice='AI 리뷰가 이 커밋을 리뷰하지 않았습니다. 자동 리뷰 라운드 한도(5)에 도달해 verdict가 없고, review 체크는 실패합니다. 머지하려면 브랜치 ruleset의 bypass를 쓰거나, maxRounds를 올리고 add-review를 다시 실행하세요.'
@@ -530,7 +583,9 @@ jobs:
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
             false/*)
-              if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
+              if [ "$SKIP_REASON" = bot-run ]; then bot_run
+              elif [ "$SKIP_REASON" = bot ]; then not_run bot
+              elif [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
               elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot
               else not_run secret
               fi
@@ -622,7 +677,7 @@ jobs:
           fi
 
       - name: Fail the review check
-        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'
+        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason != ''
         env:
           BLOCK_REASON: \${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}
         run: |
@@ -630,6 +685,7 @@ jobs:
             block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;
             no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
             unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
+            bot-run) echo "A bot account started this run on a pull request a person opened or wrote commits in, so the AI review did not run and there is no verdict. A person should re-run all jobs on the latest commit." ;;
             several-summaries) echo "The AI review posted more than one summary for this commit, so there is no single verdict. Re-run all jobs to review it again, or review it yourself." ;;
             tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;
             rounds) echo "The automated review round limit (5) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;
@@ -690,6 +746,7 @@ jobs:
       pull-requests: write
     outputs:
       enabled: \${{ steps.secret-gate.outputs.enabled }}
+      skip-reason: \${{ steps.secret-gate.outputs.skip-reason }}
       allowed: \${{ steps.round-gate.outputs.allowed }}
       last-comment-id: \${{ steps.round-gate.outputs.last-comment-id }}
     steps:
@@ -697,9 +754,25 @@ jobs:
         id: secret-gate
         env:
           REVIEW_SECRET: \${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: \${{ github.token }}
+          REPOSITORY: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+          RUN_ACTOR: \${{ github.triggering_actor }}
         run: |
           if [ -z "$REVIEW_SECRET" ]; then
             echo "AI review is not active: register the OPENAI_API_KEY secret to enable it."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          opener=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.user.type')
+          people=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" --paginate --jq '[.[] | select(.author.type != "Bot")] | length' | jq -s 'add // 0')
+          if [ "$opener" = Bot ] && [ "$people" -eq 0 ]; then
+            echo "AI review skipped: a bot account opened this pull request and wrote all of its commits."
+            echo "skip-reason=bot" >> "$GITHUB_OUTPUT"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif case "$RUN_ACTOR" in *'[bot]') true ;; *) false ;; esac; then
+            echo "AI review skipped: a bot account started this run on a pull request a person opened or wrote commits in."
+            echo "skip-reason=bot-run" >> "$GITHUB_OUTPUT"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -817,6 +890,7 @@ jobs:
           HEAD_REPOSITORY: \${{ github.event.pull_request.head.repo.full_name }}
           REPOSITORY: \${{ github.repository }}
           PR_AUTHOR: \${{ github.event.pull_request.user.login }}
+          SKIP_REASON: \${{ needs.ai-review.outputs.skip-reason }}
         run: |
           write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
@@ -836,10 +910,17 @@ jobs:
               secret) annotation='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the OPENAI_API_KEY secret is not registered). A green check here does not mean the change was reviewed.' ;;
               fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
               dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and OPENAI_API_KEY is not one of them). A green check here does not mean the change was reviewed.' ;;
+              bot) annotation='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.' ;;
             esac
             echo "::notice title=AI review did not run::$annotation"
             printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
             write_notice "ℹ️ $notice"
+          }
+          bot_run() {
+            notice='The AI review did not run for this commit: a bot account started this run, on a pull request a person opened or wrote commits in, so there is no verdict and the review check fails. A person should re-run all jobs on the latest commit of this pull request.'
+            printf '%s\\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
+            write_notice "⛔ $notice"
+            echo "block-reason=bot-run" >> "$GITHUB_OUTPUT"
           }
           round_limit() {
             notice='The AI review did not review this commit: the automated review round limit (3) is reached, so there is no verdict and the review check fails. To merge, use your branch ruleset'\\''s bypass, or raise maxRounds and run add-review again.'
@@ -853,7 +934,9 @@ jobs:
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
             false/*)
-              if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
+              if [ "$SKIP_REASON" = bot-run ]; then bot_run
+              elif [ "$SKIP_REASON" = bot ]; then not_run bot
+              elif [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
               elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot
               else not_run secret
               fi
@@ -945,7 +1028,7 @@ jobs:
           fi
 
       - name: Fail the review check
-        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason == 'rounds'
+        if: steps.verdict.outputs.blocked == 'true' || steps.ai-review-result.outputs.block-reason != ''
         env:
           BLOCK_REASON: \${{ steps.verdict.outputs.block-reason || steps.ai-review-result.outputs.block-reason }}
         run: |
@@ -953,6 +1036,7 @@ jobs:
             block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;
             no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
             unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;
+            bot-run) echo "A bot account started this run on a pull request a person opened or wrote commits in, so the AI review did not run and there is no verdict. A person should re-run all jobs on the latest commit." ;;
             several-summaries) echo "The AI review posted more than one summary for this commit, so there is no single verdict. Re-run all jobs to review it again, or review it yourself." ;;
             tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;
             rounds) echo "The automated review round limit (3) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;

@@ -1,4 +1,4 @@
-import { renderNoRoundNotice, renderNotRunNotice, renderRoundLimitNotice, renderSeveralSummariesNotice, renderUnparseableNotice, renderVerdictComment, renderVerdictToolMissingNotice, VERDICT_MARKER } from './verdict-comment.ts';
+import { renderBotRunNotice, renderNoRoundNotice, renderNotRunNotice, renderRoundLimitNotice, renderSeveralSummariesNotice, renderUnparseableNotice, renderVerdictComment, renderVerdictToolMissingNotice, VERDICT_MARKER } from './verdict-comment.ts';
 
 describe('renderVerdictComment', () => {
   const history = [
@@ -88,5 +88,21 @@ describe('renderSeveralSummariesNotice', () => {
     expect(notice).toContain('⛔');
     expect(notice).toContain('abcdef1');
     expect(notice).not.toContain('green');
+  });
+});
+
+describe('renderNotRunNotice for a bot account', () => {
+  it.each(['en', 'ko'] as const)('%s: names the bot account case and says green is not a review', (locale) => {
+    const notice = renderNotRunNotice(locale, 'bot', 'CLAUDE_CODE_OAUTH_TOKEN');
+    expect(notice).toContain(locale === 'en' ? 'a bot account opened this pull request and wrote all of its commits' : '봇 계정이 이 pull request를 열고 모든 커밋을 작성했고');
+    expect(notice).toContain(locale === 'en' ? 'A green check here does not mean the change was reviewed.' : '리뷰되었다는 뜻이 아닙니다');
+  });
+});
+
+describe('renderBotRunNotice', () => {
+  it.each(['en', 'ko'] as const)('%s: says the check fails and asks a person to re-run on the latest commit', (locale) => {
+    const notice = renderBotRunNotice(locale);
+    expect(notice).toContain(locale === 'en' ? 'the review check fails' : 'review 체크는 실패합니다');
+    expect(notice).toContain(locale === 'en' ? 'A person should re-run all jobs on the latest commit' : '사람이 이 pull request의 최신 커밋에서 모든 잡을 다시 실행하세요');
   });
 });
