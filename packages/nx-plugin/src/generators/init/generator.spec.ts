@@ -836,3 +836,16 @@ describe('runInit — a hand-edited agent-rules block', () => {
     expect(report.config?.notRecorded.map((n) => n.field)).toContain('agentRules.teamRules');
   });
 });
+
+describe('initGenerator — review off, as create-nx-archweave now passes for quick-start and solo', () => {
+  it.each(['quick-start', 'solo'] as const)('%s with review: false leaves no review artifact behind', (preset) => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write('apps/web/project.json', JSON.stringify({ name: 'web', sourceRoot: 'apps/web/src', projectType: 'application' }));
+    const report = runInit(tree, { preset, frontend: 'react-vite', review: false }, CLEAN);
+    expect(section(report, 'review')?.enabled).toBe(false);
+    const written = tree.listChanges().map((change) => change.path);
+    expect(written.filter((path) => /code-review\.ya?ml$|dependabot\.ya?ml$/.test(path))).toEqual([]);
+    const config = tree.exists('toolkit.config.json') ? JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string) : {};
+    expect(config.review).toBeUndefined();
+  });
+});

@@ -37,21 +37,29 @@ describe('collectMissingInputs', () => {
   });
 
   it('quick-start: asks only frontend and review, forcing locale to en without a question', async () => {
-    const { ask, calls } = scriptedAsk(['react-vite', 'none', 'y']);
-    const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start' }, ask);
+    const { ask, calls } = scriptedAsk(['react-vite', 'none', 'y', '']);
+    const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', aiHosts: ['claude-code'], interactive: true }, ask);
 
-    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ', 'Enable AI PR review? (y/N): ']);
+    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ', 'Enable AI PR review? (y/N): ', reviewProviderQuestion('claude-code')]);
     expect(result).toEqual({ preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], review: true });
   });
 
   it('quick-start: treats any non-yes answer to the review question as false', async () => {
+    const interactive = { ...allMissing, preset: 'quick-start' as const, aiHosts: ['claude-code' as const], interactive: true };
     const { ask } = scriptedAsk(['next', 'none', 'n']);
-    const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start' }, ask);
+    const result = await collectMissingInputs(interactive, ask);
     expect(result.review).toBe(false);
 
     const { ask: ask2 } = scriptedAsk(['next', 'none', '']);
-    const result2 = await collectMissingInputs({ ...allMissing, preset: 'quick-start' }, ask2);
+    const result2 = await collectMissingInputs(interactive, ask2);
     expect(result2.review).toBe(false);
+  });
+
+  it('quick-start without a terminal: no review question, review off', async () => {
+    const { ask, calls } = scriptedAsk(['next', 'none']);
+    const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start' }, ask);
+    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ']);
+    expect(result.review).toBe(false);
   });
 
   it('quick-start: does not ask about review when --review/--no-review was already given', async () => {
@@ -62,12 +70,19 @@ describe('collectMissingInputs', () => {
     expect(result.review).toBe(false);
   });
 
-  it('solo: asks frontend and locale, but never asks about review', async () => {
+  it('solo: asks frontend and locale, never asks about review, and leaves review off', async () => {
     const { ask, calls } = scriptedAsk(['react-vite', 'nest', 'ko']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'solo' }, ask);
 
     expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ', 'Locale (ko/en): ']);
-    expect(result).toEqual({ preset: 'solo', frontend: 'react-vite', backend: 'nest', locale: 'ko', aiHosts: ['claude-code'], review: undefined });
+    expect(result).toEqual({ preset: 'solo', frontend: 'react-vite', backend: 'nest', locale: 'ko', aiHosts: ['claude-code'], review: false });
+  });
+
+  it('solo with a terminal: still no review question, review off', async () => {
+    const { ask, calls } = scriptedAsk([]);
+    const result = await collectMissingInputs({ ...allMissing, preset: 'solo', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['codex'], interactive: true }, ask);
+    expect(calls).toEqual([]);
+    expect(result.review).toBe(false);
   });
 
   it('team: asks frontend and locale, but never asks about review', async () => {
@@ -195,7 +210,7 @@ describe('aiHostsQuestion — what the host probes found', () => {
 });
 
 describe('review provider question', () => {
-  const base: PromptInput = { ...allMissing, preset: 'solo', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['codex'], interactive: true };
+  const base: PromptInput = { ...allMissing, preset: 'team', frontend: 'next', backend: 'none', locale: 'en', aiHosts: ['codex'], interactive: true };
 
   it("is numbered, with the first AI tool's provider as the default", () => {
     expect(reviewProviderQuestion('codex')).toBe(
@@ -203,7 +218,7 @@ describe('review provider question', () => {
     );
   });
 
-  it('asked when review is on (solo/team default, or an explicit yes); Enter leaves it to init; a wrong answer asks again', async () => {
+  it('asked when review is on (team default, or an explicit yes); Enter leaves it to init; a wrong answer asks again', async () => {
     const io = scriptedAsk(['9', '']);
     expect((await collectMissingInputs(base, io.ask)).reviewProvider).toBeUndefined();
     expect(io.calls).toEqual([reviewProviderQuestion('codex'), reviewProviderQuestion('codex')]);
@@ -225,7 +240,9 @@ describe('review provider question', () => {
   });
 
   it('--review-provider with review off is refused, never dropped silently', () => {
-    expect(reviewProviderConflict('solo', undefined, 'gemini')).toBeUndefined();
+    expect(reviewProviderConflict('team', undefined, 'gemini')).toBeUndefined();
+    expect(reviewProviderConflict('solo', true, 'gemini')).toBeUndefined();
+    expect(reviewProviderConflict('solo', undefined, 'gemini')).toContain('the solo preset leaves it off: add --review, or drop --review-provider');
     expect(reviewProviderConflict('quick-start', true, 'gemini')).toBeUndefined();
     expect(reviewProviderConflict(undefined, undefined, 'gemini')).toBeUndefined(); // preset still to ask
     expect(reviewProviderConflict('quick-start', undefined, undefined)).toBeUndefined();

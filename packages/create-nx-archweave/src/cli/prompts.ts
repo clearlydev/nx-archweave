@@ -49,9 +49,8 @@ export interface PromptResult {
   locale: CliLocale;
   /** Multi-select, in the order picked (the first one sets the review provider default). */
   aiHosts: CliAiHost[];
-  /** Still undefined when nothing (flag or question) ever set it — solo/team never
-   * ask, so this stays undefined unless the flag overrode it, and the init
-   * generator's own preset default applies (no policy knowledge here). */
+  /** false for quick-start and solo unless asked for (flag or question). Undefined only for
+   * team without a flag: the init generator's own preset default applies there. */
   review: boolean | undefined;
   /** Picked in the review-provider question; undefined when not passed and not picked (Enter
    * or no question) — init then uses the first AI host's provider. */
@@ -124,19 +123,18 @@ async function askAiHosts(ask: Ask, installed: InstalledHosts | undefined): Prom
  *    solo/team ask if missing.
  *  - aiHosts: asked if missing, for every preset, as a numbered multi-select;
  *    never without a terminal (the default host then).
- *  - review: asked with a single yes/no ONLY when the resolved preset is quick-start
- *    (the opt-in preset, which asks a single install-or-not question) AND no
- *    --review/--no-review flag was given.
- *    solo/team never ask — an explicit flag still overrides their preset default,
- *    but absent one, `review` stays undefined for the init generator to default.
+ *  - review: asked with a single yes/no (default no) ONLY when the resolved preset is
+ *    quick-start, no --review/--no-review flag was given, and there is a terminal.
+ *    AI review needs a provider API key and a repository secret, so this CLI leaves it
+ *    off unless asked: quick-start without an answer and solo without a flag pass
+ *    `--review=false` to init. team keeps init's own default (on): `review` stays
+ *    undefined. add-review adds it to any workspace later.
  *
- * NOTE: "quick-start is the only preset that asks about review" is this CLI's own rule,
- * but it mirrors what
- * `packages/template-engine/src/presets/preset-config.ts` encodes (quick-start is
- * opt-in, solo/team default review on) without importing it — the CLI must not
- * depend on template-engine. Like `types.ts`'s enum copies,
- * this is a deliberate hand-synced literal: if a preset's review default ever
- * changes there, update this question gate to match.
+ * NOTE: the init generator's own preset defaults
+ * (`packages/template-engine/src/presets/preset-config.ts`: quick-start off, solo/team
+ * on) are unchanged; this CLI decides solo by passing the flag. The CLI must not depend
+ * on template-engine, so `reviewWillBeOn` below is a deliberate hand-synced literal of
+ * the result.
  */
 export async function collectMissingInputs(input: PromptInput, ask: Ask): Promise<PromptResult> {
   const preset = input.preset ?? (await askChoice(ask, `Preset (${PRESET_VALUES.join('/')}): `, PRESET_VALUES));
@@ -159,12 +157,14 @@ export async function collectMissingInputs(input: PromptInput, ask: Ask): Promis
   const aiHosts = input.aiHosts ?? (input.interactive ? await askAiHosts(ask, input.installedHosts) : [...DEFAULT_AI_HOSTS]);
 
   let review = input.review;
-  if (review === undefined && preset === 'quick-start') {
+  if (review === undefined && preset === 'quick-start' && input.interactive) {
     const answer = await ask('Enable AI PR review? (y/N): ');
     review = parseYesNo(answer);
   }
+  // Off unless asked for; team keeps init's default (see the note above).
+  if (review === undefined && preset !== 'team') review = false;
 
-  // The provider is asked only when review will be on: an explicit yes, or solo/team's own
+  // The provider is asked only when review will be on: an explicit yes, or team's own
   // default (the same hand-synced rule as the question above). Enter keeps init's default.
   let reviewProvider = input.reviewProvider;
   if (reviewProvider === undefined && reviewWillBeOn(preset, review) && input.interactive) {
@@ -174,10 +174,10 @@ export async function collectMissingInputs(input: PromptInput, ask: Ask): Promis
   return { preset, frontend, backend, locale, aiHosts, review, reviewProvider };
 }
 
-/** Whether init will set up AI PR review: an explicit --review / --no-review, else every preset
- * but quick-start (hand-synced with template-engine's preset defaults, like the question). */
+/** Whether init will set up AI PR review: an explicit --review / --no-review, else only for
+ * team (see collectMissingInputs). */
 export function reviewWillBeOn(preset: CliPreset, review: boolean | undefined): boolean {
-  return review ?? preset !== 'quick-start';
+  return review ?? preset === 'team';
 }
 
 /** `--review-provider` with review off is refused rather than dropped without a word. Undefined
@@ -190,7 +190,7 @@ export function reviewProviderConflict(
   if (reviewProvider === undefined) return undefined;
   if (review === false) return '--review-provider needs AI PR review on, but --no-review was passed (or review was declined): drop one of them.';
   if (preset === undefined || reviewWillBeOn(preset, review)) return undefined;
-  return '--review-provider needs AI PR review on, and the quick-start preset leaves it off: add --review, or drop --review-provider.';
+  return `--review-provider needs AI PR review on, and the ${preset} preset leaves it off: add --review, or drop --review-provider.`;
 }
 
 export function reviewProviderQuestion(firstHost: CliAiHost): string {
