@@ -1,4 +1,4 @@
-import { renderNoRoundNotice, renderNotRunNotice, renderRoundLimitNotice, renderUnparseableNotice, renderVerdictComment, renderVerdictToolMissingNotice, VERDICT_MARKER } from './verdict-comment.ts';
+import { renderNoRoundNotice, renderNotRunNotice, renderRoundLimitNotice, renderSeveralSummariesNotice, renderUnparseableNotice, renderVerdictComment, renderVerdictToolMissingNotice, VERDICT_MARKER } from './verdict-comment.ts';
 
 describe('renderVerdictComment', () => {
   const history = [
@@ -77,6 +77,16 @@ describe('renderVerdictToolMissingNotice', () => {
     expect(notice).toContain('devDependency');
     expect(notice).toContain(locale === 'en' ? 'delete the review workflow' : '리뷰 워크플로를 지우세요');
     expect(notice).toContain(locale === 'en' ? 'the review check fails' : 'review 체크는 실패합니다');
+    expect(notice).not.toContain('green');
+  });
+});
+
+describe('renderSeveralSummariesNotice', () => {
+  it.each(['en', 'ko'] as const)('%s: carries the verdict marker, says the check fails, and names the commit', (locale) => {
+    const notice = renderSeveralSummariesNotice(locale, 'abcdef1234567');
+    expect(notice).toContain(VERDICT_MARKER);
+    expect(notice).toContain('⛔');
+    expect(notice).toContain('abcdef1');
     expect(notice).not.toContain('green');
   });
 });

@@ -282,6 +282,44 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       expect(logs).toContain('::error title=AI review summary unreadable::');
     });
 
+    it('more than one round from this run: blocked=true with the several-summaries notice', () => {
+      const { result, outputs, logs } = run([round(40), round(70), round(80)]);
+      expect(result.exitCode).toBe(0);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['block-reason']).toBe('several-summaries');
+      expect(outputs['comment-body']).toContain('more than one review summary');
+      expect(logs).toContain('::error title=Several AI review summaries::');
+    });
+
+    it("a round from another app's bot account does not count", () => {
+      const other = { ...round(70), user: { login: 'other-app[bot]', type: 'Bot' } };
+      const { outputs } = run([other]);
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['block-reason']).toBe('no-summary');
+    });
+
+    it('rounds from the workflow token count, as for the providers that post with it', () => {
+      const posted = { ...round(70), user: { login: 'github-actions[bot]', type: 'Bot' } };
+      expect(run([posted]).outputs['blocked']).toBe('false');
+    });
+
+    it('ARCHWEAVE_REVIEW_AUTHOR narrows the rounds to that one account', () => {
+      const written: string[] = [];
+      const posted = { ...round(70), user: { login: 'github-actions[bot]', type: 'Bot' } };
+      runReviewVerdictBin({ ...RAN, ARCHWEAVE_REVIEW_AUTHOR: 'claude[bot]' }, stubExec(JSON.stringify([posted]), []), (_p, text) => written.push(text));
+      const outputs = parseOutputs(written.join(''));
+      expect(outputs['blocked']).toBe('true');
+      expect(outputs['block-reason']).toBe('no-summary');
+    });
+
+    it('the verdict comment is still found when the rounds are narrowed to another account', () => {
+      const written: string[] = [];
+      runReviewVerdictBin({ ...RAN, ARCHWEAVE_REVIEW_AUTHOR: 'claude[bot]' }, stubExec(JSON.stringify([verdictComment(50), round(70)]), []), (_p, text) => written.push(text));
+      const outputs = parseOutputs(written.join(''));
+      expect(outputs['blocked']).toBe('false');
+      expect(outputs['previous-comment-id']).toBe('50');
+    });
+
     it('a human comment carrying the marker never counts as the summary', () => {
       const { outputs } = run([{ id: 70, user: { login: 'someone', type: 'User' }, body: `${ROUND_MARKER}\n${FINDINGS_MARKER}\n\`\`\`json\n{"schema":"archweave/findings@1","findings":[]}\n\`\`\`` }]);
       expect(outputs['blocked']).toBe('true');

@@ -35,6 +35,11 @@ const UNREADABLE_SUMMARY_NOTICE: Record<ReviewLocale, string> = {
   ko: '⛔ AI 리뷰 요약의 findings 블록을 기계 판독하지 못해(누락 또는 손상) 이 커밋의 verdict가 없고, review 체크는 실패합니다. 이 PR을 직접 리뷰하거나, 모든 잡을 다시 실행해 다시 리뷰받으세요.',
 };
 
+const SEVERAL_SUMMARIES_NOTICE: Record<ReviewLocale, string> = {
+  en: '⛔ This run posted more than one review summary for this commit, so there is no single verdict and the review check fails. Re-run all jobs to review it again, or review this PR manually.',
+  ko: '⛔ 이번 실행이 이 커밋에 대한 리뷰 요약을 두 개 이상 게시해서 하나의 verdict로 정할 수 없고, review 체크는 실패합니다. 모든 잡을 다시 실행해 다시 리뷰받거나, 이 PR을 직접 리뷰하세요.',
+};
+
 /** The line naming the judged commit, for an abbreviated SHA (or a placeholder a workflow script
  * fills in). */
 export function renderCommitLine(locale: ReviewLocale, shortSha: string): string {
@@ -112,6 +117,12 @@ export function renderNoSummaryNotice(locale: ReviewLocale, headSha?: string): s
  * or none at all): the latest round belongs to an earlier commit and is not judged again. */
 export function renderNoRoundNotice(locale: ReviewLocale, headSha?: string): string {
   return withHead([VERDICT_MARKER, NO_ROUND_NOTICE[locale]], locale, headSha);
+}
+
+/** This run's review left more than one round for the commit; the check fails (see
+ * runVerdictGate). */
+export function renderSeveralSummariesNotice(locale: ReviewLocale, headSha?: string): string {
+  return withHead([VERDICT_MARKER, SEVERAL_SUMMARIES_NOTICE[locale]], locale, headSha);
 }
 
 /** The verdict comment is deliberately terse: the model's own summary carries

@@ -273,6 +273,7 @@ export function renderBlockStep(maxRounds: ReviewMaxRounds): string {
     '      block) echo "The AI verdict is BLOCK: fix the P0/P1 findings in the verdict comment and push." ;;',
     '      no-summary) echo "The AI review posted no summary for this commit, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      unreadable) echo "The AI review summary has no readable findings block, so there is no verdict. Re-run all jobs to review it again, or review it yourself." ;;',
+    '      several-summaries) echo "The AI review posted more than one summary for this commit, so there is no single verdict. Re-run all jobs to review it again, or review it yourself." ;;',
     '      tool-missing) echo "The verdict tool is not installed in this workspace, so there is no verdict. Install @clearlydev/nx-archweave as a devDependency, or delete the review workflow to switch review off." ;;',
     `      rounds) echo "The automated review round limit (${maxRounds}) is reached, so the AI review did not review this commit and there is no verdict. To merge it, use your branch ruleset's bypass, or raise maxRounds and run add-review again." ;;`,
     '      *) echo "The review check failed. See the verdict comment on this pull request." ;;',

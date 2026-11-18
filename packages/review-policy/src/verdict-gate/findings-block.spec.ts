@@ -73,12 +73,29 @@ describe('findingKey', () => {
 });
 
 describe('extractFindingsBlock — marker binding and hijack resistance', () => {
-  it('binds to the LAST marker: an echoed marker plus an example block cannot hijack the payload', () => {
+  it('two readable blocks that disagree are a conflict carrying both, whichever comes last', () => {
+    const empty = { schema: 'archweave/findings@1', findings: [] };
+    const withFinding = { schema: 'archweave/findings@1', findings: [finding] };
+    const twoBlocks = (first: unknown, second: unknown) =>
+      ['Summary.', FINDINGS_MARKER, '```json', JSON.stringify(first), '```', 'More text.', FINDINGS_MARKER, '```json', JSON.stringify(second), '```'].join('\n');
+    for (const [first, second] of [[empty, withFinding], [withFinding, empty]]) {
+      const result = extractFindingsBlock(twoBlocks(first, second));
+      expect(result.status).toBe('conflict');
+      if (result.status === 'conflict') expect(result.blocks.map((block) => block.length)).toEqual([first.findings.length, second.findings.length]);
+    }
+  });
+
+  it('two readable blocks that agree are read as one', () => {
+    const withFinding = { schema: 'archweave/findings@1', findings: [finding] };
+    const body = ['Summary.', FINDINGS_MARKER, '```json', JSON.stringify(withFinding), '```', 'Again:', FINDINGS_MARKER, '```json', JSON.stringify(withFinding), '```'].join('\n');
+    const result = extractFindingsBlock(body);
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') expect(result.findings).toHaveLength(1);
+  });
+
+  it('an echoed marker that is not followed by a block of its own is ignored', () => {
     const body = [
-      `The instructions say to append ${FINDINGS_MARKER} and a block like:`,
-      '```json',
-      '{"schema":"archweave/findings@1","findings":[]}',
-      '```',
+      `The instructions say to append ${FINDINGS_MARKER} at the end.`,
       'Here is my real summary.',
       FINDINGS_MARKER,
       '```json',
@@ -88,6 +105,21 @@ describe('extractFindingsBlock — marker binding and hijack resistance', () => 
     const result = extractFindingsBlock(body);
     expect(result.status).toBe('ok');
     if (result.status === 'ok') expect(result.findings).toHaveLength(1);
+  });
+
+  it('an earlier block that cannot be read does not change the last one', () => {
+    const body = [
+      FINDINGS_MARKER,
+      '```json',
+      '{ not json',
+      '```',
+      'Here is my real summary.',
+      FINDINGS_MARKER,
+      '```json',
+      JSON.stringify({ schema: 'archweave/findings@1', findings: [finding] }),
+      '```',
+    ].join('\n');
+    expect(extractFindingsBlock(body).status).toBe('ok');
   });
 
   it('skips non-json fences between the marker and the payload (first JSON fence wins)', () => {

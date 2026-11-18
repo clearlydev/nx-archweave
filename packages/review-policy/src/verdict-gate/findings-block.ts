@@ -6,7 +6,10 @@ export const FINDINGS_SCHEMA_ID = 'archweave/findings@1';
 export type FindingsBlockResult =
   | { status: 'ok'; findings: ReviewFinding[] }
   | { status: 'missing' }
-  | { status: 'invalid' };
+  | { status: 'invalid' }
+  /** Readable blocks after several markers that disagree: no single verdict. `blocks` holds each
+   * readable one, last included. */
+  | { status: 'conflict'; blocks: ReviewFinding[][] };
 
 const PRIORITIES: readonly ReviewPriority[] = ['P0', 'P1', 'P2', 'P3', 'Nit'];
 
@@ -18,7 +21,9 @@ export function findingKey(f: Pick<ReviewFinding, 'file' | 'lineRange' | 'catego
  * payload (non-json fences in between are skipped). No marker → missing.
  * Marker present but no json fence, unparseable payload, wrong schema id, or
  * any element breaking a required field → invalid (whole-block poisoning:
- * a partial verdict could fail open, and fail-open is the unsafe direction). */
+ * a partial verdict could fail open, and fail-open is the unsafe direction).
+ * An earlier marker followed by its own readable block must agree with the
+ * last one; readable blocks that disagree can't be judged → conflict. */
 export function extractFindingsBlock(commentBody: string): FindingsBlockResult {
   // LAST marker on purpose: the contract puts the block at the END of the
   // comment, and models sometimes echo the marker while narrating the format —
@@ -26,6 +31,23 @@ export function extractFindingsBlock(commentBody: string): FindingsBlockResult {
   // CRLF bodies (web-edited comments) are tolerated.
   const markerIndex = commentBody.lastIndexOf(FINDINGS_MARKER);
   if (markerIndex === -1) return { status: 'missing' };
+  const last = extractAfter(commentBody, markerIndex);
+  if (last.status !== 'ok') return last;
+  // An echoed marker that isn't followed by a readable block of its own is ignored, as before.
+  const disagreeing: ReviewFinding[][] = [];
+  for (let index = commentBody.indexOf(FINDINGS_MARKER); index !== -1 && index < markerIndex; index = commentBody.indexOf(FINDINGS_MARKER, index + 1)) {
+    const earlier = extractAfter(commentBody, index);
+    if (earlier.status === 'ok' && !sameFindings(earlier.findings, last.findings)) disagreeing.push(earlier.findings);
+  }
+  return disagreeing.length === 0 ? last : { status: 'conflict', blocks: [...disagreeing, last.findings] };
+}
+
+function sameFindings(a: readonly ReviewFinding[], b: readonly ReviewFinding[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** The block that follows the marker at `markerIndex`. */
+function extractAfter(commentBody: string, markerIndex: number): FindingsBlockResult {
   const after = commentBody.slice(markerIndex + FINDINGS_MARKER.length);
   const open = /```json[ \t]*\r?\n/.exec(after);
   if (!open) return { status: 'invalid' };

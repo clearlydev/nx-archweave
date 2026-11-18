@@ -193,6 +193,35 @@ describe('runVerdictGate — the AI review ran in this workflow run (reviewRan)'
     if (result.kind === 'unparseable') expect(result.commentBody).toContain('review check fails');
   });
 
+  it('more than one round after the watermark is no single verdict: several-summaries, whatever they say', () => {
+    const both = [{ ...roundComment([f('P1')]), id: 70 }, { ...roundComment([]), id: 80 }];
+    const result = runVerdictGate({ ...ran, comments: both, roundAfterId: 60 });
+    expect(result.kind).toBe('several-summaries');
+    if (result.kind === 'several-summaries') {
+      expect(result.commentBody).toContain('more than one review summary');
+      expect(result.commentBody).toContain('Commit `abcdef1`');
+    }
+  });
+
+  it('rounds before the watermark do not count toward several', () => {
+    const result = runVerdictGate({ ...ran, comments: [{ ...roundComment([]), id: 40 }, { ...roundComment([]), id: 70 }], roundAfterId: 60 });
+    expect(result.kind).toBe('verdict');
+  });
+
+  it('without reviewRan, several rounds after the watermark are judged by the most severe one', () => {
+    const judge = (comments: { body: string; id: number }[]) => runVerdictGate({ maxRounds: 3, locale: 'en', comments, roundAfterId: 60 });
+    expect(judge([{ ...roundComment([f('P1')]), id: 70 }, { ...roundComment([]), id: 80 }])).toMatchObject({ kind: 'verdict', verdict: 'BLOCK', exitCode: 1 });
+    expect(judge([{ ...roundComment([]), id: 70 }, { ...roundComment([f('P2')]), id: 80 }])).toMatchObject({ kind: 'verdict', verdict: 'CHANGES_RECOMMENDED' });
+    expect(judge([{ body: `${ROUND_MARKER}\nx`, id: 70 }, { body: `${ROUND_MARKER}\ny`, id: 80 }])).toMatchObject({ kind: 'unparseable', failClosed: false });
+  });
+
+  it('without reviewRan, findings blocks that disagree are judged by the most severe one', () => {
+    const block = (findings: unknown[]) => `${FINDINGS_MARKER}\n\`\`\`json\n${JSON.stringify({ schema: 'archweave/findings@1', findings })}\n\`\`\``;
+    const body = [ROUND_MARKER, block([f('P1')]), block([])].join('\n');
+    expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [{ body }] })).toMatchObject({ kind: 'verdict', verdict: 'BLOCK', exitCode: 1 });
+    expect(runVerdictGate({ ...ran, comments: [{ body, id: 70 }], roundAfterId: 60 })).toMatchObject({ kind: 'unparseable', failClosed: true });
+  });
+
   it('without reviewRan nothing changes: no-review, no-round and a green unparseable', () => {
     expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [] }).kind).toBe('no-review');
     expect(runVerdictGate({ maxRounds: 3, locale: 'en', comments: [{ ...roundComment([]), id: 40 }], roundAfterId: 60 }).kind).toBe('no-round');
