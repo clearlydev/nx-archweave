@@ -166,7 +166,11 @@ function buildNextSteps(input: CreatePlanInput): string[] {
     '(create-nx-archweave never commits for you — review what the init report above generated first.)',
   ];
 
-  if (input.review === false) return lines;
+  if (input.review === false) {
+    const nxG = nxGenerateCommand(input.packageManager);
+    lines.push(`To add AI PR review later, preview it with ${nxG} @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.`);
+    return lines;
+  }
 
   // Deliberately vague about WHICH secret: the init report above prints the
   // authoritative secret name for the chosen provider (owned by

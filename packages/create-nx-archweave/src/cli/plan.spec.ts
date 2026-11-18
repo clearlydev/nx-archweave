@@ -204,13 +204,21 @@ describe('buildPlan', () => {
       ]);
     });
 
-    it('omits the review reminder entirely when review is explicitly false', () => {
+    it('with review off, points at add-review for later instead of the secret reminder', () => {
       const plan = buildPlan({ ...baseInput, review: false });
       expect(plan.nextSteps).toEqual([
         'cd my-app',
         'git add -A && git commit -m "chore: initial commit"',
         '(create-nx-archweave never commits for you — review what the init report above generated first.)',
+        'To add AI PR review later, preview it with pnpm nx g @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.',
       ]);
+    });
+
+    it('with review off, writes the add-review hint through npm exec for an npm workspace', () => {
+      const plan = buildPlan({ ...baseInput, packageManager: 'npm', review: false });
+      expect(plan.nextSteps).toContain(
+        'To add AI PR review later, preview it with npm exec nx -- g @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.',
+      );
     });
 
     it('adds a conditional review reminder when review is left undefined (preset default applies)', () => {
