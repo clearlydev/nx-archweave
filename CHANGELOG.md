@@ -1,3 +1,9 @@
+## 0.4.3 (2026-11-18)
+
+### 🩹 Fixes
+
+- leave AI review off by default in create-nx-archweave ([#27](https://github.com/clearlydev/nx-archweave/pull/27))
+
 ## 0.4.2 (2026-11-18)
 
 ### 🩹 Fixes
