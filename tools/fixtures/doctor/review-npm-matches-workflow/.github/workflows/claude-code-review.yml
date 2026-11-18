@@ -31,11 +31,17 @@ jobs:
         id: secret-gate
         env:
           REVIEW_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          REVIEW_DISABLED: ${{ vars.ARCHWEAVE_REVIEW_DISABLED }}
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_ACTOR: ${{ github.triggering_actor }}
         run: |
+          if [ "$REVIEW_DISABLED" = true ]; then
+            echo "AI review is switched off: the ARCHWEAVE_REVIEW_DISABLED repository variable is true."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -z "$REVIEW_SECRET" ]; then
             echo "AI review is not active: register the CLAUDE_CODE_OAUTH_TOKEN secret to enable it."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -167,6 +173,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           SKIP_REASON: ${{ needs.ai-review.outputs.skip-reason }}
+          REVIEW_DISABLED: ${{ vars.ARCHWEAVE_REVIEW_DISABLED }}
         run: |
           write_notice() {
             short_sha=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
@@ -187,6 +194,7 @@ jobs:
               fork) annotation='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (this pull request comes from a fork, and GitHub passes no secrets to runs from forks). A green check here does not mean the change was reviewed.' ;;
               dependabot) annotation='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (Dependabot runs receive only Dependabot secrets, and CLAUDE_CODE_OAUTH_TOKEN is not one of them). A green check here does not mean the change was reviewed.' ;;
               bot) annotation='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people). A green check here does not mean the change was reviewed.' ;;
+              disabled) annotation='AI review did not run for this commit (the ARCHWEAVE_REVIEW_DISABLED repository variable is set to true). A green check here does not mean the change was reviewed.'; notice='AI review did not run for this commit (the ARCHWEAVE_REVIEW_DISABLED repository variable is set to true). A green check here does not mean the change was reviewed.' ;;
             esac
             echo "::notice title=AI review did not run::$annotation"
             printf '%s\n' "$notice" >> "$GITHUB_STEP_SUMMARY"
@@ -210,7 +218,8 @@ jobs:
           fi
           case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in
             false/*)
-              if [ "$SKIP_REASON" = bot-run ]; then bot_run
+              if [ "$REVIEW_DISABLED" = true ]; then not_run disabled
+              elif [ "$SKIP_REASON" = bot-run ]; then bot_run
               elif [ "$SKIP_REASON" = bot ]; then not_run bot
               elif [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork
               elif [ "$PR_AUTHOR" = 'dependabot[bot]' ]; then not_run dependabot

@@ -13,6 +13,7 @@ export { REVIEW_WORKFLOW_CONTRACT } from './workflow-skeleton.ts';
 // which owns the review wiring — re-exports the gate it renders steps for.
 export {
   FINDINGS_MARKER,
+  REVIEW_DISABLED_VARIABLE,
   ROUND_MARKER,
   runVerdictGate,
   VERDICT_MARKER,

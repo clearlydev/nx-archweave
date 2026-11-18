@@ -69,10 +69,13 @@ const HEAD_LINE: Record<ReviewLocale, (sha: string) => string> = {
 };
 
 /** Why the AI review did not run although the check ends green: the run received no provider
- * secret, so it can't tell a repository with review switched off from one with it on; or a bot
+ * secret, so it can't tell a repository with review switched off from one with it on; a bot
  * account opened the pull request and wrote every commit in it, and the review runs only for
- * changes from people. */
-export type NotRunReason = 'secret' | 'fork' | 'dependabot' | 'bot';
+ * changes from people; or the repository variable switched the review off. */
+export type NotRunReason = 'secret' | 'fork' | 'dependabot' | 'bot' | 'disabled';
+
+/** The repository variable that switches the AI review off without removing anything. */
+export const REVIEW_DISABLED_VARIABLE = 'ARCHWEAVE_REVIEW_DISABLED';
 
 const NOT_RUN_REASON: Record<ReviewLocale, Record<NotRunReason, (secretName: string) => string>> = {
   en: {
@@ -80,12 +83,14 @@ const NOT_RUN_REASON: Record<ReviewLocale, Record<NotRunReason, (secretName: str
     fork: () => 'this pull request comes from a fork, and GitHub passes no secrets to runs from forks',
     dependabot: (secretName) => `Dependabot runs receive only Dependabot secrets, and ${secretName} is not one of them`,
     bot: () => 'a bot account opened this pull request and wrote all of its commits, and AI review runs only for changes from people',
+    disabled: () => `the ${REVIEW_DISABLED_VARIABLE} repository variable is set to true`,
   },
   ko: {
     secret: (secretName) => `${secretName} 시크릿이 등록되지 않음`,
     fork: () => '포크에서 온 pull request이고, GitHub는 포크 실행에 시크릿을 넘기지 않음',
     dependabot: (secretName) => `Dependabot 실행은 Dependabot 시크릿만 받는데, ${secretName}는 그중에 없음`,
     bot: () => '봇 계정이 이 pull request를 열고 모든 커밋을 작성했고, AI 리뷰는 사람이 만든 변경에만 실행됨',
+    disabled: () => `저장소 변수 ${REVIEW_DISABLED_VARIABLE}가 true로 설정됨`,
   },
 };
 

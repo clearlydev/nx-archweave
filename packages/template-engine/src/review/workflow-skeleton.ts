@@ -5,6 +5,7 @@ import {
   renderNotRunNotice,
   renderRoundLimitNotice,
   renderVerdictToolMissingNotice,
+  REVIEW_DISABLED_VARIABLE,
   ROUND_MARKER,
   VERDICT_MARKER,
   type NotRunReason,
@@ -113,8 +114,8 @@ export function renderPostReviewStep(source: { expression: string } | { file: st
   ].join('\n');
 }
 
-/** Switches the whole job off (enabled=false) when the provider secret is absent, or when a bot
- * account would get the review:
+/** Switches the whole job off (enabled=false) when the repository variable says so, when the
+ * provider secret is absent, or when a bot account would get the review:
  * - a bot account opened the pull request and wrote every commit in it: `skip-reason=bot`, and
  *   the check ends green with a notice (the review runs only for changes from people);
  * - a bot account started this run on a pull request a person opened or wrote commits in:
@@ -129,12 +130,18 @@ export function renderSecretGateStep(secretName: string): string {
     '  id: secret-gate',
     '  env:',
     `    REVIEW_SECRET: \${{ secrets.${secretName} }}`,
+    `    REVIEW_DISABLED: \${{ vars.${REVIEW_DISABLED_VARIABLE} }}`,
     '    GH_TOKEN: ${{ github.token }}',
     '    REPOSITORY: ${{ github.repository }}',
     '    PR_NUMBER: ${{ github.event.pull_request.number }}',
     // The account that started this run: on a re-run, the person who re-ran it.
     '    RUN_ACTOR: ${{ github.triggering_actor }}',
     '  run: |',
+    '    if [ "$REVIEW_DISABLED" = true ]; then',
+    `      echo "AI review is switched off: the ${REVIEW_DISABLED_VARIABLE} repository variable is true."`,
+    '      echo "enabled=false" >> "$GITHUB_OUTPUT"',
+    '      exit 0',
+    '    fi',
     '    if [ -z "$REVIEW_SECRET" ]; then',
     `      echo "AI review is not active: register the ${secretName} secret to enable it."`,
     '      echo "enabled=false" >> "$GITHUB_OUTPUT"',
@@ -199,7 +206,7 @@ export function shellQuote(text: string): string {
  * step fails the check: a commit after the round limit has no verdict. Every text is rendered
  * here; at run time only the abbreviated head SHA, checked to be hex, is filled in. */
 function renderNotRunFunction(secretName: string, maxRounds: ReviewMaxRounds, locale: ReviewLocale): string[] {
-  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot', 'bot'];
+  const reasons: NotRunReason[] = ['secret', 'fork', 'dependabot', 'bot', 'disabled'];
   const [commitBefore, commitAfter] = renderCommitLine(locale, '\u0000').split('\u0000');
   return [
     'write_notice() {',
@@ -246,10 +253,10 @@ export const JUDGE_CONDITION = "steps.ai-review-result.outputs.run == 'true'";
 
 /** First step of the `review` job, which runs whatever the AI review job did (`if: always()`).
  * Only explicit values count. A review the secret gate (`enabled=false`) switched off ends green
- * without judging, and says so (renderNotRunFunction): a bot's own pull request, or a missing
- * secret, named as a fork run or a Dependabot run when it is one, since those never receive the
- * Actions secret. A bot's run on a person's pull request hands over `block-reason=bot-run`, and
- * the job's last step fails the check. A review the
+ * without judging, and says so (renderNotRunFunction): the repository variable, a bot's own pull
+ * request, or a missing secret, named as a fork run or a Dependabot run when it is one, since
+ * those never receive the Actions secret. A bot's run on a person's pull request hands over
+ * `block-reason=bot-run`, and the job's last step fails the check. A review the
  * round gate (`allowed=false`) stopped hands over `block-reason=rounds`, and the job's last step
  * fails the check: that commit has no verdict. A review that
  * ran must also hand over its watermark (a number, 0 on a PR with no comments). Anything else — a
@@ -270,6 +277,7 @@ export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMa
     '    REPOSITORY: ${{ github.repository }}',
     '    PR_AUTHOR: ${{ github.event.pull_request.user.login }}',
     '    SKIP_REASON: ${{ needs.ai-review.outputs.skip-reason }}',
+    `    REVIEW_DISABLED: \${{ vars.${REVIEW_DISABLED_VARIABLE} }}`,
     '  run: |',
     ...renderNotRunFunction(secretName, maxRounds, locale).map((line) => `    ${line}`),
     '    if [ "$AI_REVIEW_RESULT" != success ]; then',
@@ -278,7 +286,8 @@ export function renderAiReviewResultStep(secretName: string, maxRounds: ReviewMa
     '    fi',
     '    case "$REVIEW_ENABLED/$REVIEW_ALLOWED" in',
     '      false/*)',
-    '        if [ "$SKIP_REASON" = bot-run ]; then bot_run',
+    '        if [ "$REVIEW_DISABLED" = true ]; then not_run disabled',
+    '        elif [ "$SKIP_REASON" = bot-run ]; then bot_run',
     '        elif [ "$SKIP_REASON" = bot ]; then not_run bot',
     '        elif [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then not_run fork',
     "        elif [ \"$PR_AUTHOR\" = 'dependabot[bot]' ]; then not_run dependabot",
