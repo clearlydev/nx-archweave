@@ -118,7 +118,14 @@ export default [...baseConfig, ...fsdBoundaries({ severity: 'error', cwd: import
 - **슬라이스 그룹** — 슬라이스를 묶기만 하는 폴더(`features/mypage/order`, `features/mypage/claims`)예요. 폴더에 자기 파일이 없고(그래서 `index.ts`도 없고), 하위 폴더 중 세그먼트 이름(`ui`, `model`, `api`, `lib`, `config`, 그리고 `segments`)이 없고, `index.ts`를 가진 하위 폴더가 하나 이상이면 그룹으로 봐요. 같은 그룹 안의 슬라이스끼리도 import하지 않고, 그룹 폴더 자체는 import 대상이 아니에요. `include`로 강제하고 `exclude`로 빼거나(둘 다 `<레이어 폴더>/<이름>`), `false`로 그룹을 끌 수 있어요. nx-archweave가 만든 슬라이스는 항상 `index.ts`가 있어서 그룹으로 오인되지 않아요.
 - **`sharedPublicApi`** — `segment`: `shared/ui`를 import하고 안쪽 파일에는 닿지 않아요. `component`: 컴포넌트마다 자기 공개 API(`shared/ui/button`)를 가져요. 번들을 작게 하려고 FSD가 권하는 방식이에요. `file`: `shared` 안의 파일은 직접 import해도 돼요. 다만 `shared`가 위 레이어를 import하는 건 여전히 안 돼요.
 - **`testFiles`** — 테스트 파일은 다른 슬라이스의 내부 파일을 import해도 돼요. 위 레이어 import는 테스트에서도 보고돼요.
-- **캐시** — 그룹 판정은 앱 폴더를 읽고, ESLint가 계속 떠 있는 동안(에디터)에도 변화를 반영해요. 다만 `eslint --cache`(lint-staged, 일부 에디터)는 파일 단위로 결과를 저장해서, 다른 폴더에 생긴 그룹은 그 캐시를 지운 뒤에야 반영될 수 있어요. `nx lint`는 영향이 없어요.
+- **캐시** — 그룹 판정은 앱 폴더를 읽고, ESLint가 계속 떠 있는 동안(에디터)에도 변화를 반영해요. 다만 `eslint --cache`(lint-staged, 일부 에디터)는 파일 단위로 결과를 저장해서, 다른 폴더에 생긴 그룹은 그 캐시를 지운 뒤에야 반영될 수 있어요. `nx lint`는 이 파일 단위 캐시를 쓰지 않아요. `nx lint` 자체의 작업 캐시는 아래 절을 보세요.
+
+### 기존 앱에 도입하기
+
+1. **앱이 이미 따르는 관례를 먼저 적어 주세요.** 결과를 보기 전에 `toolkit.config.json`의 `fsd`를 정해요. 앱이 `shared`의 파일을 직접 import하고 테스트가 다른 슬라이스 내부를 import하면 `"preset": "practical"`로 하고, 앱만의 폴더는 `sliceGroups`와 `segments`로 적어요. `doctor`가 import 패턴에 맞는 `sharedPublicApi` 값을 제안해요.
+2. **경고로 시작하세요.** `add-fsd-lite --enforcement=warn`은 앱의 `eslint.config.mjs`에 `severity: 'warn'`을 넣어요(`--applyEslint`를 주면 직접 쓰고, 아니면 출력하는 스니펫에 넣어요). 위반 수가 줄면 거기서 `'error'`로 바꿔요.
+3. **이미 있는 위반은 묶어 두세요.** ESLint의 bulk suppressions(`eslint --suppress-all`)가 지금 있는 위반을 기록해 두어서, 새 위반만 보고돼요. ESLint 9.24.0 이상이 필요하고, 기록은 `eslint-suppressions.json`에 남아요.
+4. **정책을 바꾼 뒤에는 Nx 캐시를 건너뛰세요.** Nx는 `nx lint` 결과를 프로젝트 파일과 ESLint 설정을 기준으로 캐시해요. 프로젝트 폴더 밖의 `toolkit.config.json`은 여기에 들어가지 않아서, 거기서 `fsd`를 고친 뒤에는 `nx lint <app> --skip-nx-cache`로 새 결과를 확인하세요.
 
 ## 제너레이터
 

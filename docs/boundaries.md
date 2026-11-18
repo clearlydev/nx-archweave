@@ -36,6 +36,8 @@ The rules work as a deny list:
 - If the `api` app is missing, `add-backend` refuses and prints the official commands to create it next to the frontend (`apps/api`).
 - **Your own tags.** If the workspace already has a tag scheme, name the role tags in `toolkit.config.json`. `add-backend` then tags the apps, writes the deny rules, and `doctor` checks them with those names. A tag already present is never added twice, and existing tags are never removed.
 - **Your own shared-types location, or none.** `sharedTypes` moves the lib and its import path, or turns it off.
+- **More than one frontend.** `add-backend` wires one frontend app. With several it refuses and lists them, so pick one with `--frontendProject=<name>`. `init` passes the app `--project` names only when it names exactly one; with `--project=web,admin`, run `add-backend --frontendProject=<name>` afterwards. Then add the frontend tag (`scope:frontend`, or your own) to the other frontend apps' `tags`: the same deny rules cover them.
+- **Constraints you already wrote.** `add-backend` writes its rules into the root ESLint config only while `depConstraints` is still Nx's allow-all default. If you have entries of your own (a second tag axis such as `type:` next to `scope:`, for example), it leaves the file as it is and prints the entries to merge. Rules for your other tag axes stay yours to write.
 
 ```jsonc
 {
