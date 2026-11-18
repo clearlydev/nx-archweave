@@ -65,6 +65,13 @@ export function renderCheckoutStep(gateCondition?: string, extraWith: string[] =
   ].join('\n');
 }
 
+/** The version of the contract between a generated review workflow and the plugin's verdict bin:
+ * which env the verdict step passes and how the bin reads the comments. It changes only when that
+ * contract does (1: the bin posting its own comment, 2: output mode, 3: the review account's
+ * rounds). The bin refuses a number it doesn't know, and doctor flags a workflow without the
+ * current one. */
+export const REVIEW_WORKFLOW_CONTRACT = 3;
+
 /** Where the review material is written for providers whose agent step gets no GitHub token. */
 export const REVIEW_MATERIAL_DIR = '.archweave-review';
 
@@ -319,6 +326,7 @@ export function renderVerdictGateStep(maxRounds: ReviewMaxRounds, locale: Review
     '    ARCHWEAVE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
     '    ARCHWEAVE_ROUND_AFTER_ID: ${{ needs.ai-review.outputs.last-comment-id }}',
     "    ARCHWEAVE_VERDICT_OUTPUT: 'github-output'",
+    `    ARCHWEAVE_WORKFLOW_CONTRACT: '${REVIEW_WORKFLOW_CONTRACT}'`,
     '  run: |',
     '    if [ -x node_modules/.bin/archweave-review-verdict ]; then',
     '      node_modules/.bin/archweave-review-verdict',

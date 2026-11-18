@@ -340,6 +340,23 @@ describe('runReviewVerdictBin — output mode (a separate job posts the comment)
       expect(outputs['previous-comment-id']).toBe('50');
     });
 
+    it('the current workflow contract is judged as usual', () => {
+      const written: string[] = [];
+      const result = runReviewVerdictBin({ ...RAN, ARCHWEAVE_WORKFLOW_CONTRACT: '3' }, stubExec(JSON.stringify([round(70)]), []), (_p, text) => written.push(text));
+      expect(result.exitCode).toBe(0);
+      expect(parseOutputs(written.join(''))['blocked']).toBe('false');
+    });
+
+    it.each(['4', '2', 'x'])('a workflow contract this release does not read (%s): exit 1, nothing judged or written', (contract) => {
+      const written: string[] = [];
+      const calls: { args: string[]; stdin?: string }[] = [];
+      const result = runReviewVerdictBin({ ...RAN, ARCHWEAVE_WORKFLOW_CONTRACT: contract }, stubExec(JSON.stringify([round(70)]), calls), (_p, text) => written.push(text));
+      expect(result.exitCode).toBe(1);
+      expect(written).toEqual([]);
+      expect(calls).toEqual([]);
+      expect(result.logs.join('\n')).toContain('::error title=Review verdict not computed::This review workflow was generated for another nx-archweave release');
+    });
+
     it('a human comment carrying the marker never counts as the summary', () => {
       const { outputs } = run([{ id: 70, user: { login: 'someone', type: 'User' }, body: `${ROUND_MARKER}\n${FINDINGS_MARKER}\n\`\`\`json\n{"schema":"archweave/findings@1","findings":[]}\n\`\`\`` }]);
       expect(outputs['blocked']).toBe('true');

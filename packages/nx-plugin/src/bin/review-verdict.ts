@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, realpathSync } from 'node:fs';
-import { runVerdictGate, VERDICT_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/template-engine';
+import { REVIEW_WORKFLOW_CONTRACT, runVerdictGate, VERDICT_MARKER, type ReviewLocale, type ReviewMaxRounds } from '@nx-archweave/template-engine';
 
 export type BinExec = (command: string, args: string[], stdin?: string) => { status: number | null; stdout: string };
 
@@ -73,6 +73,16 @@ const MISCONFIGURED_ERROR =
   'or ARCHWEAVE_MAX_ROUNDS is not a whole number from 1, so no verdict was computed. ' +
   'Regenerate the workflow with add-review --onConflict=overwrite if it was edited by hand.';
 
+/** A workflow generated for another release of the plugin: the env it passes may not mean what
+ * this bin reads, so nothing is judged. */
+function contractMismatchError(contract: string): string {
+  const shown = /^\d{1,4}$/.test(contract) ? contract : 'unknown';
+  return (
+    `::error title=Review verdict not computed::This review workflow was generated for another nx-archweave release (workflow contract ${shown}; this release reads ${REVIEW_WORKFLOW_CONTRACT}), so no verdict was computed. ` +
+    'Install the @clearlydev/nx-archweave version the workflow was generated with, or regenerate the workflow with add-review --onConflict=overwrite.'
+  );
+}
+
 /** Every adapter-level failure is a warning + exit 0 in the default mode. In output mode the
  * review job runs this bin only after the AI review ran in the same workflow run (the secret is
  * set, rounds remain, and the round gate's watermark arrived), so a green check there means this
@@ -90,6 +100,12 @@ export function runReviewVerdictBin(
   const maxRounds = Number(env['ARCHWEAVE_MAX_ROUNDS']);
   const locale: ReviewLocale = env['ARCHWEAVE_LOCALE'] === 'ko' ? 'ko' : 'en';
   const outputPath = outputModePath(env);
+  // A workflow names the contract it was generated for; one generated before the number existed
+  // names none and keeps the behavior it was written against.
+  const contract = env['ARCHWEAVE_WORKFLOW_CONTRACT'];
+  if (contract !== undefined && contract !== String(REVIEW_WORKFLOW_CONTRACT)) {
+    return { exitCode: 1, logs: [contractMismatchError(contract)] };
+  }
   if (!repo || !pr || !Number.isInteger(maxRounds) || maxRounds < 1) {
     if (outputPath !== undefined) return { exitCode: 1, logs: [MISCONFIGURED_ERROR] };
     logs.push('verdict gate: required environment missing or malformed — skipping (check stays green).');

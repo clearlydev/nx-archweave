@@ -7,6 +7,7 @@ export {
   type ReviewWorkflowInput,
   type ReviewWorkflowProvider,
 } from './provider.ts';
+export { REVIEW_WORKFLOW_CONTRACT } from './workflow-skeleton.ts';
 // Verdict-gate surface for the plugin's bin adapter: type:plugin may not
 // depend on type:policy directly (workspace depConstraints), so the engine —
 // which owns the review wiring — re-exports the gate it renders steps for.

@@ -315,6 +315,7 @@ jobs:
           ARCHWEAVE_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
           ARCHWEAVE_ROUND_AFTER_ID: \${{ needs.ai-review.outputs.last-comment-id }}
           ARCHWEAVE_VERDICT_OUTPUT: 'github-output'
+          ARCHWEAVE_WORKFLOW_CONTRACT: '3'
         run: |
           if [ -x node_modules/.bin/archweave-review-verdict ]; then
             node_modules/.bin/archweave-review-verdict
@@ -678,6 +679,7 @@ jobs:
           ARCHWEAVE_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
           ARCHWEAVE_ROUND_AFTER_ID: \${{ needs.ai-review.outputs.last-comment-id }}
           ARCHWEAVE_VERDICT_OUTPUT: 'github-output'
+          ARCHWEAVE_WORKFLOW_CONTRACT: '3'
         run: |
           if [ -x node_modules/.bin/archweave-review-verdict ]; then
             node_modules/.bin/archweave-review-verdict
@@ -1041,6 +1043,7 @@ jobs:
           ARCHWEAVE_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
           ARCHWEAVE_ROUND_AFTER_ID: \${{ needs.ai-review.outputs.last-comment-id }}
           ARCHWEAVE_VERDICT_OUTPUT: 'github-output'
+          ARCHWEAVE_WORKFLOW_CONTRACT: '3'
         run: |
           if [ -x node_modules/.bin/archweave-review-verdict ]; then
             node_modules/.bin/archweave-review-verdict
