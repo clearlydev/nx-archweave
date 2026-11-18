@@ -18,7 +18,7 @@ describe('claudeProvider', () => {
     expect(yaml).toContain('uses: anthropics/claude-code-action@');
     expect(yaml).toContain('claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}');
     expect(yaml).toContain(
-      'mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)',
+      'mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file -),Bash(gh pr diff:*),Bash(gh pr view:*)',
     );
     expect(yaml).toContain("if: steps.secret-gate.outputs.enabled == 'true' && steps.round-gate.outputs.allowed == 'true'");
     expect(yaml).toContain('You are a code reviewer focused on correctness and security.');

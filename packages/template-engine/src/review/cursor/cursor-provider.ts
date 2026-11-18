@@ -2,6 +2,7 @@ import {
   buildCorrectnessSecurityPrompt,
   renderFindingsBlockInstruction,
   buildOverEngineeringPrompt,
+  renderContentIsDataInstruction,
   REVIEW_MODES,
   type ReviewLocale,
 } from '@nx-archweave/review-policy';
@@ -9,8 +10,11 @@ import type { ReviewWorkflowInput, ReviewWorkflowProvider } from '../provider.ts
 import {
   indentBlock,
   renderCheckoutStep,
+  renderPostReviewStep,
+  renderReviewMaterialStep,
   renderReviewWorkflow,
   REVIEW_GATE_CONDITION,
+  REVIEW_MATERIAL_DIR,
   ROUND_MARKER,
 } from '../workflow-skeleton.ts';
 
@@ -32,25 +36,25 @@ const PROMPT_HEREDOC_DELIMITER = 'ARCHWEAVE_CURSOR_REVIEW_PROMPT';
  * and https://cursor.com/docs/cli/headless): there is no official Marketplace Action, so the
  * workflow installs the `cursor-agent` CLI itself (`curl https://cursor.com/install -fsS | bash`,
  * then adds its directory to `$GITHUB_PATH`) and invokes it headless via `agent --trust -p "<prompt>"`.
- * Unlike the sandboxed gpt/codex-action provider, `cursor-agent` is not sandboxed by default (the
- * docs' "full autonomy" example has the agent call `gh`/git directly) — so, like claude/gemini, the
- * model itself runs `gh pr diff` / `gh pr comment` inside the review step. */
+ * The CLI offers no documented way to run without its shell, so the agent step gets no GitHub
+ * token: it reads the material a previous step wrote, prints its review, and a later step of the
+ * job posts that as the summary comment. */
 function renderWorkflowInstructions(locale: ReviewLocale): string {
   const lines =
     locale === 'en'
       ? [
-          'Review the diff of this pull request using `gh pr diff` and `gh pr view`.',
-          'Post specific findings as inline comments and exactly one top-level summary comment.',
-          `Always include the literal marker ${ROUND_MARKER} in the top-level summary comment.`,
-          'If there are no findings that require action, post exactly one top-level comment saying so (and still include the marker).',
+          `Review this pull request. Its diff is in \`${REVIEW_MATERIAL_DIR}/pr.diff\`, and its title and description are in \`${REVIEW_MATERIAL_DIR}/pr.md\`. Read them, and read files of the checkout for context. This step has no GitHub access, so don't run \`gh\` or call the GitHub API.`,
+          'Write your entire response as a single message: report specific findings, then close with one overall summary. A later step posts that message on the pull request.',
+          `Always include the literal marker ${ROUND_MARKER} in your message.`,
+          'If there are no findings that require action, write exactly one message saying so (and still include the marker).',
           'Do not modify any code, and never approve or merge the pull request.',
           'Write summaries and explanations in English; keep file names, function names, and identifiers verbatim.',
         ]
       : [
-          '이 pull request의 diff를 `gh pr diff`와 `gh pr view`로 확인하고 리뷰하세요.',
-          '구체적 지적은 inline comment로, 전체 요약은 정확히 한 개의 top-level comment로 게시하세요.',
-          `top-level 요약 코멘트에는 반드시 리터럴 마커 ${ROUND_MARKER}를 포함하세요.`,
-          '조치가 필요한 문제가 없으면 "조치가 필요한 문제를 찾지 못했습니다."라는 top-level comment를 정확히 한 개 게시하세요(이때도 마커는 포함).',
+          `이 pull request를 리뷰하세요. diff는 \`${REVIEW_MATERIAL_DIR}/pr.diff\`에, 제목과 설명은 \`${REVIEW_MATERIAL_DIR}/pr.md\`에 있습니다. 이 파일들을 읽고, 맥락이 필요하면 체크아웃된 파일을 읽으세요. 이 스텝은 GitHub에 접근할 수 없으니 \`gh\`를 실행하거나 GitHub API를 호출하지 마세요.`,
+          '전체 응답을 하나의 메시지로 작성하세요: 구체적 지적을 적은 뒤 마지막에 전체 요약을 한 번 더 남기세요. 이 메시지는 다음 스텝이 pull request에 게시합니다.',
+          `메시지에는 반드시 리터럴 마커 ${ROUND_MARKER}를 포함하세요.`,
+          '조치가 필요한 문제가 없으면 "조치가 필요한 문제를 찾지 못했습니다."라는 메시지를 정확히 한 개 작성하세요(이때도 마커는 포함).',
           '코드를 수정하지 마세요(Do not modify any code). PR을 승인하거나 병합하지 마세요(never approve or merge).',
           '요약과 설명은 한국어로 쓰되, 파일명·함수명·식별자는 원문 그대로 유지하세요.',
         ];
@@ -59,7 +63,7 @@ function renderWorkflowInstructions(locale: ReviewLocale): string {
 
 function composePrompt(input: ReviewWorkflowInput): string {
   const mode = REVIEW_MODES[input.mode];
-  const sections = [renderWorkflowInstructions(input.locale), buildCorrectnessSecurityPrompt(input.locale, mode.promptStyle)];
+  const sections = [renderWorkflowInstructions(input.locale), renderContentIsDataInstruction(input.locale), buildCorrectnessSecurityPrompt(input.locale, mode.promptStyle)];
   if (mode.includesOverEngineering) {
     sections.push(buildOverEngineeringPrompt(input.locale));
   }
@@ -69,6 +73,9 @@ function composePrompt(input: ReviewWorkflowInput): string {
   return sections.join('\n\n---\n\n');
 }
 
+/** The agent's printed review, which the post step sends as the summary comment. */
+const CURSOR_REVIEW_FILE = `${REVIEW_MATERIAL_DIR}/review.md`;
+
 function buildWorkflowYaml(input: ReviewWorkflowInput): string {
   return renderReviewWorkflow(input, {
     name: 'Cursor Code Review',
@@ -77,6 +84,8 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
     idToken: false,
     reviewSteps: [
       renderCheckoutStep(REVIEW_GATE_CONDITION),
+      // The CLI reads rules, MCP servers and permissions from .cursor/ in the checkout.
+      renderReviewMaterialStep(['.cursor']),
       [
         '- name: Install cursor-agent CLI',
         `  if: ${REVIEW_GATE_CONDITION}`,
@@ -94,15 +103,15 @@ function buildWorkflowYaml(input: ReviewWorkflowInput): string {
         `  if: ${REVIEW_GATE_CONDITION}`,
         '  env:',
         `    CURSOR_API_KEY: \${{ secrets.${SECRET_NAME} }}`,
-        '    GH_TOKEN: ${{ github.token }}',
         '  run: |',
         // cursor-agent stops at "Workspace Trust Required" without --trust (2026.10.22 on
         // Actions); the folder is this run's own checkout, and forks never get the secret.
         `    agent --trust -p "$(cat <<'${PROMPT_HEREDOC_DELIMITER}'`,
         indentBlock(composePrompt(input), 4),
         `    ${PROMPT_HEREDOC_DELIMITER}`,
-        '    )"',
+        `    )" > ${CURSOR_REVIEW_FILE}`,
       ].join('\n'),
+      renderPostReviewStep({ file: CURSOR_REVIEW_FILE }),
     ],
   });
 }

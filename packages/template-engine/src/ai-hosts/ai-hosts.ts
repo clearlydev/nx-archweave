@@ -18,7 +18,8 @@ export interface AiHostDefinition {
 export const AI_HOSTS: readonly AiHostDefinition[] = [
   { id: 'claude-code', label: 'Claude Code', nxAgent: 'claude', rulesFile: 'CLAUDE.md', reviewProvider: 'claude' },
   { id: 'codex', label: 'Codex', nxAgent: 'codex', rulesFile: 'AGENTS.md', reviewProvider: 'gpt' },
-  { id: 'cursor', label: 'Cursor', nxAgent: 'cursor', rulesFile: 'AGENTS.md', reviewProvider: 'cursor' },
+  // The cursor review provider is picked only with --review-provider=cursor, so it is never a default.
+  { id: 'cursor', label: 'Cursor', nxAgent: 'cursor', rulesFile: 'AGENTS.md', reviewProvider: 'claude' },
   { id: 'gemini-cli', label: 'Gemini CLI', nxAgent: 'gemini', rulesFile: 'AGENTS.md', reviewProvider: 'gemini' },
 ];
 

@@ -5,7 +5,7 @@ describe('AI hosts', () => {
     expect(AI_HOSTS.map((host) => [host.id, host.nxAgent, host.rulesFile, host.reviewProvider])).toEqual([
       ['claude-code', 'claude', 'CLAUDE.md', 'claude'],
       ['codex', 'codex', 'AGENTS.md', 'gpt'],
-      ['cursor', 'cursor', 'AGENTS.md', 'cursor'],
+      ['cursor', 'cursor', 'AGENTS.md', 'claude'], // the cursor review provider is never a default
       ['gemini-cli', 'gemini', 'AGENTS.md', 'gemini'],
     ]);
     expect(DEFAULT_AI_HOSTS).toEqual(['claude-code']);

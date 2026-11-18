@@ -65,6 +65,47 @@ export function renderCheckoutStep(gateCondition?: string, extraWith: string[] =
   ].join('\n');
 }
 
+/** Where the review material is written for providers whose agent step gets no GitHub token. */
+export const REVIEW_MATERIAL_DIR = '.archweave-review';
+
+/** Writes what the review reads (the pull request's diff, and its title and description) into
+ * files with the workflow's token, so the provider step that follows needs no GitHub token. Only
+ * the title and body are requested: `gh pr view`'s default output also reads the commit's check
+ * status, which this job's token has no permission for.
+ * `removePaths` is configuration the provider's CLI would read from the checkout; it is removed
+ * so only the settings this workflow passes apply. */
+export function renderReviewMaterialStep(removePaths: readonly string[]): string {
+  return [
+    '- name: Prepare review material',
+    `  if: ${REVIEW_GATE_CONDITION}`,
+    '  env:',
+    '    GH_TOKEN: ${{ github.token }}',
+    '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+    '  run: |',
+    ...(removePaths.length > 0 ? [`    rm -rf -- ${removePaths.map(shellQuote).join(' ')}`] : []),
+    `    mkdir -p ${REVIEW_MATERIAL_DIR}`,
+    `    gh pr diff "$PR_NUMBER" > ${REVIEW_MATERIAL_DIR}/pr.diff`,
+    `    gh pr view "$PR_NUMBER" --json title,body --jq '"# " + .title + "\\n\\n" + (.body // "")' > ${REVIEW_MATERIAL_DIR}/pr.md`,
+  ].join('\n');
+}
+
+/** Posts the provider's review as the one top-level summary comment, with the workflow's token:
+ * from an expression passed through env (never inline in the script), or from a file. */
+export function renderPostReviewStep(source: { expression: string } | { file: string }): string {
+  return [
+    '- name: Post review comment',
+    `  if: ${REVIEW_GATE_CONDITION}`,
+    '  env:',
+    '    GH_TOKEN: ${{ github.token }}',
+    '    PR_NUMBER: ${{ github.event.pull_request.number }}',
+    ...('expression' in source ? [`    REVIEW_BODY: ${source.expression}`] : []),
+    '  run: |',
+    'expression' in source
+      ? '    printf %s "$REVIEW_BODY" | gh pr comment "$PR_NUMBER" --body-file -'
+      : `    gh pr comment "$PR_NUMBER" --body-file ${shellQuote(source.file)}`,
+  ].join('\n');
+}
+
 /** Switches the whole job off (enabled=false) when the provider secret is absent, or when a bot
  * account would get the review:
  * - a bot account opened the pull request and wrote every commit in it: `skip-reason=bot`, and

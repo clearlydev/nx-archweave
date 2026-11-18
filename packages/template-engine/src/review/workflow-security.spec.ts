@@ -205,7 +205,7 @@ describe('claude workflow: the agent\'s tools and the denial report', () => {
 
   it('allows exactly the tools of claude-code-action\'s PR-review examples: no shell at large, no API, no file writes', () => {
     expect(yaml).toContain(
-      '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"',
+      '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file -),Bash(gh pr diff:*),Bash(gh pr view:*)"',
     );
     const tools = /--allowedTools "([^"]*)"/.exec(yaml)?.[1].split(',') ?? [];
     for (const tool of tools) expect(tool).not.toMatch(/^(Bash(\(\*\))?|Bash\(gh api.*|Write|Edit|MultiEdit|NotebookEdit)$/);
@@ -282,6 +282,63 @@ describe('claude workflow: the agent\'s tools and the denial report', () => {
     const broken = runDeniedStep('not json');
     expect(broken.exitCode).toBe(0);
     expect(broken.lines.at(-1)).toMatch(/^::archweave-[0-9a-f]{32}::$/);
+  });
+});
+
+describe('gemini and cursor workflows: the agent step reads prepared files and holds no GitHub token', () => {
+  const stepNamed = (yaml: string, name: string) => {
+    const step = stepsOf(yaml).find((text) => text.includes(`- name: ${name}`));
+    if (step === undefined) throw new Error(`no step "${name}"`);
+    return step;
+  };
+
+  it.each([
+    ['gemini', 'Run Gemini review', ['.gemini', '.env']],
+    ['cursor', 'Run Cursor review', ['.cursor']],
+  ] as const)('%s: material first, an agent step without a token, then the post step', (providerId, agentStep, removed) => {
+    const yaml = render(providerId, 'pnpm');
+    const names = stepsOf(yaml).map((step) => /- name: (.+)/.exec(step)?.[1]);
+    const material = names.indexOf('Prepare review material');
+    const agent = names.indexOf(agentStep);
+    const post = names.indexOf('Post review comment');
+    expect(material).toBeGreaterThan(-1);
+    expect(agent).toBeGreaterThan(material);
+    expect(post).toBeGreaterThan(agent);
+
+    const agentText = stepNamed(yaml, agentStep);
+    expect(agentText).not.toMatch(/GITHUB_TOKEN|GH_TOKEN|github\.token/);
+    expect(agentText).not.toMatch(/inline comment/i);
+
+    const materialText = stepNamed(yaml, 'Prepare review material');
+    expect(materialText).toContain(`rm -rf -- ${removed.map((path) => `'${path}'`).join(' ')}`);
+    expect(materialText).toContain('gh pr diff "$PR_NUMBER" > .archweave-review/pr.diff');
+    // Only the fields the review reads: the default output also needs the checks permission.
+    expect(materialText).toContain(`gh pr view "$PR_NUMBER" --json title,body --jq '"# " + .title + "\\n\\n" + (.body // "")' > .archweave-review/pr.md`);
+
+    const postText = stepNamed(yaml, 'Post review comment');
+    expect(postText).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(postText).toContain('gh pr comment "$PR_NUMBER" --body-file');
+  });
+
+  it('gemini: the settings the action writes allow file reading tools only', () => {
+    const agentText = stepNamed(render('gemini', 'pnpm'), 'Run Gemini review');
+    const settings = /settings: '(.+)'/.exec(agentText)?.[1] ?? '';
+    expect(JSON.parse(settings)).toEqual({ tools: { core: ['read_file', 'grep_search'] } });
+  });
+
+  it('gemini posts the action\'s summary output through env, never inline in the script', () => {
+    const postText = stepNamed(render('gemini', 'pnpm'), 'Post review comment');
+    expect(postText).toContain('REVIEW_BODY: ${{ steps.gemini-review.outputs.summary }}');
+    expect(postText).toContain('printf %s "$REVIEW_BODY" | gh pr comment "$PR_NUMBER" --body-file -');
+  });
+});
+
+describe('claude: the summary comment rule is an exact command', () => {
+  it('allows posting the body from stdin for this pull request only, with no wildcard', () => {
+    const yaml = render('claude', 'pnpm');
+    expect(yaml).toContain('Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file -)');
+    expect(yaml).not.toContain('Bash(gh pr comment:*)');
+    expect(yaml).not.toMatch(/Bash\(gh pr comment[^)]*\*\)/);
   });
 });
 
