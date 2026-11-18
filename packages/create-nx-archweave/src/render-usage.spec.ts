@@ -11,7 +11,7 @@ describe('renderUsage', () => {
     expect(usage).toContain('--frontend <react-vite|next|none>');
     expect(usage).toContain('--backend <express|nest|none>');
     expect(usage).toContain('--locale <ko|en>');
-    expect(usage).toContain('--review, --no-review');
+    expect(usage).toContain('--review, --no-review              Force AI PR review on/off (default off; quick-start asks y/N; team: on)');
     expect(usage).toContain('--plugin-source <spec>');
     expect(usage).toContain('--package-manager <name>           npm, pnpm, yarn or bun');
     expect(usage).toContain('--ai-hosts <list>                  AI coding tools, comma-separated: claude-code, codex, cursor, gemini-cli');
