@@ -130,7 +130,13 @@ When something goes wrong:
 
 ### `--preset`
 
-Asked if omitted.
+Asked if omitted (type the preset's name).
+
+- `quick-start`: to try it out, with the fewest questions. FSD rule as a warning, agent rules, a PR template; AI review only if you answer "y".
+- `solo`: a project of your own. Like `quick-start`, plus the language question; AI review off unless `--review`.
+- `team`: a shared repository. FSD rule as an error, Team Rules, issue and PR templates, AI review on.
+
+Not sure? Start with `quick-start`. The full table is in [Presets](https://github.com/clearlydev/nx-archweave/blob/main/docs/generators.md#presets).
 
 ### `--frontend`
 
