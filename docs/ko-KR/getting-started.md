@@ -36,6 +36,12 @@ yarn nx g @clearlydev/nx-archweave:doctor          # yarn
 bun nx g @clearlydev/nx-archweave:doctor           # bun
 ```
 
+`init`을 실행하기 전에 설치를 먼저 커밋하세요. `init`은 깨끗한 작업 트리에서만 돌고, 플러그인을 설치하면 `package.json`과 lockfile이 바뀌어요.
+
+```bash
+git add package.json <lockfile> && git commit -m "chore: add nx-archweave"
+```
+
 아래 예시는 `pnpm nx g`로 써요. 다른 패키지 매니저를 쓴다면 위 블록과 같은 방식으로 같은 제너레이터를 실행하세요.
 
 > [!NOTE]
@@ -192,6 +198,44 @@ pnpm nx g @clearlydev/nx-archweave:init …
 - 어느 단계든 실패하면 바로 멈추고 복구 방법을 알려 줘요. 생성된 디렉터리는 **자동으로 지우지 않고** 그대로 둬요.
 - 실패한 단계부터 남은 단계를 순서대로 명령으로 보여 줘요. 출력만 하니까, 원인을 고친 뒤 직접 실행하면 돼요.
 
+### 생성한 뒤 처음 5분
+
+명령은 어떤 패키지 매니저에서도 되는 `npx nx`로 적었어요(`pnpm nx`, `yarn nx`, `bun nx`처럼 쓰는 패키지 매니저의 형식으로 실행해도 돼요). 앱 프로젝트 이름은 `@<이름>/web`이고, `<이름>`은 워크스페이스 이름이에요.
+
+1. 워크스페이스로 들어가요. 백엔드가 있으면 패키지 매니저의 install을 한 번 실행하세요. shared-types 패키지를 연결해요.
+
+   ```bash
+   cd my-app
+   ```
+
+2. 생성된 내용을 커밋해요. CLI는 커밋을 대신 하지 않으니, 먼저 `init` 보고서를 확인하세요.
+
+   ```bash
+   git add -A && git commit -m "chore: initial commit"
+   ```
+
+3. lint와 테스트를 돌려요. 새 워크스페이스는 둘 다 통과해요(bun과 Next.js 조합은 [알려진 문제](#생성된-워크스페이스의-알려진-문제) 참고).
+
+   ```bash
+   npx nx run-many -t lint,test
+   ```
+
+4. 앱을 실행해요(React + Vite와 Next.js 모두 `dev` 타깃이 있어요).
+
+   ```bash
+   npx nx run @my-app/web:dev
+   ```
+
+5. 첫 슬라이스를 만들어요. 슬라이스는 `apps/web/src` 아래 FSD 레이어에 들어가고, 레이어 폴더는 첫 슬라이스와 함께 생겨요.
+
+   ```bash
+   npx nx g @clearlydev/nx-archweave:feature --name=sign-in
+   ```
+
+   레이어 규칙을 어기는 import는 `nx lint`와 에디터의 ESLint에 나타나요. `quick-start`와 `solo`는 경고, `team`은 에러예요. [FSD Lite](fsd-lite.md)를 보세요.
+
+6. AI PR 리뷰가 필요하면 나중에 추가하세요: [자동 PR 리뷰](pr-review.md#설정하기).
+
 ### 백엔드 추가
 
 `--backend=express|nest`를 주면 plan에 공식 단계 2개가 추가돼요.
@@ -274,7 +318,11 @@ stdin이 TTY가 아니고 필수 입력이 빠졌다면, CLI는 명확한 메시
 
 #### `--preset`
 
-- 생략하면 CLI가 물어요.
+- 생략하면 CLI가 물어요. 프리셋 이름을 입력하세요.
+- `quick-start` — 써 보기용이에요. 질문이 가장 적어요(생성 내용은 영어, 언어 질문 없음). FSD 규칙은 경고, 에이전트 규칙, PR 템플릿을 만들고, AI 리뷰는 "y"라고 답할 때만 켜요.
+- `solo` — 혼자 하는 프로젝트용이에요. `quick-start`와 같고, 생성 내용의 언어를 물어요. `--review`를 주지 않으면 AI 리뷰는 꺼져 있어요.
+- `team` — 함께 쓰는 저장소용이에요. FSD 규칙 위반은 lint 실패, 에이전트 규칙에 Team Rules 절, 이슈·PR 템플릿, AI 리뷰 켜짐(`standard` 모드)이에요.
+- 고르기 어려우면 `quick-start`로 시작하세요. 나중에 제너레이터로 무엇이든 바꿀 수 있어요. 전체 표는 [프리셋](generators.md#프리셋)에 있어요.
 
 #### `--frontend`
 
@@ -353,9 +401,11 @@ pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
 `--dryRun`으로 `init`을 미리 본 뒤 실행하세요. 아래는 AI 리뷰 없이 `solo` 프리셋(FSD 규칙 `warn`, 에이전트 규칙, PR 템플릿)을 설정해요.
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --dryRun
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint
 ```
+
+- `--applyEslint`는 앱의 `eslint.config.mjs`에 FSD 규칙을 써요. 주지 않으면 `init`은 ESLint 설정을 건드리지 않고 붙여 넣을 두 줄만 출력해요. 그 두 줄을 넣기 전까지 규칙은 꺼져 있어요. 알아보지 못하는 설정 형태는 절대 고치지 않고, 그때도 붙여 넣을 두 줄을 출력해요.
 
 - `--preset=team`은 팀 저장소용이에요. FSD 규칙이 `error`이고, 이슈 템플릿과 AI 리뷰가 켜져요. [프리셋](generators.md#프리셋)을 보세요.
 - FSD 규칙만 쓰려면 `--agentRules=false --githubTemplates=false --review=false`를 더하세요.

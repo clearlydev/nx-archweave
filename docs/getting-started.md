@@ -36,6 +36,12 @@ yarn nx g @clearlydev/nx-archweave:doctor          # yarn
 bun nx g @clearlydev/nx-archweave:doctor           # bun
 ```
 
+Commit the install before you run `init`. `init` runs only against a clean working tree, and installing the plugin changed `package.json` and the lockfile:
+
+```bash
+git add package.json <lockfile> && git commit -m "chore: add nx-archweave"
+```
+
 The examples below use `pnpm nx g`. With another package manager, run the same generator the way the block above shows.
 
 > [!NOTE]
@@ -192,6 +198,44 @@ pnpm nx g @clearlydev/nx-archweave:init …
 - If a step fails, the CLI stops right away and tells you how to recover. It leaves the created directory in place and never deletes it for you.
 - It also prints the remaining steps, from the failed one on, as commands in order. It only prints them: fix the cause, then run them yourself.
 
+### After it's created: the first five minutes
+
+The commands use `npx nx`, which works with any package manager (or use your manager's form: `pnpm nx`, `yarn nx`, `bun nx`). The app project is `@<name>/web`, where `<name>` is the workspace name.
+
+1. Go into the workspace. With a backend, run your package manager's install once: it links the shared-types package.
+
+   ```bash
+   cd my-app
+   ```
+
+2. Commit what was generated. The CLI never commits for you, so look at the `init` report first.
+
+   ```bash
+   git add -A && git commit -m "chore: initial commit"
+   ```
+
+3. Run the lint and the tests. A fresh workspace passes both (with bun and Next.js, see [Known issues](#known-issues-in-generated-workspaces)).
+
+   ```bash
+   npx nx run-many -t lint,test
+   ```
+
+4. Start the app (React + Vite and Next.js both have a `dev` target):
+
+   ```bash
+   npx nx run @my-app/web:dev
+   ```
+
+5. Add your first slice. Slices go into the FSD layers under `apps/web/src`, and the layer folder appears with its first slice:
+
+   ```bash
+   npx nx g @clearlydev/nx-archweave:feature --name=sign-in
+   ```
+
+   An import that breaks the layer rules shows up in `nx lint` and in your editor's ESLint, as a warning on `quick-start` and `solo` and an error on `team`. See [FSD Lite](fsd-lite.md).
+
+6. Add AI PR review later if you want it: [Automated PR review](pr-review.md#set-it-up).
+
 ### Adding a backend
 
 With `--backend=express|nest`, the plan gets two official steps:
@@ -274,7 +318,11 @@ When stdin isn't a TTY and a required input is missing, the CLI fails fast with 
 
 #### `--preset`
 
-- If you leave it out, the CLI asks.
+- If you leave it out, the CLI asks: type the preset's name.
+- `quick-start` — to try it out. The fewest questions (content in English, no language question). The FSD rule warns, agent rules, a PR template; AI review only if you answer "y".
+- `solo` — a project of your own. Like `quick-start`, and it asks the language of the generated content. AI review stays off unless you pass `--review`.
+- `team` — a shared repository. The FSD rule fails the lint, agent rules with a Team Rules section, issue and PR templates, and AI review on (`standard` mode).
+- Not sure? Start with `quick-start`: you can change any of it later with the generators. The full table is in [Presets](generators.md#presets).
 
 #### `--frontend`
 
@@ -353,9 +401,11 @@ pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
 Preview `init` with `--dryRun`, then run it. This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --dryRun
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint
 ```
+
+- `--applyEslint` writes the FSD rule into the app's `eslint.config.mjs`. Without it, `init` leaves your ESLint config alone and prints the two lines to paste, so the rule isn't on until you add them. A config shape it doesn't recognize is never edited; you get the lines to paste then too.
 
 - `--preset=team` is for a team repository: the FSD rule as `error`, issue templates, and AI review on. See [Presets](generators.md#presets).
 - Only the FSD rule: add `--agentRules=false --githubTemplates=false --review=false`.
