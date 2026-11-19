@@ -197,6 +197,7 @@ verdict는 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 �
 - `review` 잡은 install script를 끄고 설치해요: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts`, `yarn install --frozen-lockfile --ignore-scripts`(yarn 1), `YARN_ENABLE_SCRIPTS=false yarn install --immutable --mode=skip-build`(yarn 2 이상), `bun install --frozen-lockfile --ignore-scripts`. verdict bin은 순수 JavaScript라 빌드 단계가 필요 없어요.
 - 모든 액션은 커밋 SHA로 고정되고, 버전은 뒤의 주석에 적혀요(`actions/checkout@<sha> # v7.0.1`). 버전 태그는 다른 코드를 가리키도록 옮길 수 있지만 커밋은 그럴 수 없어요. 이 워크플로는 프로바이더 시크릿을 다루기 때문에 고정해요. `add-review`는 `.github/dependabot.yml`이 없으면 `github-actions` 항목이 든 파일을 만들고, 파일은 있는데 그 항목이 없으면 추가할 내용을 보여 줘요. 그래서 고정된 버전도 직접 검토하는 PR로 계속 갱신돼요.
 - 모든 checkout 단계는 `persist-credentials: false`를 써요. 저장소 토큰이 `.git/config`에 남아 이후 단계에서 읽히지 않게 하려는 거예요.
+- `review` 잡은 Node 22를 `check-latest: true`로 설정해요. 그래서 러너 이미지에 옛 버전이 깔려 있어도 그 줄의 최신 패치 버전으로 돌아요. 0.4.4 전에 생성한 워크플로는 러너에 캐시된 Node 22를 써요. 반영하려면 다시 생성하세요.
 - pnpm 워크스페이스: 워크플로가 러너에서 `package.json`의 `packageManager`를 읽어요. 필드가 있으면 `pnpm/action-setup`이 그 값을 쓰고, 없으면 pnpm 10을 넘겨요.
 - 모든 잡은 GitHub 기본값 360분 대신 15분이 지나면 멈춰요(`timeout-minutes: 15`). 이렇게 멈춘 AI 리뷰는 실패로 처리돼서 `review`가 빨간색이 돼요.
 - `claude` 에이전트는 claude-code-action의 PR 리뷰 예시와 같은 도구만 써요. inline comment, `gh pr diff`, `gh pr view`, 그리고 본문을 표준 입력으로 받는 이 pull request의 `gh pr comment`(`gh pr comment <번호> --body-file -`)뿐이고, 다른 셸 명령, `gh api`, 파일 수정은 안 돼요.

@@ -90,6 +90,12 @@ describe('renderVerdictGateStep', () => {
 });
 
 describe('renderWorkspaceSetupSteps', () => {
+  it('every package manager: setup-node fetches the newest patch of the Node line (check-latest)', () => {
+    for (const pm of ['npm', 'pnpm', 'yarn', 'bun'] as const) {
+      expect(renderWorkspaceSetupSteps(pm)).toMatch(/node-version: 22\n\s+check-latest: true/);
+    }
+  });
+
   it('npm: setup-node with npm cache then npm ci with install scripts off, only when the AI review ran (token-less repos must not pay install)', () => {
     const steps = renderWorkspaceSetupSteps('npm');
     expect(steps).toContain('actions/setup-node@');
