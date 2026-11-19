@@ -4,9 +4,12 @@ One command takes you from an empty directory to a configured Nx workspace with:
 
 - an FSD Lite lint rule for the frontend app's layers (`warn` or `error` by preset), plus slice generators
 - frontend/backend boundaries as lint errors between the projects it tags, when you pick a backend
+
+and, each one optional:
+
 - AI agent rules
 - GitHub templates
-- optional AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)
+- AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta), off unless you ask for it (`team` turns it on)
 
 ```bash
 # npm

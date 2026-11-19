@@ -10,11 +10,15 @@ English | [한국어](README.ko-KR.md)
 
 ## What you get
 
-- **Feature-Sliced Design (Lite) lint rule** that knows the FSD layers and checks imports between them in your frontend app (`warn` on solo and quick-start, `error` on team), plus generators that add slices as you need them
+- **Feature-Sliced Design (Lite) lint rule** that knows the FSD layers and checks imports between them in your frontend app (`warn` on solo and quick-start, `error` on team)
 - **Frontend/backend boundaries** when you pick a backend: imports between the frontend and backend projects nx-archweave tags become lint errors
+- **Generators** that add FSD slices and segments as you need them
+
+Optional, each one on its own switch:
+
 - **AI agent rule files** for the AI coding tools you use
 - **GitHub issue and PR templates**
-- **Automated PR review** with the AI provider you choose: Claude is supported, Gemini, GPT and Cursor are in beta (fully optional)
+- **Automated PR review** with the AI provider you choose: Claude is supported, Gemini, GPT and Cursor are in beta. The create CLI leaves it off unless you ask (the `team` preset turns it on)
 
 ## Quick start
 
@@ -51,14 +55,14 @@ Nx is powerful. Still, when you start a new full-stack JS project, you have to m
 
 nx-archweave answers those five questions with opinionated, **preset-driven** generators. You can still run, preview and skip each piece on its own. Two invariants shape the whole design:
 
-1. **AI review is optional, end to end.** If you turn review off, the generated workspace contains zero review artifacts, and the library still works fully without any AI provider. If you turn review on, the generated workflow green-skips (it never fails) until you register the provider secret.
+1. **AI review is optional, end to end.** If you turn review off, the generated workspace contains zero review artifacts, and the library still works fully without any AI provider. If you turn review on, the generated workflow ends green with a notice until you register the provider secret. After that, the `review` check fails on a blocking finding, or when the AI review leaves no verdict it can read.
 2. **Generators never surprise you.** Every generator shows you what it would do before it writes anything. The workspace generators preview with `--dryRun`. The two integration generators act outside your workspace, so they only preview until you pass `--apply`. Running a generator twice changes nothing. If a precondition isn't met, the generator tells you why instead of throwing.
 
 ## Documentation
 
 - **[Getting started](docs/getting-started.md)** — installing, the create CLI's questions and flags, adding the plugin to an existing workspace
 - **[Generators and presets](docs/generators.md)** — all 16 generators and what each preset turns on
-- **[Automated PR review](docs/pr-review.md)** — providers, gates, modes and findings
+- **[Automated PR review](docs/pr-review.md)** — setting it up, providers, when the check is green or red, troubleshooting
 - **[FSD Lite](docs/fsd-lite.md)** — the layer rules, the `archweave/fsd-boundaries` ESLint rule, Steiger
 - **[Enforced boundaries](docs/boundaries.md)** — frontend/backend/shared scope rules for full-stack workspaces
 - **[Optional plugins](docs/plugins.md)** — the per-host plugin catalog, installing and verifying a plugin
