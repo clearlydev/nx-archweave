@@ -350,12 +350,16 @@ pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
 > [!TIP]
 > yarn 1 prints a banner on stdout, so use `yarn --silent nx g …` there. yarn berry doesn't need the flag.
 
-Preview `init` with `--dryRun`, then run it:
+Preview `init` with `--dryRun`, then run it. This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --dryRun
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false
 ```
+
+- `--preset=team` is for a team repository: the FSD rule as `error`, issue templates, and AI review on. See [Presets](generators.md#presets).
+- Only the FSD rule: add `--agentRules=false --githubTemplates=false --review=false`.
+- Add AI review later with `add-review` (see [Automated PR review](pr-review.md#set-it-up)).
 
 Your layout doesn't need to be Nx's default. `init` and `doctor` read the projects from your Nx configuration: a frontend in `web/`, at the workspace root, or one whose `sourceRoot` is the project folder itself all work. With more than one frontend, name them:
 
