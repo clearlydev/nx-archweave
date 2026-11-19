@@ -49,7 +49,7 @@ git add package.json <lockfile> && git commit -m "chore: add nx-archweave"
 
 ## 요구 사항
 
-- **Node** >= 22.18
+- **Node** >= 22.18. 쓰는 Node 줄의 최신 패치 버전을 쓰세요. [2026년 11월 보안 릴리스](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases)는 22.23.5, 24.22.3, 26.13.1이에요.
 - **패키지 매니저:** **npm**, **pnpm >= 10**, **yarn**(classic 1.x 또는 berry 2+) 또는 **bun**. 4종 모두 1급 지원이고, 어느 것도 기본값이 아니에요.
 
 ### 어떤 패키지 매니저를 쓰나

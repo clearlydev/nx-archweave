@@ -491,6 +491,9 @@ export function renderWorkspaceSetupSteps(packageManager: SupportedPackageManage
       `  uses: ${pinnedUses('actions/setup-node')}`,
       '  with:',
       `    node-version: ${SETUP_NODE_VERSION}`,
+      // The runner image can lag behind a Node security release; check-latest makes setup-node
+      // fetch the newest patch of the line instead of using an older cached one.
+      '    check-latest: true',
       // yarn: no setup-node cache — it would query the runner's global yarn 1 even in a
       // berry project. Corepack (shipped with Node) provides the project's own yarn below.
       // bun: setup-node has no bun cache. Node is still set up — nx and the verdict bin

@@ -39,7 +39,7 @@ npm install -D @clearlydev/nx-archweave
 | [`@clearlydev/nx-archweave`](https://www.npmjs.com/package/@clearlydev/nx-archweave) | The Nx plugin, with 16 generators |
 | [`create-nx-archweave`](https://www.npmjs.com/package/create-nx-archweave) | The CLI: one command from nothing to a configured workspace |
 
-**Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun.
+**Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun. Use the latest patch release of your Node line: the [November 2026 security release](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases) is 22.23.5, 24.22.3 or 26.13.1.
 
 > [!NOTE]
 > The tools always print their reports in English. The `--locale` option sets the language of *generated content* (agent rules, templates, review prompts). It doesn't change the CLI output.

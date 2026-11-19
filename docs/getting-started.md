@@ -49,7 +49,7 @@ The examples below use `pnpm nx g`. With another package manager, run the same g
 
 ## Requirements
 
-- **Node** >= 22.18
+- **Node** >= 22.18. Use the latest patch release of your Node line: the [November 2026 security release](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases) is 22.23.5, 24.22.3 or 26.13.1.
 - **A package manager:** **npm**, **pnpm >= 10**, **yarn** (classic 1.x or berry 2+) or **bun**. All four are first-class, and none of them is the default.
 
 ### Which package manager is used

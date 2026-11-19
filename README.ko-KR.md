@@ -39,7 +39,7 @@ npm install -D @clearlydev/nx-archweave
 | [`@clearlydev/nx-archweave`](https://www.npmjs.com/package/@clearlydev/nx-archweave) | Nx 플러그인, 제너레이터 16종 |
 | [`create-nx-archweave`](https://www.npmjs.com/package/create-nx-archweave) | CLI: 빈 디렉터리에서 설정 완료된 워크스페이스까지 한 번에 |
 
-**요구 사항:** Node >= 22.18, 그리고 npm, pnpm >= 10, yarn(classic·berry), bun 중 하나.
+**요구 사항:** Node >= 22.18, 그리고 npm, pnpm >= 10, yarn(classic·berry), bun 중 하나. 쓰는 Node 줄의 최신 패치 버전을 쓰세요. [2026년 11월 보안 릴리스](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases)는 22.23.5, 24.22.3, 26.13.1이에요.
 
 > [!NOTE]
 > 도구의 리포트는 항상 영어로 출력돼요. `--locale` 옵션은 *생성되는 콘텐츠*(에이전트 규칙, 템플릿, 리뷰 프롬프트)의 언어를 정해요. CLI 출력은 바뀌지 않아요.
