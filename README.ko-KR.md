@@ -31,6 +31,7 @@ pnpm dlx create-nx-archweave my-app
 
 # 또는 기존 워크스페이스에 플러그인 추가 (pnpm-workspace.yaml이 있는 pnpm: add -D -w)
 npm install -D @clearlydev/nx-archweave
+# init은 깨끗한 작업 트리에서만 돌아요: 설치를 먼저 커밋한 뒤 init을 실행하세요
 ```
 
 | 패키지 | 설명 |

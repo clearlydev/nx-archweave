@@ -35,6 +35,7 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 
 - **Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun. All four package managers are first-class.
 - Generators detect the workspace's real package manager from its lockfiles.
+- Commit the install before you run `init`: it changed `package.json` and the lockfile, and `init` runs only against a clean working tree.
 - The examples below use `pnpm nx g`. With another package manager, run the same generator the way the `doctor` commands above show.
 - The package ships its own code as a bundle. Its runtime dependencies are `@nx/devkit` and `jsonc-parser`, which nx already depends on at the same version.
 
@@ -43,16 +44,17 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 Preview the full run first. This writes nothing:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint --dryRun
 ```
 
 Then run it for real:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint
 ```
 
-- This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review. `--preset=team` is for a team repository: the FSD rule as `error`, issue templates, and AI review on (see [Presets](#presets)).
+- This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review.
+- `--applyEslint` writes the FSD rule into the app's `eslint.config.mjs`. Without it, `init` leaves your ESLint config alone and prints the two lines to paste, so the rule isn't on until you add them. `--preset=team` is for a team repository: the FSD rule as `error`, issue templates, and AI review on (see [Presets](#presets)).
 - Only the FSD rule: add `--agentRules=false --githubTemplates=false --review=false`.
 
 - `init` runs the content generators below according to the preset (`quick-start` | `solo` | `team`).

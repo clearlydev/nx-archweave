@@ -31,6 +31,7 @@ pnpm dlx create-nx-archweave my-app
 
 # Or add the plugin to an existing workspace (pnpm with a pnpm-workspace.yaml: add -D -w)
 npm install -D @clearlydev/nx-archweave
+# then commit the install before running init: init needs a clean working tree
 ```
 
 | Package | What it is |
