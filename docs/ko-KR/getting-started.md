@@ -350,12 +350,16 @@ pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
 > [!TIP]
 > yarn 1은 stdout에 배너를 찍어요. 그래서 yarn 1에서는 `yarn --silent nx g …`로 실행하세요. yarn berry는 이 플래그가 필요 없어요.
 
-`--dryRun`으로 `init`을 미리 본 뒤 실행하세요.
+`--dryRun`으로 `init`을 미리 본 뒤 실행하세요. 아래는 AI 리뷰 없이 `solo` 프리셋(FSD 규칙 `warn`, 에이전트 규칙, PR 템플릿)을 설정해요.
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --dryRun
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false
 ```
+
+- `--preset=team`은 팀 저장소용이에요. FSD 규칙이 `error`이고, 이슈 템플릿과 AI 리뷰가 켜져요. [프리셋](generators.md#프리셋)을 보세요.
+- FSD 규칙만 쓰려면 `--agentRules=false --githubTemplates=false --review=false`를 더하세요.
+- AI 리뷰는 나중에 `add-review`로 추가할 수 있어요([자동 PR 리뷰](pr-review.md#설정하기) 참고).
 
 레이아웃이 Nx 기본값일 필요는 없어요. `init`과 `doctor`는 Nx 설정에서 프로젝트를 읽기 때문에, 프런트가 `web/`에 있거나 워크스페이스 루트에 있거나 `sourceRoot`가 프로젝트 폴더 자체여도 동작해요. 프런트가 둘 이상이면 이름을 지정하세요.
 

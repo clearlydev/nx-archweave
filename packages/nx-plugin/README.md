@@ -4,9 +4,12 @@ Nx generators that get a workspace ready to work on with one preset:
 
 - an FSD Lite lint rule for the frontend app's layers (`warn` or `error` by preset), plus slice generators
 - frontend/backend boundaries as lint errors between the projects it tags, when there is a backend
+
+and, each one optional:
+
 - AI agent rules
 - GitHub templates
-- optional AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)
+- AI PR review with the provider you choose (Claude supported; Gemini, GPT and Cursor in beta)
 
 Starting a brand-new workspace instead? Use [`create-nx-archweave`](https://www.npmjs.com/package/create-nx-archweave). It creates the workspace, installs this plugin, and runs `init`, all in one command.
 
@@ -40,14 +43,17 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 Preview the full run first. This writes nothing:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --dryRun
 ```
 
 Then run it for real:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next
+pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false
 ```
+
+- This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review. `--preset=team` is for a team repository: the FSD rule as `error`, issue templates, and AI review on (see [Presets](#presets)).
+- Only the FSD rule: add `--agentRules=false --githubTemplates=false --review=false`.
 
 - `init` runs the content generators below according to the preset (`quick-start` | `solo` | `team`).
 - `init` requires a clean git working tree, so a partial run can be undone exactly: the report lists the files it modified (`git restore -- …`) and the files it created.
@@ -203,29 +209,15 @@ Options: `--packages`\*, `--apply`
 
 Explicit flags always win over preset defaults. create-nx-archweave passes `--review=false` for `quick-start` and `solo` unless you pass `--review`, so from the CLI only `team` starts with review on.
 
-## AI PR review
+## AI PR review (optional)
 
-Review is fully optional and isn't tied to one provider.
+`add-review` adds a GitHub Actions workflow that reviews each pull request with the provider you pick: `claude` (default) is supported; `gemini`, `gpt` and `cursor` are beta.
 
-- If review is disabled, zero review artifacts are generated.
-- If review is enabled, the workflow **green-skips** (it never fails) until you register the provider's secret.
-- A round marker stops the workflow after `--maxRounds` reviews per PR (1–5, default 3). A later commit has no AI verdict, so the `review` check fails on it; merge it with your branch ruleset's bypass.
+- Off: no review files at all.
+- On: until you register the provider's secret, the `review` check ends green with a notice. After that, it fails on a blocking finding (P0/P1) or when the review leaves no verdict it can read, so it can be a required check.
+- It doesn't replace a person's review: keep a person's approval required on pull requests.
 
-| `--provider` | Workflow file | Required secret |
-| --- | --- | --- |
-| `claude` (default) | `.github/workflows/claude-code-review.yml` | `CLAUDE_CODE_OAUTH_TOKEN` |
-| `gemini` (beta) | `.github/workflows/gemini-code-review.yml` | `GEMINI_API_KEY` |
-| `gpt` (beta) | `.github/workflows/gpt-code-review.yml` | `OPENAI_API_KEY` |
-| `cursor` (beta) | `.github/workflows/cursor-code-review.yml` | `CURSOR_API_KEY` |
-
-What each provider has been checked on, where to get its secret, and known issues: [Provider status](https://github.com/clearlydev/nx-archweave/blob/main/docs/pr-review.md#provider-status).
-
-Modes:
-
-- `fast` and `standard` review correctness & security.
-- `thorough` adds an over-engineering pass.
-
-Findings are prioritized P0–P3/Nit per the bundled review policy.
+Setup step by step, each provider's secret and status, when the check is green or red, and troubleshooting: [Automated PR review](https://github.com/clearlydev/nx-archweave/blob/main/docs/pr-review.md) ([Provider status](https://github.com/clearlydev/nx-archweave/blob/main/docs/pr-review.md#provider-status)).
 
 ## Behavioral contracts
 
