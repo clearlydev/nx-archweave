@@ -64,6 +64,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
+          check-latest: true
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -130,6 +131,7 @@ jobs:
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       # npm 10 (bundled with Node 22) crashes inside create-nx-workspace's own
@@ -214,6 +216,7 @@ jobs:
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -257,6 +260,7 @@ jobs:
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       # npm 10 crashes inside create-nx-workspace's install (see the e2e job).
@@ -357,6 +361,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
