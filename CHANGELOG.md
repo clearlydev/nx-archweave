@@ -1,3 +1,9 @@
+## 0.4.4 (2026-11-19)
+
+### 🩹 Fixes
+
+- run the review workflow on the latest Node patch release ([#30](https://github.com/clearlydev/nx-archweave/pull/30))
+
 ## 0.4.3 (2026-11-18)
 
 ### 🩹 Fixes
