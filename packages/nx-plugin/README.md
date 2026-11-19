@@ -33,7 +33,7 @@ yarn nx g @clearlydev/nx-archweave:doctor          # yarn
 bun nx g @clearlydev/nx-archweave:doctor           # bun
 ```
 
-- **Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun. All four package managers are first-class.
+- **Requirements:** Node >= 22.18, plus one of npm, pnpm >= 10, yarn (classic or berry) or bun. All four package managers are first-class. Use the latest patch release of your Node line: the [November 2026 security release](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases) is 22.23.5, 24.22.3 or 26.13.1.
 - Generators detect the workspace's real package manager from its lockfiles.
 - Commit the install before you run `init`: it changed `package.json` and the lockfile, and `init` runs only against a clean working tree.
 - The examples below use `pnpm nx g`. With another package manager, run the same generator the way the `doctor` commands above show.
