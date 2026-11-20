@@ -232,7 +232,7 @@ pnpm nx g @clearlydev/nx-archweave:init …
    npx nx g @clearlydev/nx-archweave:feature --name=sign-in
    ```
 
-   레이어 규칙을 어기는 import는 `nx lint`와 에디터의 ESLint에 나타나요. `quick-start`와 `solo`는 경고, `team`은 에러예요. [FSD Lite](fsd-lite.md)를 보세요.
+   레이어 규칙을 어기는 import는 `nx lint`와 에디터의 ESLint에 나타나요. `quick-start`는 경고, `team`은 에러예요. [FSD Lite](fsd-lite.md)를 보세요.
 
 6. AI PR 리뷰가 필요하면 나중에 추가하세요: [자동 PR 리뷰](pr-review.md#설정하기).
 
@@ -301,7 +301,7 @@ api에는 Nx 24.0 기준으로 기존 앱에 e2e 프로젝트를 추가하는 �
 | 플래그 | 값 |
 | --- | --- |
 | `<name>` | 위치 인자: 워크스페이스 디렉터리 이름 |
-| `--preset` | `quick-start` \| `solo` \| `team` |
+| `--preset` | `quick-start` \| `team` (`solo`: `quick-start`와 같음) |
 | `--frontend` | `react-vite` \| `next` \| `none` |
 | `--backend` | `express` \| `nest` \| `none` |
 | `--locale` | `ko` \| `en` |
@@ -319,8 +319,7 @@ stdin이 TTY가 아니고 필수 입력이 빠졌다면, CLI는 명확한 메시
 #### `--preset`
 
 - 생략하면 CLI가 물어요. 프리셋 이름을 입력하세요.
-- `quick-start` — 써 보기용이에요. 질문이 가장 적어요(생성 내용은 영어, 언어 질문 없음). FSD 규칙은 경고, 에이전트 규칙, PR 템플릿을 만들고, AI 리뷰는 "y"라고 답할 때만 켜요.
-- `solo` — 혼자 하는 프로젝트용이에요. `quick-start`와 같고, 생성 내용의 언어를 물어요. `--review`를 주지 않으면 AI 리뷰는 꺼져 있어요.
+- `quick-start` — 써 보기나 혼자 하는 프로젝트용이에요. FSD 규칙은 경고, 에이전트 규칙, PR 템플릿을 만들고, AI 리뷰는 "y"라고 답할 때만 켜요.
 - `team` — 함께 쓰는 저장소용이에요. FSD 규칙 위반은 lint 실패, 에이전트 규칙에 Team Rules 절, 이슈·PR 템플릿, AI 리뷰 켜짐(`standard` 모드)이에요.
 - 고르기 어려우면 `quick-start`로 시작하세요. 나중에 제너레이터로 무엇이든 바꿀 수 있어요. 전체 표는 [프리셋](generators.md#프리셋)에 있어요.
 
@@ -337,14 +336,13 @@ stdin이 TTY가 아니고 필수 입력이 빠졌다면, CLI는 명확한 메시
 #### `--locale`
 
 - 생략하면 CLI가 물어요.
-- `quick-start`는 묻지 않고 기본값 `en`을 써요.
+- `quick-start`는 엔터를 누르면 `en`이에요. 터미널이 아니면 묻지 않고 `en`을 써요.
 
 #### `--review` / `--no-review`
 
 둘 다 주지 않으면:
 
 - `quick-start`는 y/N으로 묻고, 엔터는 아니요예요. 터미널이 아니면 리뷰는 꺼진 채로 둬요.
-- `solo`는 묻지 않고 리뷰를 꺼 둬요.
 - `team`은 리뷰를 켜요.
 
 AI 리뷰는 프로바이더 API 키와 저장소 secret 등록이 필요해서, 요청하지 않으면 꺼 둬요. 나중에 `npx nx g @clearlydev/nx-archweave:add-review`로 추가할 수 있어요(먼저 `--dryRun`으로 미리 보기). 리뷰가 꺼져 있으면 CLI도 같은 안내를 출력해요.
@@ -398,11 +396,11 @@ pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
 > [!TIP]
 > yarn 1은 stdout에 배너를 찍어요. 그래서 yarn 1에서는 `yarn --silent nx g …`로 실행하세요. yarn berry는 이 플래그가 필요 없어요.
 
-`--dryRun`으로 `init`을 미리 본 뒤 실행하세요. 아래는 AI 리뷰 없이 `solo` 프리셋(FSD 규칙 `warn`, 에이전트 규칙, PR 템플릿)을 설정해요.
+`--dryRun`으로 `init`을 미리 본 뒤 실행하세요. 아래는 AI 리뷰 없이 `quick-start` 프리셋(FSD 규칙 `warn`, 에이전트 규칙, PR 템플릿)을 설정해요.
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint --dryRun
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint
+pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --applyEslint --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --applyEslint
 ```
 
 - `--applyEslint`는 앱의 `eslint.config.mjs`에 FSD 규칙을 써요. 주지 않으면 `init`은 ESLint 설정을 건드리지 않고 붙여 넣을 두 줄만 출력해요. 그 두 줄을 넣기 전까지 규칙은 꺼져 있어요. 알아보지 못하는 설정 형태는 절대 고치지 않고, 그때도 붙여 넣을 두 줄을 출력해요.

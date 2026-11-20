@@ -23,7 +23,7 @@ What the short cells leave out:
 - **Layers** — FSD Lite's default scope is five layers, four on Next.js (see Layers below, per framework). You get `widgets` only when you ask for it with the `widget` generator. The lint rule knows all six layers.
 - **Slices** — Each slice holds its segments. The `page`/`widget`/`feature`/`entity` generators scaffold `index.ts` + `model/`, and you can add more with `--segments`.
 - **Imports** — A slice never imports a sibling slice, except through `@x/<consumer>`. One lint rule checks all of these import rules inside the frontend app's source root. Imports of other workspace projects are left to Nx's module boundaries.
-- **Enforcement** — The severity is `error` for `team` and `warn` for `solo` and `quick-start`. The severity is the only preset-specific thing.
+- **Enforcement** — The severity is `error` for `team` and `warn` for `quick-start`. The severity is the only preset-specific thing.
 
 ## Layers
 

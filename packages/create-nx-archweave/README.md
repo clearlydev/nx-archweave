@@ -115,7 +115,7 @@ When something goes wrong:
 | Flag | Values |
 | --- | --- |
 | `<name>` | positional: the workspace directory name |
-| `--preset` | `quick-start` \| `solo` \| `team` |
+| `--preset` | `quick-start` \| `team` (`solo`: the same as `quick-start`) |
 | `--frontend` | `react-vite` \| `next` \| `none` |
 | `--backend` | `express` \| `nest` \| `none` |
 | `--locale` | `ko` \| `en` |
@@ -132,8 +132,7 @@ When something goes wrong:
 
 Asked if omitted (type the preset's name).
 
-- `quick-start`: to try it out, with the fewest questions. FSD rule as a warning, agent rules, a PR template; AI review only if you answer "y".
-- `solo`: a project of your own. Like `quick-start`, plus the language question; AI review off unless `--review`.
+- `quick-start`: to try it out or for a project of your own. FSD rule as a warning, agent rules, a PR template; AI review only if you answer "y".
 - `team`: a shared repository. FSD rule as an error, Team Rules, issue and PR templates, AI review on.
 
 Not sure? Start with `quick-start`. The full table is in [Presets](https://github.com/clearlydev/nx-archweave/blob/main/docs/generators.md#presets).
@@ -151,14 +150,14 @@ Not sure? Start with `quick-start`. The full table is in [Presets](https://githu
 ### `--locale`
 
 - Sets the language of generated content.
-- Asked if omitted. `quick-start` defaults to `en` without asking.
+- Asked if omitted. With `quick-start`, Enter means `en`; without a terminal it is `en`.
 
 ### `--review` / `--no-review`
 
 If you pass neither flag:
 
 - `quick-start` asks y/N (Enter means no). Without a terminal, review stays off.
-- `solo` leaves review off, without asking. `team` turns review on.
+- `team` turns review on.
 
 AI review needs a provider API key and a repository secret, so it is off unless you ask for it. Add it later with `npx nx g @clearlydev/nx-archweave:add-review` (preview with `--dryRun` first).
 

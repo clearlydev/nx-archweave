@@ -214,20 +214,21 @@ With `--apply`, `allow-builds` sets those packages to `true` in `pnpm-workspace.
 > [!IMPORTANT]
 > Flags you pass explicitly always win over preset defaults.
 
-| | `quick-start` | `solo` | `team` |
-| --- | --- | --- | --- |
-| FSD Lite | on | on | on |
-| FSD rule severity (`fsd.enforcement`) | `warn` | `warn` | `error` |
-| Agent rules | the AI hosts' files | the AI hosts' files | the AI hosts' files + Team Rules section |
-| Team Rules section | — | — | yes |
-| GitHub templates | PR only | PR only | Issue + PR |
-| Review enabled by default | **no** (opt-in) | yes | yes |
-| Review mode | `fast` | `fast` | `standard` |
-| Max review rounds | 3 | 3 | 3 |
-| Conflict policy | `merge-proposal` | `merge-proposal` | `merge-proposal` |
-| Integrations | none (always user-driven) | none | none |
+| | `quick-start` | `team` |
+| --- | --- | --- |
+| FSD Lite | on | on |
+| FSD rule severity (`fsd.enforcement`) | `warn` | `error` |
+| Agent rules | the AI hosts' files | the AI hosts' files + Team Rules section |
+| Team Rules section | — | yes |
+| GitHub templates | PR only | Issue + PR |
+| Review enabled by default | **no** (opt-in) | yes |
+| Review mode | `fast` | `standard` |
+| Max review rounds | 3 | 3 |
+| Conflict policy | `merge-proposal` | `merge-proposal` |
+| Integrations | none (always user-driven) | none |
 
 > [!NOTE]
-> - **`frontend`/`backend` aren't in the table above.** They're axes, not preset policy. All three presets ask you for the stack.
-> - **Verdict behavior is the same in all three presets.** It's a fixed algorithm, not a configuration value.
-> - **create-nx-archweave starts `solo` without review.** Unless you pass `--review`, it passes `--review=false` to `init` for `quick-start` and `solo`, so only `team` gets review by default from the CLI. Running `init` yourself keeps the table above.
+> - **`frontend`/`backend` aren't in the table above.** They're axes, not preset policy. Both presets ask you for the stack.
+> - **Verdict behavior is the same in both presets.** It's a fixed algorithm, not a configuration value.
+> - **`solo` is an alias of `quick-start`.** It used to differ only in turning review on. `--preset=solo` still works and gets quick-start's defaults, and a workspace that recorded `solo` keeps it.
+> - **Turning review off never removes it.** When `init` runs with review off in a workspace that already has a review workflow, it leaves the workflow and the review field as they are and names them in the report. Update them with `add-review`.

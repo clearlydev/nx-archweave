@@ -10,7 +10,7 @@ English | [한국어](README.ko-KR.md)
 
 ## What you get
 
-- **Feature-Sliced Design (Lite) lint rule** that knows the FSD layers and checks imports between them in your frontend app (`warn` on solo and quick-start, `error` on team)
+- **Feature-Sliced Design (Lite) lint rule** that knows the FSD layers and checks imports between them in your frontend app (`warn` on quick-start, `error` on team)
 - **Frontend/backend boundaries** when you pick a backend: imports between the frontend and backend projects nx-archweave tags become lint errors
 - **Generators** that add FSD slices and segments as you need them
 

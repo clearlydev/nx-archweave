@@ -232,7 +232,7 @@ The commands use `npx nx`, which works with any package manager (or use your man
    npx nx g @clearlydev/nx-archweave:feature --name=sign-in
    ```
 
-   An import that breaks the layer rules shows up in `nx lint` and in your editor's ESLint, as a warning on `quick-start` and `solo` and an error on `team`. See [FSD Lite](fsd-lite.md).
+   An import that breaks the layer rules shows up in `nx lint` and in your editor's ESLint, as a warning on `quick-start` and an error on `team`. See [FSD Lite](fsd-lite.md).
 
 6. Add AI PR review later if you want it: [Automated PR review](pr-review.md#set-it-up).
 
@@ -301,7 +301,7 @@ If you run `add-backend` by hand on such a workspace, you get the same result.
 | Flag | Values |
 | --- | --- |
 | `<name>` | Positional: the workspace directory name |
-| `--preset` | `quick-start` \| `solo` \| `team` |
+| `--preset` | `quick-start` \| `team` (`solo`: the same as `quick-start`) |
 | `--frontend` | `react-vite` \| `next` \| `none` |
 | `--backend` | `express` \| `nest` \| `none` |
 | `--locale` | `ko` \| `en` |
@@ -319,8 +319,7 @@ When stdin isn't a TTY and a required input is missing, the CLI fails fast with 
 #### `--preset`
 
 - If you leave it out, the CLI asks: type the preset's name.
-- `quick-start` — to try it out. The fewest questions (content in English, no language question). The FSD rule warns, agent rules, a PR template; AI review only if you answer "y".
-- `solo` — a project of your own. Like `quick-start`, and it asks the language of the generated content. AI review stays off unless you pass `--review`.
+- `quick-start` — to try it out or for a project of your own. The FSD rule warns, agent rules, a PR template; AI review only if you answer "y".
 - `team` — a shared repository. The FSD rule fails the lint, agent rules with a Team Rules section, issue and PR templates, and AI review on (`standard` mode).
 - Not sure? Start with `quick-start`: you can change any of it later with the generators. The full table is in [Presets](generators.md#presets).
 
@@ -337,14 +336,13 @@ When stdin isn't a TTY and a required input is missing, the CLI fails fast with 
 #### `--locale`
 
 - If you leave it out, the CLI asks.
-- `quick-start` doesn't ask. It defaults to `en`.
+- With `quick-start`, Enter means `en`. Without a terminal it is `en` without asking.
 
 #### `--review` / `--no-review`
 
 If you pass neither flag:
 
 - `quick-start` asks y/N, and Enter means no. Without a terminal, review stays off.
-- `solo` leaves review off, without asking.
 - `team` turns review on.
 
 AI review needs a provider API key and a repository secret, so it is off unless you ask for it. Add it to the workspace later with `npx nx g @clearlydev/nx-archweave:add-review` (preview with `--dryRun` first); the CLI prints the same hint when review is off.
@@ -398,11 +396,11 @@ pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
 > [!TIP]
 > yarn 1 prints a banner on stdout, so use `yarn --silent nx g …` there. yarn berry doesn't need the flag.
 
-Preview `init` with `--dryRun`, then run it. This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review:
+Preview `init` with `--dryRun`, then run it. This sets up the `quick-start` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint --dryRun
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint
+pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --applyEslint --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --applyEslint
 ```
 
 - `--applyEslint` writes the FSD rule into the app's `eslint.config.mjs`. Without it, `init` leaves your ESLint config alone and prints the two lines to paste, so the rule isn't on until you add them. A config shape it doesn't recognize is never edited; you get the lines to paste then too.
