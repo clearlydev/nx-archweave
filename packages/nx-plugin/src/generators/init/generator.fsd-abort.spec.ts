@@ -27,7 +27,7 @@ describe('runInit — fsd throw folds into an aborted-style section, pipeline co
       throw new Error('boom: unexpected add-fsd-lite failure');
     });
 
-    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    const report = runInit(tree, { preset: 'quick-start', review: true, frontend: 'react-vite' }, CLEAN);
 
     const fsd = report.sections.find((s) => s.id === 'fsd');
     expect(fsd?.enabled).toBe(true);

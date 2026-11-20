@@ -117,39 +117,28 @@ describe('runInit — preset compositions', () => {
     expect(review?.report).toBeNull();
   });
 
-  it('solo: agent rules for the default host (Claude Code → CLAUDE.md), pr-only github templates, review on (fast mode)', () => {
+  it('solo, an alias of quick-start: agent rules for the default host, pr-only github templates, review off, a note', () => {
     const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
 
     const agentRules = section(report, 'agentRules');
     if (agentRules?.report?.kind === 'agentRules') {
       expect(agentRules.report.report.files.map((f) => f.filePath)).toEqual(['CLAUDE.md']);
+      expect(agentRules.report.report.teamRules).toBe(false);
     } else {
       throw new Error('expected agentRules report');
     }
-
-    const review = section(report, 'review');
-    expect(review?.enabled).toBe(true);
-    if (review?.report?.kind === 'review') {
-      expect(review.report.report.workflowPath).toBe('.github/workflows/claude-code-review.yml');
-    } else {
-      throw new Error('expected review report');
-    }
-    const config = JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string);
-    expect(config.review.mode).toBe('fast');
-
-    // team-preset-extras: solo keeps warn-level enforcement and no team section
     const fsd = section(report, 'fsd');
     if (fsd?.report?.kind === 'fsd') {
       expect(fsd.report.report.enforcement).toBe('warn');
     } else {
       throw new Error('expected fsd report');
     }
-    if (agentRules?.report?.kind === 'agentRules') {
-      expect(agentRules.report.report.teamRules).toBe(false);
-    }
-    expect(tree.read('CLAUDE.md', 'utf-8')).toBe(
-      `${renderAgentRulesBlock(composeAgentRules({ files: ['CLAUDE.md'], locale: 'en', teamRules: false, fsdStructure: true })[0].content)}\n`,
-    );
+    expect(section(report, 'review')).toMatchObject({ enabled: false, report: null, keptFiles: [] });
+    expect(tree.exists('.github/workflows/claude-code-review.yml')).toBe(false);
+    expect(renderInitReport(report)).toContain('Note: solo is now an alias of quick-start');
+    // the recorded value stays what was passed, so a rerun changes nothing
+    expect(JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string).preset).toBe('solo');
+    expect(renderInitReport(runInit(tree, { preset: 'quick-start', frontend: 'react-vite' }, CLEAN))).not.toContain('alias');
   });
 
   it('team: issue+pr github templates, review on (standard mode), error-level enforcement, team rules section', () => {
@@ -314,20 +303,20 @@ describe('runInit — toolkit.config.json records the preset choices', () => {
   });
 
   it('reviewProvider: the option wins, then the recorded one, then the first AI host\'s', () => {
-    runInit(tree, { preset: 'solo', frontend: 'next', aiHosts: ['codex'] }, CLEAN);
+    runInit(tree, { preset: 'quick-start', review: true, frontend: 'next', aiHosts: ['codex'] }, CLEAN);
     expect(JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string).review.provider).toBe('gpt');
-    runInit(tree, { preset: 'solo', frontend: 'next', reviewProvider: 'gemini' }, CLEAN);
+    runInit(tree, { preset: 'quick-start', review: true, frontend: 'next', reviewProvider: 'gemini' }, CLEAN);
     expect(JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string).review.provider).toBe('gemini');
-    runInit(tree, { preset: 'solo', frontend: 'next' }, CLEAN);
+    runInit(tree, { preset: 'quick-start', review: true, frontend: 'next' }, CLEAN);
     expect(JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string).review.provider).toBe('gemini');
   });
 
   it('reviewProvider: --aiHosts with another first host re-derives it; the same first host keeps the recorded one', () => {
-    runInit(tree, { preset: 'solo', frontend: 'next', aiHosts: ['claude-code'], reviewProvider: 'gemini' }, CLEAN);
+    runInit(tree, { preset: 'quick-start', review: true, frontend: 'next', aiHosts: ['claude-code'], reviewProvider: 'gemini' }, CLEAN);
     const provider = () => JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string).review.provider;
-    runInit(tree, { preset: 'solo', frontend: 'next', aiHosts: ['claude-code', 'codex'] }, CLEAN);
+    runInit(tree, { preset: 'quick-start', review: true, frontend: 'next', aiHosts: ['claude-code', 'codex'] }, CLEAN);
     expect(provider()).toBe('gemini');
-    runInit(tree, { preset: 'solo', frontend: 'next', aiHosts: ['codex'] }, CLEAN);
+    runInit(tree, { preset: 'quick-start', review: true, frontend: 'next', aiHosts: ['codex'] }, CLEAN);
     expect(provider()).toBe('gpt');
   });
 
@@ -584,8 +573,8 @@ describe('runInit — backend section', () => {
   });
 
   it("backend omitted equals backend 'none' — the post-rename baseline (regression)", () => {
-    const omitted = runInit(appTree(), { preset: 'solo', frontend: 'react-vite' }, CLEAN);
-    const explicit = runInit(appTree(), { preset: 'solo', frontend: 'react-vite', backend: 'none' }, CLEAN);
+    const omitted = runInit(appTree(), { preset: 'quick-start', review: true, frontend: 'react-vite' }, CLEAN);
+    const explicit = runInit(appTree(), { preset: 'quick-start', review: true, frontend: 'react-vite', backend: 'none' }, CLEAN);
     expect(renderInitReport(explicit)).toBe(renderInitReport(omitted));
     expect(renderInitReport(omitted)).toMatchSnapshot();
   });
@@ -661,7 +650,7 @@ it('threads the resolved packageManager into the review workflow', () => {
   const tree = appTree(); // lockfile-less: detection alone would say pnpm
   const report = runInit(
     tree,
-    { preset: 'solo', frontend: 'react-vite', allowDirty: true, packageManager: 'npm' },
+    { preset: 'quick-start', review: true, frontend: 'react-vite', allowDirty: true, packageManager: 'npm' },
     { isWorkingTreeClean: () => true },
   );
   expect(report.refused).toBe(false);
@@ -677,7 +666,7 @@ describe('runInit — AI hosts', () => {
   });
 
   it('the picked hosts decide the rules files, are recorded, and the first one picks the review provider', () => {
-    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', aiHosts: ['gemini-cli', 'claude-code'] }, CLEAN);
+    const report = runInit(tree, { preset: 'quick-start', review: true, frontend: 'react-vite', aiHosts: ['gemini-cli', 'claude-code'] }, CLEAN);
     const agentRules = section(report, 'agentRules');
     if (agentRules?.report?.kind !== 'agentRules') throw new Error('expected agentRules report');
     expect(agentRules.report.report.files.map((f) => f.filePath)).toEqual(['CLAUDE.md', 'AGENTS.md']);
@@ -690,7 +679,7 @@ describe('runInit — AI hosts', () => {
 
   it("without --aiHosts, the hosts recorded in toolkit.config.json are kept (and their review provider)", () => {
     tree.write('toolkit.config.json', JSON.stringify({ aiHosts: ['codex'] }));
-    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    const report = runInit(tree, { preset: 'quick-start', review: true, frontend: 'react-vite' }, CLEAN);
     const agentRules = section(report, 'agentRules');
     if (agentRules?.report?.kind !== 'agentRules') throw new Error('expected agentRules report');
     expect(agentRules.report.report.files.map((f) => f.filePath)).toEqual(['AGENTS.md']);
@@ -847,5 +836,37 @@ describe('initGenerator — review off, as create-nx-archweave now passes for qu
     expect(written.filter((path) => /code-review\.ya?ml$|dependabot\.ya?ml$/.test(path))).toEqual([]);
     const config = tree.exists('toolkit.config.json') ? JSON.parse(tree.read('toolkit.config.json', 'utf-8') as string) : {};
     expect(config.review).toBeUndefined();
+  });
+});
+
+describe('runInit — rerun on a workspace set up with review on by an earlier version', () => {
+  // 0.4.x: quick-start with --review, and solo, whose default was review on.
+  for (const preset of ['quick-start', 'solo'] as const) {
+    it(`${preset}: a bare rerun leaves the review workflow, its config field, dependabot.yml and the PR template as they are, and says so`, () => {
+      const tree = appTree();
+      runInit(tree, { preset, frontend: 'react-vite', review: true }, CLEAN);
+      const files = ['.github/workflows/claude-code-review.yml', '.github/dependabot.yml', 'toolkit.config.json', '.github/PULL_REQUEST_TEMPLATE.md'];
+      const before = Object.fromEntries(files.map((path) => [path, tree.read(path, 'utf-8')]));
+      expect(before['.github/workflows/claude-code-review.yml']).not.toBeNull();
+
+      const report = runInit(tree, {}, CLEAN);
+
+      expect(report.preset).toBe(preset);
+      for (const path of files) expect(tree.read(path, 'utf-8')).toBe(before[path]);
+      const review = section(report, 'review');
+      expect(review).toMatchObject({ enabled: false, keptFiles: ['.github/workflows/claude-code-review.yml', 'toolkit.config.json (review field)'] });
+      expect(renderInitReport(report)).toContain(
+        'Kept as they are: .github/workflows/claude-code-review.yml, toolkit.config.json (review field). To update them, run add-review.',
+      );
+    });
+  }
+
+  it('--review on the rerun still updates the review setup', () => {
+    const tree = appTree();
+    runInit(tree, { preset: 'solo', frontend: 'react-vite', review: true }, CLEAN);
+    const review = section(runInit(tree, { review: true }, CLEAN), 'review');
+    expect(review?.enabled).toBe(true);
+    if (review?.report?.kind !== 'review') throw new Error('expected review report');
+    expect(review.report.report.workflowAction).toBe('unchanged');
   });
 });

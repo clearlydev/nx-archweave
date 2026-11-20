@@ -23,8 +23,8 @@ export interface PresetConfigInput {
   backend: ToolkitBackend;
   locale: ToolkitLocale;
   packageManager: ToolkitPackageManager;
-  /** Quick Start offers review as opt-in; Solo/Team default to enabled. Explicit value
-   * always wins over the preset's default. */
+  /** Review is opt-in for quick-start (and its alias solo) and on for team. An explicit
+   * value always wins over the preset's default. */
   reviewEnabled?: boolean;
   /** The AI hosts picked; omitted → the default host. They
    * decide the agent-rules files and the review provider default — the preset no longer
@@ -64,49 +64,24 @@ interface PresetDefaults {
   githubTemplates: ToolkitGithubTemplatesConfig;
 }
 
+/** quick-start: FSD rule at warn, agent rules, the PR template, AI review off unless asked for
+ * (it needs a provider key and a repository secret), `fast` once on. */
+const QUICK_START_DEFAULTS: PresetDefaults = {
+  reviewEnabledDefault: false,
+  reviewMode: 'fast',
+  fsdEnforcement: 'warn',
+  agentRulesTeamRules: false,
+  githubTemplates: { issue: false, pr: true, codeowners: false },
+};
+
 /**
- * The preset table, field by field. Two defaults needed an explicit choice because the
- * presets are described at generator-option granularity while `ToolkitConfig` needs
- * concrete boolean/enum defaults:
- *
- * 1. Quick Start review enablement: Quick Start asks a single yes/no install question
- *    rather than turning review on by default — unlike Solo/Team, which only pick a mode
- *    and are enabled unless told otherwise. That question is an opt-in UX, so the preset
- *    DEFAULT (absent an explicit answer) is OFF; `fast` is the MODE once enabled, not the
- *    enablement itself. Solo/Team ask no such question, so they default ON.
- * 2. `add-github-templates` defaults: Quick Start gets the minimal set (PR template only)
- *    and Team the full set (Issue+PR), with CODEOWNERS opt-in only (default off). Solo's
- *    intent — provide rules without over-enforcing — reads closest to Quick Start's
- *    minimal floor, so Solo defaults to the same PR-only set as Quick Start, with
- *    issue/codeowners left for the user to opt into via `add-github-templates` directly
- *    (that generator's own options are unaffected by this choice).
- *
- * Everything else below is direct, with no interpretation needed.
+ * The preset table. `solo` is an alias of `quick-start`: the two differed only in turning
+ * review on by default, and they are one preset now. `solo` stays a valid value so
+ * workspaces that recorded it keep resolving, with quick-start's defaults.
  */
 const PRESET_DEFAULTS: Record<ToolkitPreset, PresetDefaults> = {
-  'quick-start': {
-    // add-review: opt-in (a single install question), `fast` mode by default.
-    reviewEnabledDefault: false,
-    reviewMode: 'fast',
-    // add-fsd-lite: enabled with every default layer, no questions — violations warn.
-    fsdEnforcement: 'warn',
-    // add-agent-rules: enabled (simple version). Which files follow from the AI hosts
-    // picked, no longer from the preset.
-    agentRulesTeamRules: false,
-    // add-github-templates: minimal (PR template only).
-    githubTemplates: { issue: false, pr: true, codeowners: false },
-  },
-  solo: {
-    // add-review: `fast` mode by default — no opt-in question, so enabled by default.
-    reviewEnabledDefault: true,
-    reviewMode: 'fast',
-    // add-fsd-lite: enabled — violations warn (no over-enforcement).
-    fsdEnforcement: 'warn',
-    // add-agent-rules: enabled — files follow the AI hosts picked.
-    agentRulesTeamRules: false,
-    // add-github-templates: optional — see note #2 above.
-    githubTemplates: { issue: false, pr: true, codeowners: false },
-  },
+  'quick-start': QUICK_START_DEFAULTS,
+  solo: QUICK_START_DEFAULTS,
   team: {
     // Requiring review only for P2 findings when CODEOWNERS is wired up is out of v0.1
     // scope and has no field here. The other two Team-only behaviors are the two
@@ -116,12 +91,12 @@ const PRESET_DEFAULTS: Record<ToolkitPreset, PresetDefaults> = {
     reviewEnabledDefault: true,
     reviewMode: 'standard',
     // add-fsd-lite: enabled + stricter module boundaries — the canonical FSD rule
-    // reports as an error here, as a warning in the other presets.
+    // reports as an error here, as a warning in quick-start.
     fsdEnforcement: 'error',
     // add-agent-rules: enabled + an extra team-rules section — the extra section is
     // content `template-engine/agent-rules` composes, not a different `files` list.
     agentRulesTeamRules: true,
-    // add-github-templates: full (Issue+PR, CODEOWNERS optional) — see note #2 above.
+    // add-github-templates: full (Issue+PR, CODEOWNERS opt-in).
     githubTemplates: { issue: true, pr: true, codeowners: false },
   },
 };

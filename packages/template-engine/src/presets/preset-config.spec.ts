@@ -38,49 +38,15 @@ describe('buildPresetConfig', () => {
     expect(config).toEqual(expected);
   });
 
-  it('solo: fsd on, review ON by default in fast mode, agent rules, PR-only templates', () => {
-    const config = buildPresetConfig({
-      preset: 'solo',
-      frontend: 'next',
-      backend: 'none',
-      locale: 'en',
-      packageManager: 'npm',
-    });
-
-    const expected: ToolkitConfig = {
-      preset: 'solo',
-      packageManager: 'npm',
-      frontend: 'next',
-      backend: 'none',
-      locale: 'en',
-      fsd: {
-        enabled: true,
-        enforcement: 'warn',
-        layerMapping: {
-          'react-vite': ['app', 'pages', 'features', 'entities', 'shared'],
-          next: ['pages', 'features', 'entities', 'shared'],
-          expo: ['app', 'pages', 'features', 'entities', 'shared'],
-          generic: ['app', 'pages', 'features', 'entities', 'shared'],
-        },
-      },
-      review: {
-        enabled: true,
-        provider: 'claude',
-        mode: 'fast',
-        locale: 'en',
-        maxRounds: 3,
-        blockingPriorities: ['P0', 'P1'],
-      },
-      aiHosts: ['claude-code'],
-      agentRules: { teamRules: false },
-      githubTemplates: { issue: false, pr: true, codeowners: false },
-      conflictPolicy: { default: 'merge-proposal' },
-      integrations: { enabled: [] },
-    };
-
-    expect(config).toEqual(expected);
+  it('solo is an alias of quick-start: the same config, review off unless asked for', () => {
+    const input = { frontend: 'next', backend: 'none', locale: 'en', packageManager: 'npm' } as const;
+    const solo = buildPresetConfig({ ...input, preset: 'solo' });
+    const quickStart = buildPresetConfig({ ...input, preset: 'quick-start' });
+    expect(solo.preset).toBe('solo');
+    expect({ ...solo, preset: 'quick-start' }).toEqual(quickStart);
+    expect(solo.review).toEqual({ enabled: false });
+    expect(buildPresetConfig({ ...input, preset: 'solo', reviewEnabled: true }).review).toMatchObject({ enabled: true, mode: 'fast' });
   });
-
   it('team: fsd on with error-level enforcement, review ON by default in standard mode, team rules section, issue+pr templates (codeowners opt-in)', () => {
     const config = buildPresetConfig({
       preset: 'team',
@@ -254,7 +220,7 @@ describe('buildPresetConfig — backend passthrough', () => {
 });
 
 describe('buildPresetConfig — AI hosts', () => {
-  const base = { preset: 'solo', frontend: 'react-vite', backend: 'none', locale: 'en', packageManager: 'pnpm' } as const;
+  const base = { preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', packageManager: 'pnpm', reviewEnabled: true } as const;
 
   it('keeps the hosts in the order picked, and the first one sets the review provider', () => {
     const config = buildPresetConfig({ ...base, aiHosts: ['gemini-cli', 'claude-code'] });
@@ -273,7 +239,7 @@ describe('buildPresetConfig — AI hosts', () => {
 
 describe('buildPresetConfig — reviewProvider', () => {
   it('an explicit provider beats the first AI host\'s', () => {
-    const base = { preset: 'solo', frontend: 'next', backend: 'none', locale: 'en', packageManager: 'pnpm', aiHosts: ['codex'] } as const;
+    const base = { preset: 'quick-start', frontend: 'next', backend: 'none', locale: 'en', packageManager: 'pnpm', aiHosts: ['codex'], reviewEnabled: true } as const;
     expect(buildPresetConfig({ ...base, aiHosts: ['codex'] }).review).toMatchObject({ provider: 'gpt' });
     expect(buildPresetConfig({ ...base, aiHosts: ['codex'], reviewProvider: 'cursor' }).review).toMatchObject({ provider: 'cursor' });
   });

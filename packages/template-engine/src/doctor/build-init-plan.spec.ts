@@ -29,6 +29,13 @@ describe('buildInitPlan', () => {
     expect(plan.warnings).toEqual([]);
   });
 
+  it('solo, an alias of quick-start, lists the same commands', () => {
+    const report: DoctorReport = { checks: [], overallStatus: 'safe' };
+    expect(buildInitPlan(report, { preset: 'solo', frontend: 'react-vite' }).commands).toEqual(
+      buildInitPlan(report, { preset: 'quick-start', frontend: 'react-vite' }).commands,
+    );
+  });
+
   it('lists standard-mode review for team preset', () => {
     const report: DoctorReport = { checks: [], overallStatus: 'safe' };
     const plan = buildInitPlan(report, { preset: 'team', frontend: 'next' });
