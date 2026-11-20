@@ -156,8 +156,8 @@ const upwardLint = lint();
 if (!upwardLint.includes('archweave/fsd-boundaries')) fail('fsd lint', 'the planted upward import was not reported', upwardLint);
 rmSync(join(appDir, 'src/shared/lib'), { recursive: true, force: true });
 
-// 7. doctor gate, stdout only (the README's CI gate pipes stdout)
-const { stdout: doctorStdout, output: doctorCombined } = run('doctor --json', 'pnpm', ['nx', 'g', '@clearlydev/nx-archweave:doctor', '--json', '--quiet'], { cwd: demoDir });
+// 7. doctor gate, stdout only, run as the docs' CI gate runs it (pnpm --silent)
+const { stdout: doctorStdout, output: doctorCombined } = run('doctor --json', 'pnpm', ['--silent', 'nx', 'g', '@clearlydev/nx-archweave:doctor', '--json', '--quiet'], { cwd: demoDir });
 let report;
 try {
   report = JSON.parse(doctorStdout);
