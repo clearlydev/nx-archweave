@@ -1,3 +1,9 @@
+## 0.4.5 (2026-11-20)
+
+### 🩹 Fixes
+
+- treat files that differ only in CRLF line endings as unchanged ([#32](https://github.com/clearlydev/nx-archweave/pull/32))
+
 ## 0.4.4 (2026-11-19)
 
 ### 🩹 Fixes
