@@ -391,12 +391,13 @@ pnpm nx g @clearlydev/nx-archweave:doctor
 CI 게이트:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
+pnpm --silent nx g @clearlydev/nx-archweave:doctor --json --quiet |
   jq -e '.overallStatus == "safe" or .overallStatus == "manual-review-required"'
 ```
 
 > [!TIP]
-> yarn 1은 stdout에 배너를 찍어요. 그래서 yarn 1에서는 `yarn --silent nx g …`로 실행하세요. yarn berry는 이 플래그가 필요 없어요.
+> - `--silent`는 패키지 매니저 자체 메시지를 stdout에서 빼 줘서, `jq`가 보고서만 읽게 해요. pnpm 11은 `pnpm nx`를 실행하기 전에 의존성 확인 메시지를 찍을 수 있고(Nx의 backend-only Nest 워크스페이스에서 확인), yarn 1은 배너를 찍어요. yarn 1에서는 `yarn --silent nx g …`로 실행하세요. create-nx-archweave로 만든 워크스페이스에서는 yarn berry, npm(`npm exec nx --`), bun이 다른 메시지를 찍지 않아요.
+> - gate가 아무 출력 없이 실패하면 `--silent`를 빼고 같은 명령을 다시 실행해 원인을 확인하세요(pnpm은 낡은 lockfile 같은 자체 오류를 stdout에 찍어요).
 
 `--dryRun`으로 `init`을 미리 본 뒤 실행하세요. 아래는 AI 리뷰 없이 `quick-start` 프리셋(FSD 규칙 `warn`, 에이전트 규칙, PR 템플릿)을 설정해요.
 

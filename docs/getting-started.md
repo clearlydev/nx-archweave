@@ -391,12 +391,13 @@ pnpm nx g @clearlydev/nx-archweave:doctor
 CI gate:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:doctor --json --quiet |
+pnpm --silent nx g @clearlydev/nx-archweave:doctor --json --quiet |
   jq -e '.overallStatus == "safe" or .overallStatus == "manual-review-required"'
 ```
 
 > [!TIP]
-> yarn 1 prints a banner on stdout, so use `yarn --silent nx g …` there. yarn berry doesn't need the flag.
+> - `--silent` keeps the package manager's own messages off stdout, so `jq` reads only the report. pnpm 11 can print a dependency check before `pnpm nx` runs (seen in Nx's backend-only Nest workspace), and yarn 1 prints a banner. Use `yarn --silent nx g …` on yarn 1. In workspaces created by create-nx-archweave, yarn berry, npm (`npm exec nx --`) and bun print nothing extra.
+> - If the gate fails with no output, run the same command without `--silent` to see why (pnpm prints its own errors, like an outdated lockfile, on stdout).
 
 Preview `init` with `--dryRun`, then run it. This sets up the `quick-start` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review:
 
