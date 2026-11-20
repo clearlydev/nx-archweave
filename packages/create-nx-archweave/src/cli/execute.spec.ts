@@ -85,6 +85,22 @@ describe('executePlan', () => {
   });
 });
 
+describe('renderExecuteReport — init exits non-zero', () => {
+  it('stops at run-init, explains where to look, and prints init and the steps after it', () => {
+    let callCount = 0;
+    const report = executePlan(plan, () => {
+      callCount += 1;
+      return callCount === 3 ? fail() : ok();
+    }, '/work');
+    const output = renderExecuteReport(report, plan, 'my-app');
+    expect(report.ok).toBe(false);
+    expect(output).toContain('create-nx-archweave stopped: step "run-init" failed');
+    expect(output).toContain("init's report above says what it could not do.");
+    expect(output).not.toContain('finished successfully');
+    expect(output).toMatch(/1\. Run the nx-archweave init generator/);
+  });
+});
+
 describe('renderExecuteReport', () => {
   it('prints the next-steps guidance on success', () => {
     const report = executePlan(plan, () => ok(), '/work');

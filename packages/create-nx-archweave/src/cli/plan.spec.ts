@@ -6,6 +6,8 @@ import { CLI_VERSION } from '../render-usage.ts';
 const PLUGIN_SPEC = `@clearlydev/nx-archweave@^${CLI_VERSION}`;
 
 const stepById = (plan: ReturnType<typeof buildPlan>, id: string) => plan.steps.find((step) => step.id === id)!;
+const INIT_FAILURE_HINT =
+  "init's report above says what it could not do. Fix that, then run the steps below (init's files so far are kept).";
 
 const baseInput: CreatePlanInput = {
   packageManager: 'pnpm',
@@ -89,6 +91,7 @@ describe('buildPlan', () => {
           '--applyEslint=true',
         ],
         cwd: 'my-app',
+        failureHint: INIT_FAILURE_HINT,
       },
       {
         id: 'settle-build-approvals',

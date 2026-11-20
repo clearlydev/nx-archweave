@@ -326,6 +326,7 @@ export function buildPlan(input: CreatePlanInput): CreatePlan {
       command: pm,
       args: initArgs,
       cwd: input.name,
+      failureHint: "init's report above says what it could not do. Fix that, then run the steps below (init's files so far are kept).",
     },
     ...(pm === 'pnpm' ? [settleBuildApprovalsStep(input.name)] : []),
     ...(pm === 'bun' ? [listBlockedScriptsStep(input.name)] : []),
