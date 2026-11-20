@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildReviewChecks } from './review-checks.ts';
@@ -7,6 +7,16 @@ const FIXTURES = join(__dirname, '../../../../tools/fixtures/doctor');
 
 function checkFor(root: string, id: string) {
   return buildReviewChecks(root).find((c) => c.id === id);
+}
+
+/** A copy of a fixture whose workflow is checked out the way Git for Windows does by default
+ * (core.autocrlf=true): CRLF line endings. `edit` changes the LF text before conversion. */
+function crlfWorkflowCopy(fixture: string, edit: (lf: string) => string = (lf) => lf): string {
+  const root = mkdtempSync(join(tmpdir(), 'review-crlf-'));
+  cpSync(join(FIXTURES, fixture), root, { recursive: true });
+  const workflow = join(root, '.github/workflows/claude-code-review.yml');
+  writeFileSync(workflow, edit(readFileSync(workflow, 'utf8')).replace(/\n/g, '\r\n'));
+  return root;
 }
 
 describe('buildReviewChecks', () => {
@@ -72,6 +82,26 @@ describe('buildReviewChecks', () => {
     it('passes when the installed workflow exactly matches what the config options would generate', () => {
       const check = checkFor(join(FIXTURES, 'review-config-matches-workflow'), 'review-config-consistency');
       expect(check?.status).toBe('pass');
+    });
+
+    it('passes when the matching workflow was checked out with CRLF line endings', () => {
+      const root = crlfWorkflowCopy('review-config-matches-workflow');
+      try {
+        expect(checkFor(root, 'review-config-consistency')?.status).toBe('pass');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('still warns on a real drift in a CRLF workflow, as drift and not as an earlier version', () => {
+      const root = crlfWorkflowCopy('review-config-matches-workflow', (lf) => lf.replace('name: Claude Code Review', 'name: Claude Code Review (edited)'));
+      try {
+        const check = checkFor(root, 'review-config-consistency');
+        expect(check?.status).toBe('warning');
+        expect(check?.message).toMatch(/differs/);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     });
 
     it('warns on drift when the installed workflow no longer matches the config options', () => {

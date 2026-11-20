@@ -229,7 +229,10 @@ export function addSharedTypesWorkspaceGlob(yamlText: string, entry: string = DE
   if (new RegExp(`^\\s*-\\s*['"]?(${escape(entry)}|${escape(parentGlob)})['"]?\\s*$`, 'm').test(yamlText)) {
     return { status: 'present' };
   }
-  const lines = yamlText.split('\n');
+  // Lines are split without their endings and joined back with the file's own (CRLF on a
+  // Windows checkout), so the new entry doesn't leave the file with mixed line endings.
+  const eol = yamlText.includes('\r\n') ? '\r\n' : '\n';
+  const lines = yamlText.split(/\r?\n/);
   const packagesIndex = lines.findIndex((line) => /^packages:\s*$/.test(line));
   if (packagesIndex === -1) return { status: 'unrecognized' };
   let lastEntry = packagesIndex;
@@ -245,5 +248,5 @@ export function addSharedTypesWorkspaceGlob(yamlText: string, entry: string = DE
   if (lastEntry === packagesIndex) return { status: 'unrecognized' };
   const indent = /^(\s+)-/.exec(lines[lastEntry])?.[1] ?? '  ';
   lines.splice(lastEntry + 1, 0, `${indent}- '${entry}'`);
-  return { status: 'added', text: lines.join('\n') };
+  return { status: 'added', text: lines.join(eol) };
 }

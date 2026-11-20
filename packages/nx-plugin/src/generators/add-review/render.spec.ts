@@ -28,6 +28,15 @@ describe('renderLineDiff', () => {
     expect(diff).toContain('  c');
   });
 
+  it('shows only the changed line of a CRLF file, not every line', () => {
+    const diff = renderLineDiff('a\r\nb\r\nc', 'a\nx\nc');
+    expect(diff).toContain('  a');
+    expect(diff).toContain('- b');
+    expect(diff).toContain('+ x');
+    expect(diff).toContain('  c');
+    expect(diff).not.toContain('\r');
+  });
+
   it('handles pure additions and pure removals', () => {
     expect(renderLineDiff('', 'new')).toContain('+ new');
     expect(renderLineDiff('old', '')).toContain('- old');

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Tree } from '@nx/devkit';
-import type { ToolkitFrontend, ToolkitLocale } from '@nx-archweave/shared';
+import { sameFileText, type ToolkitFrontend, type ToolkitLocale } from '@nx-archweave/shared';
 import {
   isEssenceSegmentName,
   isUsableSliceApiName,
@@ -148,7 +148,10 @@ function computeSliceAction(tree: Tree, plan: { directory: string; files: { file
     return 'skipped';
   }
 
-  const allMatch = plan.files.every((f) => tree.read(f.filePath, 'utf-8') === f.content);
+  const allMatch = plan.files.every((f) => {
+    const existing = tree.read(f.filePath, 'utf-8');
+    return existing !== null && sameFileText(existing, f.content);
+  });
   return allMatch ? 'unchanged' : 'skipped';
 }
 

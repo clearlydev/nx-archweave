@@ -40,6 +40,14 @@ describe('runAddReview — fresh workspace', () => {
     });
   });
 
+  it('is idempotent when the workflow was checked out with CRLF line endings, and leaves it as it is', () => {
+    runAddReview(tree, {});
+    const crlf = (tree.read(WORKFLOW_PATH, 'utf-8') as string).replace(/\n/g, '\r\n');
+    tree.write(WORKFLOW_PATH, crlf);
+    expect(runAddReview(tree, {}).workflowAction).toBe('unchanged');
+    expect(tree.read(WORKFLOW_PATH, 'utf-8')).toBe(crlf);
+  });
+
   it('is idempotent: a second identical run changes nothing', () => {
     runAddReview(tree, { mode: 'thorough', locale: 'ko', maxRounds: 5 });
     const changesAfterFirst = tree.listChanges().length;

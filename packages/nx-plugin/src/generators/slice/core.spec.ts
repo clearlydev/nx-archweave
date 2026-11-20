@@ -152,6 +152,16 @@ describe('runFsdSlice — exact-content match is unchanged', () => {
     expect(report.action).toBe('unchanged');
     expect(tree.listChanges().length).toBe(before);
   });
+
+  it('is unchanged when the files were checked out with CRLF line endings', () => {
+    for (const file of expectedFiles('checkout')) tree.write(file.filePath, file.content.replace(/\n/g, '\r\n'));
+    expect(runFsdSlice(tree, 'features', { name: 'checkout' }).action).toBe('unchanged');
+  });
+
+  it('a CRLF file with a real change is still skipped', () => {
+    for (const file of expectedFiles('checkout')) tree.write(file.filePath, `${file.content}// edited\n`.replace(/\n/g, '\r\n'));
+    expect(runFsdSlice(tree, 'features', { name: 'checkout' }).action).toBe('skipped');
+  });
 });
 
 describe('runFsdSlice — dryRun', () => {
