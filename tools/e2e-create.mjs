@@ -309,6 +309,18 @@ run('workspace install', pm, INSTALL_ARGS[pm], {
 });
 const nxArgs = (rest) => (pm === 'npm' ? ['exec', 'nx', '--', ...rest] : ['nx', ...rest]);
 
+// 5-. which projects carry a dev or serve target (printed only, servers are never started)
+for (const target of ['dev', 'serve']) {
+  const result = spawnSync(pm, shellArgs(nxArgs(['show', 'projects', '--with-target', target, '--json'])), {
+    cwd: demoDir,
+    encoding: 'utf-8',
+    maxBuffer: MAX_BUFFER,
+    shell: SHELL,
+  });
+  const out = (result.stdout ?? '').trim();
+  console.log(`e2e-create targets (${pm}, ${frontend}, backend ${backend}) --with-target ${target}: ${result.status === 0 ? out : `exit ${result.status}: ${out} ${(result.stderr ?? '').trim()}`}`);
+}
+
 // 5'. express 5 on every path and manager: @nx/express installs it, and Nx 24's @nx/react no
 // longer peers on express 4, so the frontend choice can't pull the api back to 4.
 if (backend === 'express') {
