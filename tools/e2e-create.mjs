@@ -309,8 +309,11 @@ run('workspace install', pm, INSTALL_ARGS[pm], {
 });
 const nxArgs = (rest) => (pm === 'npm' ? ['exec', 'nx', '--', ...rest] : ['nx', ...rest]);
 
-// yarn 1 prints a banner on stdout unless --silent (berry prints none and rejects the flag)
+// Commands whose stdout is parsed run the way the docs' CI gate does: --silent keeps the
+// manager's own messages off stdout. yarn 1 prints a banner (berry prints none and rejects the
+// flag); pnpm 11 can print its dependency check (Nx's backend-only nest workspace).
 const yarnClassic = pm === 'yarn' && !/^__metadata:/m.test(readFileSync(join(demoDir, 'yarn.lock'), 'utf-8'));
+const silent = yarnClassic || pm === 'pnpm' ? ['--silent'] : [];
 
 // 5-. the guidance's run commands match the workspace: `dev` is the web app's, `serve` the api's
 // (and react-vite's web app has one too; Next.js does not). Servers are never started.
@@ -318,7 +321,7 @@ const nextSteps = createOutput.slice(createOutput.lastIndexOf('Next steps:')).sp
 /** A guidance command as printed, without its "   (explanation)". */
 const guidanceCommand = (pattern) => nextSteps.find((line) => pattern.test(line))?.trim().split(/ {3}\(/)[0];
 const projectsWithTarget = (target) => {
-  const result = spawnSync(pm, shellArgs([...(yarnClassic ? ['--silent'] : []), ...nxArgs(['show', 'projects', '--with-target', target, '--json'])]), {
+  const result = spawnSync(pm, shellArgs([...silent, ...nxArgs(['show', 'projects', '--with-target', target, '--json'])]), {
     cwd: demoDir,
     encoding: 'utf-8',
     maxBuffer: MAX_BUFFER,
@@ -439,7 +442,7 @@ if (fsdApp !== null) {
 const { stdout: doctorStdout, output: doctorCombined } = run(
   'doctor --json',
   pm,
-  [...(yarnClassic ? ['--silent'] : []), ...nxArgs(['g', '@clearlydev/nx-archweave:doctor', '--json', '--quiet'])],
+  [...silent, ...nxArgs(['g', '@clearlydev/nx-archweave:doctor', '--json', '--quiet'])],
   { cwd: demoDir },
 );
 // stdout ONLY — the README gate pipes stdout, so the test must too.
