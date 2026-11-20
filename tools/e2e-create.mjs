@@ -10,6 +10,7 @@
 //   node tools/e2e-create.mjs --pm=pnpm --frontend=none --backend=express   (backend-only)
 //   node tools/e2e-create.mjs --pm=bun
 //   node tools/e2e-create.mjs --pm=pnpm --review   (AI PR review on, without a secret)
+//   node tools/e2e-create.mjs --pm=pnpm --preset=solo   (the solo alias; default quick-start)
 //
 // Modes (hybrid gate):
 //   (default, strict)  every failure exits 1 — local release gate and the manual CI run.
@@ -53,14 +54,23 @@ if (mode !== 'strict' && mode !== 'pr') {
 }
 const extraArgs = process.argv
   .slice(2)
-  .filter((a) => !a.startsWith('--pm=') && !a.startsWith('--mode=') && !a.startsWith('--frontend=') && !a.startsWith('--backend=') && a !== '--review');
+  .filter((a) => !a.startsWith('--pm=') && !a.startsWith('--mode=') && !a.startsWith('--frontend=') && !a.startsWith('--backend=') && !a.startsWith('--preset=') && a !== '--review');
 if (extraArgs.length > 0) {
-  console.error(`e2e-create: unknown arguments: ${extraArgs.join(' ')} (accepted: --pm=pnpm|npm|yarn|bun, --frontend=react-vite|next|none, --backend=express|nest|none, --mode=strict|pr, --review)`);
+  console.error(`e2e-create: unknown arguments: ${extraArgs.join(' ')} (accepted: --pm=pnpm|npm|yarn|bun, --frontend=react-vite|next|none, --backend=express|nest|none, --preset=quick-start|solo, --mode=strict|pr, --review)`);
   process.exit(2);
 }
 // --review turns AI PR review on, as a user would; no secret is set, so the workflow is only
 // generated, never run.
 const review = process.argv.includes('--review');
+// quick-start is what a new user gets; --preset=solo checks the alias (the CLI says so and
+// passes quick-start on). team turns review on, which the review-workflow check below
+// does not expect without --review.
+const presetArg = process.argv.find((a) => a.startsWith('--preset='));
+const preset = presetArg ? presetArg.slice('--preset='.length) : 'quick-start';
+if (preset !== 'quick-start' && preset !== 'solo') {
+  console.error(`e2e-create: unsupported --preset "${preset}" (quick-start|solo)`);
+  process.exit(2);
+}
 const pmArg = process.argv.find((a) => a.startsWith('--pm='));
 const pm = pmArg ? pmArg.slice('--pm='.length) : 'pnpm';
 if (pm !== 'pnpm' && pm !== 'npm' && pm !== 'yarn' && pm !== 'bun') {
@@ -169,7 +179,7 @@ const yarnOnWindows = pm === 'yarn' && SHELL;
 const pluginSource = yarnOnWindows ? `../pack/${pluginTgz}` : join(packDir, pluginTgz);
 const cliArgs = [
   demo,
-  '--preset=solo',
+  `--preset=${preset}`,
   `--frontend=${frontend}`,
   `--backend=${backend}`,
   '--locale=en',
@@ -212,6 +222,9 @@ for (const marker of [
   ...(withBackend ? ['## add-backend', 'cross-side deny rules written'] : []),
   // bun: the last step ran (its note, printed only after it succeeded) and names the way back
   ...(pm === 'bun' ? ['the list above (bun pm untrusted)', 'bun pm trust <package>'] : []),
+  // --preset=solo: the CLI names the alias, and init runs as quick-start
+  ...(preset === 'solo' ? ['solo is now an alias of quick-start'] : []),
+  'init (preset: quick-start,',
   'finished successfully',
 ]) {
   if (!createOutput.includes(marker)) fail('create output markers', `missing "${marker}"`, createOutput);
@@ -344,7 +357,7 @@ if (skipTest.length === 0) {
 }
 
 // 5'. the FSD rule is live: a planted upward import (shared → entities) shows up in the
-// app's lint output. The solo preset reports at warn level, so lint still exits 0 — the
+// app's lint output. quick-start reports at warn level, so lint still exits 0 — the
 // rule name in the output is the signal; the probe is removed afterwards. Next.js's pages
 // layer is _pages, but the probe stays on layers whose names are the same everywhere.
 if (fsdApp !== null) {
