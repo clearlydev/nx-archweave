@@ -98,8 +98,15 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
     eslint,
     eslintPath,
     snippet: eslint === 'applied' || eslint === 'already-applied' ? null : snippet,
-    layerGuide: composeFsdLayerGuide({ profile, sourceRoot: app.sourceRoot, locale }),
+    layerGuide: composeFsdLayerGuide({ profile, sourceRoot: app.sourceRoot, locale, runNx: workspaceRunNx(tree, config) }),
   };
+}
+
+/** How the guide writes nx commands: through the workspace's package manager when it is known
+ * (toolkit.config.json or a lockfile), else bare `nx`. */
+function workspaceRunNx(tree: Tree, config: Record<string, unknown> | null): string {
+  const pm = treePackageManager(tree, config);
+  return pm === null ? 'nx' : packageManagerCommands(pm).runNx;
 }
 
 /** A JSON file read and parsed before any write — a broken one is reported, never rewritten. */

@@ -32,6 +32,22 @@ describe('runAddFsdLite — no folders, a rule', () => {
     expect(report.layerGuide).toContain('nx g @clearlydev/nx-archweave:feature');
   });
 
+  it("writes the guide's nx commands through the workspace's package manager when it is known", () => {
+    const fromLockfile = appTree();
+    fromLockfile.write('package-lock.json', '{}');
+    const npmGuide = runAddFsdLite(fromLockfile, { frontend: 'react-vite' }).layerGuide;
+    expect(npmGuide).toContain('  npm exec nx -- g @clearlydev/nx-archweave:feature --name=<name>');
+    expect(npmGuide).toContain('npm exec nx -- g @clearlydev/nx-archweave:widget');
+
+    const fromConfig = appTree();
+    fromConfig.write('toolkit.config.json', JSON.stringify({ packageManager: 'bun' }));
+    expect(runAddFsdLite(fromConfig, { frontend: 'react-vite' }).layerGuide).toContain('  bun nx g @clearlydev/nx-archweave:feature');
+
+    const unknown = runAddFsdLite(appTree(), { frontend: 'react-vite', locale: 'ko' }).layerGuide;
+    expect(unknown).toContain('  nx g @clearlydev/nx-archweave:feature');
+    expect(unknown).not.toMatch(/(pnpm|npm|yarn|bun) (exec )?nx/);
+  });
+
   it('without --applyEslint it is report-only: the snippet carries the import and the entry', () => {
     const tree = appTree();
     const report = runAddFsdLite(tree, { frontend: 'react-vite' });

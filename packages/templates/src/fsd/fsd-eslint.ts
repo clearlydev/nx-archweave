@@ -66,17 +66,20 @@ const LAYER_GUIDE_KO: Record<string, string> = {
  * The layer guide add-fsd-lite prints instead of creating folders (canonical FSD: a layer
  * directory appears with its first slice). `layers` are the layer
  * ids in top-to-bottom order; `directories` the matching directory names (Next.js: `_pages`).
+ * `runNx` is how the workspace runs nx (`pnpm nx`, `npm exec nx --`); bare `nx` when unknown.
  */
 export function buildFsdLayerGuide({
   layers,
   directories,
   sourceRoot,
   locale,
+  runNx = 'nx',
 }: {
   layers: string[];
   directories: string[];
   sourceRoot: string;
   locale: FsdLocale;
+  runNx?: string;
 }): string {
   const guide = locale === 'ko' ? LAYER_GUIDE_KO : LAYER_GUIDE_EN;
   const width = Math.max(...directories.map((d) => d.length));
@@ -85,15 +88,15 @@ export function buildFsdLayerGuide({
     locale === 'ko'
       ? [
           '레이어 폴더는 첫 슬라이스가 생길 때 만들어집니다 (정식 FSD):',
-          '  nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity, shared도 같은 방식; --segments=ui,api)',
-          '  widgets/ 레이어는 기본 범위 밖이지만 nx g @clearlydev/nx-archweave:widget 으로 쓸 수 있습니다.',
+          `  ${runNx} g @clearlydev/nx-archweave:feature --name=<name>   (page, entity, shared도 같은 방식; --segments=ui,api)`,
+          `  widgets/ 레이어는 기본 범위 밖이지만 ${runNx} g @clearlydev/nx-archweave:widget 으로 쓸 수 있습니다.`,
           '위에서 아래로만 import할 수 있고, 같은 레이어의 슬라이스끼리는 import하지 않으며, 슬라이스는',
           'index.ts를 통해서만 import합니다 — archweave/fsd-boundaries ESLint 규칙이 위반을 알려 줍니다.',
         ]
       : [
           'Layer directories appear with their first slice (canonical FSD):',
-          '  nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)',
-          '  widgets/ is outside the default scope but one command away: nx g @clearlydev/nx-archweave:widget',
+          `  ${runNx} g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)`,
+          `  widgets/ is outside the default scope but one command away: ${runNx} g @clearlydev/nx-archweave:widget`,
           'Imports go downward only, slices on one layer never import each other, and a slice is',
           'imported through its index.ts — the archweave/fsd-boundaries ESLint rule reports violations.',
         ];
