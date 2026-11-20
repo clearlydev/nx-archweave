@@ -58,6 +58,9 @@ pnpm nx test template-engine
 
 Run tasks through `nx`, not the underlying tools, so caching and task dependencies apply.
 
+> [!NOTE]
+> **A Jest worker that dies with `SIGSEGV` (macOS on Apple silicon, Node 24).** Now and then a test task fails with `A jest worker process … was terminated by another process: signal=SIGSEGV` and no failing test, more often while other heavy work runs on the machine. It's a crash inside Node's own garbage collector, not in this repository's code, and CI (Linux) doesn't hit it. Update Node to the latest 24.x release; if it still happens, re-run that project's tests (`pnpm nx test <project>`).
+
 ## Repository layout
 
 | Directory | Package | Role |
