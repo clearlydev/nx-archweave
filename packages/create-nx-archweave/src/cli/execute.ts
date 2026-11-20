@@ -196,7 +196,7 @@ export function renderExecuteReport(report: ExecuteReport, plan: CreatePlan, wor
       ...noteLines,
       '',
       'Next steps:',
-      ...plan.nextSteps.map((line) => `  ${line}`),
+      ...plan.nextSteps.map((line) => (line === '' ? '' : `  ${line}`)),
     ].join('\n');
   }
 

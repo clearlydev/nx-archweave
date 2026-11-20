@@ -11,8 +11,8 @@ FSD layers (in web, apps/web/src):
   apps/web/src/entities  one slice per business object (user, product)
   apps/web/src/shared    segments, not slices: ui, api, lib, model, config — named by purpose
 Layer directories appear with their first slice (canonical FSD):
-  nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)
-  widgets/ is outside the default scope but one command away: nx g @clearlydev/nx-archweave:widget
+  pnpm nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)
+  widgets/ is outside the default scope but one command away: pnpm nx g @clearlydev/nx-archweave:widget
 Imports go downward only, slices on one layer never import each other, and a slice is
 imported through its index.ts — the archweave/fsd-boundaries ESLint rule reports violations.
 

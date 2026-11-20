@@ -19,6 +19,7 @@ import {
 import type { AddFsdLiteGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
 import { resolveFrontendApp } from '../shared/frontend-app.ts';
+import { runNxFor } from '../shared/run-nx.ts';
 import { readToolkitConfig, resolveFrontendOption, resolveLocaleOption, treePackageManager } from '../shared/toolkit-config-file.ts';
 import { applyJsonEdits, setJsonValue } from '../shared/json-edit.ts';
 import { renderAddFsdLiteReport, type AddFsdLiteReport, type FsdAppRefusal, type SteigerOutcome } from './render.ts';
@@ -98,7 +99,7 @@ export function runAddFsdLite(tree: Tree, options: AddFsdLiteGeneratorSchema): A
     eslint,
     eslintPath,
     snippet: eslint === 'applied' || eslint === 'already-applied' ? null : snippet,
-    layerGuide: composeFsdLayerGuide({ profile, sourceRoot: app.sourceRoot, locale }),
+    layerGuide: composeFsdLayerGuide({ profile, sourceRoot: app.sourceRoot, locale, runNx: runNxFor((path) => tree.exists(path), (path) => tree.read(path, 'utf-8')) }),
   };
 }
 

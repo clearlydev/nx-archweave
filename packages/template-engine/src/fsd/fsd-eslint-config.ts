@@ -112,7 +112,7 @@ export function fsdLayersFor(frontend: ToolkitFrontend): FsdLayer[] {
 
 /** The guide for one app. `profile` is the framework as found in that app, which can differ from
  * the id's default (an Expo app without expo-router keeps its app layer in app/). */
-export function composeFsdLayerGuide({ profile, sourceRoot, locale }: { profile: FrameworkProfile; sourceRoot: string; locale: ToolkitLocale }): string {
+export function composeFsdLayerGuide({ profile, sourceRoot, locale, runNx }: { profile: FrameworkProfile; sourceRoot: string; locale: ToolkitLocale; runNx?: string }): string {
   const layers = [...profile.layers];
-  return buildFsdLayerGuide({ layers, directories: layers.map((layer) => profile.layerDirs[layer] ?? layer), sourceRoot, locale });
+  return buildFsdLayerGuide({ layers, directories: layers.map((layer) => profile.layerDirs[layer] ?? layer), sourceRoot, locale, runNx });
 }

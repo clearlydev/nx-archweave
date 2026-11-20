@@ -101,7 +101,7 @@ function nxArgs(pm: CliPackageManager): string[] {
 
 /** `pnpm nx g` / `npm exec nx -- g` — how the user runs a generator in the new workspace. */
 export function nxGenerateCommand(pm: CliPackageManager): string {
-  return `${pm} ${nxArgs(pm).join(' ')} g`;
+  return `${nxCommand(pm)} g`;
 }
 
 /** A dev dependency at the workspace root. pnpm: -w (it refuses a root install without
@@ -156,21 +156,48 @@ function createWorkspaceSourceArgs(frontend: CliFrontend, backend: CliBackend): 
   return [`--preset=${backend}`, '--appName=api', ...NO_E2E, '--unitTestRunner=vitest'];
 }
 
+/** `pnpm nx` / `npm exec nx --` — how the user runs nx in the new workspace. */
+function nxCommand(pm: CliPackageManager): string {
+  return `${pm} ${nxArgs(pm).join(' ')}`;
+}
+
+/** The api project's name as Nx registers it (measured in CI, Nx 24.0.1, 2026-11-20): scoped
+ * like every other project, except Nx's own backend-only nest preset, which names it `api`. */
+export function apiProjectName(input: Pick<CreatePlanInput, 'name' | 'frontend' | 'backend'>): string {
+  return input.frontend === 'none' && input.backend === 'nest' ? 'api' : `@${input.name}/api`;
+}
+
+/** The slice name the guidance uses for a first FSD slice. */
+export const FIRST_SLICE_NAME = 'counter';
+
+/**
+ * The guidance printed after a successful run, as lines under "Next steps:". A heading ends
+ * with ":" and its commands are indented; an empty string is a blank line. Commands carry
+ * their explanation after three spaces, in parentheses, so they can be copied as they are.
+ */
 function buildNextSteps(input: CreatePlanInput): string[] {
+  const nx = nxCommand(input.packageManager);
+  const hasFrontend = input.frontend !== 'none';
+  const hasBackend = input.backend !== 'none';
   const lines = [
     `cd ${input.name}`,
-    ...(input.backend !== 'none'
+    ...(hasBackend
       ? [`${input.packageManager} install   (links the new shared-types workspace package — do this before the first commit)`]
       : []),
     'git add -A && git commit -m "chore: initial commit"',
     '(create-nx-archweave never commits for you — review what the init report above generated first.)',
+    '',
+    'Check:',
+    `  ${nx} run-many -t lint,test   (lint and unit tests for every project)`,
+    '',
+    'Start developing:',
+    // Nx's web apps run with `dev`; the api apps (express, nest) have `serve` and no `dev`.
+    ...(hasFrontend ? [`  ${nx} run-many -t dev   (the web app's dev server)`] : []),
+    ...(hasBackend
+      ? [`  ${nx} serve ${apiProjectName(input)}   (the API${hasFrontend ? ' — in another terminal, both keep running' : ''})`]
+      : []),
+    ...(hasFrontend ? [`  ${nx} g @clearlydev/nx-archweave:feature --name=${FIRST_SLICE_NAME}   (a first FSD slice in the web app)`] : []),
   ];
-
-  if (input.review === false) {
-    const nxG = nxGenerateCommand(input.packageManager);
-    lines.push(`To add AI PR review later, preview it with ${nxG} @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.`);
-    return lines;
-  }
 
   // Deliberately vague about WHICH secret: the init report above prints the
   // authoritative secret name for the chosen provider (owned by
@@ -178,15 +205,24 @@ function buildNextSteps(input: CreatePlanInput): string[] {
   // that content knowledge into the CLI.
   if (input.review === true) {
     lines.push(
-      'AI PR review is enabled: add the review secret named in the init report above to the repository before opening a pull request.',
-      'Verify the default branch matches what the init report above expects before relying on branch protection.',
+      '',
+      'Before the first pull request:',
+      '  AI PR review is enabled: add the review secret named in the init report above to the repository.',
+      '  Verify the default branch matches what the init report above expects before relying on branch protection.',
     );
-  } else {
+  } else if (input.review === undefined) {
     lines.push(
-      'If the init report above shows AI PR review enabled, add the review secret it names to the repository before opening a pull request, and verify the default branch first.',
+      '',
+      'Before the first pull request:',
+      '  If the init report above shows AI PR review enabled, add the review secret it names to the repository, and verify the default branch first.',
     );
   }
 
+  lines.push('', 'Optional:');
+  if (input.review === false) {
+    lines.push(`  To add AI PR review later, preview it with ${nxGenerateCommand(input.packageManager)} @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.`);
+  }
+  lines.push(`  ${nx} graph   (the project graph, in the browser)`);
   return lines;
 }
 

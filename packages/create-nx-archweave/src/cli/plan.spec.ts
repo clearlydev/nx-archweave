@@ -193,43 +193,91 @@ describe('buildPlan', () => {
       expect(plan.nextSteps[1]).toBe('git add -A && git commit -m "chore: initial commit"');
     });
 
-    it('adds a definite review reminder when review is explicitly true', () => {
-      const plan = buildPlan({ ...baseInput, review: true });
+    it('groups the commands under Check, Start developing and Optional, with review off', () => {
+      const plan = buildPlan({ ...baseInput, backend: 'express', review: false });
       expect(plan.nextSteps).toEqual([
         'cd my-app',
+        'pnpm install   (links the new shared-types workspace package — do this before the first commit)',
         'git add -A && git commit -m "chore: initial commit"',
         '(create-nx-archweave never commits for you — review what the init report above generated first.)',
-        'AI PR review is enabled: add the review secret named in the init report above to the repository before opening a pull request.',
-        'Verify the default branch matches what the init report above expects before relying on branch protection.',
+        '',
+        'Check:',
+        '  pnpm nx run-many -t lint,test   (lint and unit tests for every project)',
+        '',
+        'Start developing:',
+        "  pnpm nx run-many -t dev   (the web app's dev server)",
+        '  pnpm nx serve @my-app/api   (the API — in another terminal, both keep running)',
+        '  pnpm nx g @clearlydev/nx-archweave:feature --name=counter   (a first FSD slice in the web app)',
+        '',
+        'Optional:',
+        '  To add AI PR review later, preview it with pnpm nx g @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.',
+        '  pnpm nx graph   (the project graph, in the browser)',
       ]);
     });
 
-    it('with review off, points at add-review for later instead of the secret reminder', () => {
-      const plan = buildPlan({ ...baseInput, review: false });
-      expect(plan.nextSteps).toEqual([
-        'cd my-app',
-        'git add -A && git commit -m "chore: initial commit"',
-        '(create-nx-archweave never commits for you — review what the init report above generated first.)',
-        'To add AI PR review later, preview it with pnpm nx g @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.',
+    it('adds a definite review group when review is explicitly true', () => {
+      const plan = buildPlan({ ...baseInput, review: true });
+      const at = plan.nextSteps.indexOf('Before the first pull request:');
+      expect(plan.nextSteps.slice(at)).toEqual([
+        'Before the first pull request:',
+        '  AI PR review is enabled: add the review secret named in the init report above to the repository.',
+        '  Verify the default branch matches what the init report above expects before relying on branch protection.',
+        '',
+        'Optional:',
+        '  pnpm nx graph   (the project graph, in the browser)',
       ]);
+    });
+
+    it('adds a conditional review group when review is left undefined (preset default applies)', () => {
+      const plan = buildPlan(baseInput);
+      expect(plan.nextSteps).toContain(
+        '  If the init report above shows AI PR review enabled, add the review secret it names to the repository, and verify the default branch first.',
+      );
+      expect(plan.nextSteps.some((line) => line.includes('add-review'))).toBe(false);
     });
 
     it('with review off, writes the add-review hint through npm exec for an npm workspace', () => {
       const plan = buildPlan({ ...baseInput, packageManager: 'npm', review: false });
       expect(plan.nextSteps).toContain(
-        'To add AI PR review later, preview it with npm exec nx -- g @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.',
+        '  To add AI PR review later, preview it with npm exec nx -- g @clearlydev/nx-archweave:add-review --dryRun, then run it without --dryRun.',
       );
     });
 
-    it('adds a conditional review reminder when review is left undefined (preset default applies)', () => {
-      const plan = buildPlan(baseInput);
-      expect(plan.nextSteps).toEqual([
-        'cd my-app',
-        'git add -A && git commit -m "chore: initial commit"',
-        '(create-nx-archweave never commits for you — review what the init report above generated first.)',
-        'If the init report above shows AI PR review enabled, add the review secret it names to the repository before opening a pull request, and verify the default branch first.',
-      ]);
-    });
+    const PREFIX = { pnpm: 'pnpm nx', npm: 'npm exec nx --', yarn: 'yarn nx', bun: 'bun nx' } as const;
+    const SHAPES = [
+      { frontend: 'react-vite', backend: 'none' },
+      { frontend: 'react-vite', backend: 'express' },
+      { frontend: 'next', backend: 'none' },
+      { frontend: 'next', backend: 'nest' },
+      { frontend: 'none', backend: 'express' },
+      { frontend: 'none', backend: 'nest' },
+    ] as const;
+    for (const pm of ['pnpm', 'npm', 'yarn', 'bun'] as const) {
+      for (const shape of SHAPES) {
+        for (const review of [true, false, undefined]) {
+          it(`${pm} × ${shape.frontend} × ${shape.backend} × review ${String(review)}: every command uses the workspace's nx, nx graph is last`, () => {
+            const plan = buildPlan({ ...baseInput, packageManager: pm, ...shape, review });
+            const nx = PREFIX[pm];
+            const steps = plan.nextSteps;
+            const hasFrontend = shape.frontend !== 'none';
+            const hasBackend = shape.backend !== 'none';
+            const api = shape.frontend === 'none' && shape.backend === 'nest' ? 'api' : '@my-app/api';
+
+            expect(steps[steps.length - 1]).toBe(`  ${nx} graph   (the project graph, in the browser)`);
+            expect(steps).toContain(`  ${nx} run-many -t lint,test   (lint and unit tests for every project)`);
+            expect(steps.includes(`  ${nx} run-many -t dev   (the web app's dev server)`)).toBe(hasFrontend);
+            expect(steps.includes(`  ${nx} g @clearlydev/nx-archweave:feature --name=counter   (a first FSD slice in the web app)`)).toBe(hasFrontend);
+            const serve = steps.filter((line) => line.includes(' serve '));
+            expect(serve).toEqual(
+              hasBackend ? [`  ${nx} serve ${api}   (the API${hasFrontend ? ' — in another terminal, both keep running' : ''})`] : [],
+            );
+            for (const line of steps) {
+              if (line.includes(' nx ') || line.includes(' nx --')) expect(line.includes(nx)).toBe(true);
+            }
+          });
+        }
+      }
+    }
   });
 });
 

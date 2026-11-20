@@ -309,6 +309,43 @@ run('workspace install', pm, INSTALL_ARGS[pm], {
 });
 const nxArgs = (rest) => (pm === 'npm' ? ['exec', 'nx', '--', ...rest] : ['nx', ...rest]);
 
+// yarn 1 prints a banner on stdout unless --silent (berry prints none and rejects the flag)
+const yarnClassic = pm === 'yarn' && !/^__metadata:/m.test(readFileSync(join(demoDir, 'yarn.lock'), 'utf-8'));
+
+// 5-. the guidance's run commands match the workspace: `dev` is the web app's, `serve` the api's
+// (and react-vite's web app has one too; Next.js does not). Servers are never started.
+const nextSteps = createOutput.slice(createOutput.lastIndexOf('Next steps:')).split('\n');
+/** A guidance command as printed, without its "   (explanation)". */
+const guidanceCommand = (pattern) => nextSteps.find((line) => pattern.test(line))?.trim().split(/ {3}\(/)[0];
+const projectsWithTarget = (target) => {
+  const result = spawnSync(pm, shellArgs([...(yarnClassic ? ['--silent'] : []), ...nxArgs(['show', 'projects', '--with-target', target, '--json'])]), {
+    cwd: demoDir,
+    encoding: 'utf-8',
+    maxBuffer: MAX_BUFFER,
+    shell: SHELL,
+  });
+  try {
+    return JSON.parse(result.stdout).sort();
+  } catch {
+    fail('dev and serve targets', `nx show projects --with-target ${target} printed no JSON list`, `${result.stdout ?? ''}${result.stderr ?? ''}`);
+  }
+};
+const web = `@${demo}/web`;
+const serveCommand = guidanceCommand(/ serve /);
+const apiName = serveCommand?.split(' ').pop();
+if (withBackend !== (serveCommand !== undefined)) fail('dev and serve targets', `the guidance ${withBackend ? 'lacks' : 'has'} a serve line`, nextSteps.join('\n'));
+const expected = {
+  dev: frontend === 'none' ? [] : [web],
+  serve: [...(withBackend ? [apiName] : []), ...(frontend === 'react-vite' ? [web] : [])].sort(),
+};
+for (const target of ['dev', 'serve']) {
+  const found = projectsWithTarget(target);
+  if (JSON.stringify(found) !== JSON.stringify(expected[target])) {
+    fail('dev and serve targets', `--with-target ${target}: ${JSON.stringify(found)}, expected ${JSON.stringify(expected[target])}`, nextSteps.join('\n'));
+  }
+}
+stepLog.record('dev and serve targets');
+
 // 5'. express 5 on every path and manager: @nx/express installs it, and Nx 24's @nx/react no
 // longer peers on express 4, so the frontend choice can't pull the api back to 4.
 if (backend === 'express') {
@@ -325,6 +362,14 @@ if (fsdApp !== null) {
   run('slice generators', pm, nxArgs(['g', '@clearlydev/nx-archweave:page', '--name=e2e-home']), { cwd: demoDir });
   run('slice generators', pm, nxArgs(['g', '@clearlydev/nx-archweave:feature', '--name=e2e-probe', '--segments=ui,api']), { cwd: demoDir });
   stepLog.mergeLast(); // the two runs are one step
+  // the first slice exactly as the guidance prints it (no --project: the one frontend app is picked)
+  const firstSlice = guidanceCommand(/:feature --name=/);
+  if (firstSlice === undefined) fail('guidance first slice', 'the guidance has no feature line', nextSteps.join('\n'));
+  const [sliceCommand, ...sliceArgs] = firstSlice.split(' ');
+  run('guidance first slice', sliceCommand, sliceArgs, { cwd: demoDir });
+  const sliceName = /--name=(\S+)/.exec(firstSlice)[1];
+  if (!existsSync(join(fsdApp.dir, 'src/features', sliceName, 'index.ts'))) fail('guidance first slice', `src/features/${sliceName}/index.ts is missing`);
+  stepLog.record('guidance first slice');
   const pagesDir = frontend === 'next' ? '_pages' : 'pages';
   for (const rel of [`src/${pagesDir}/e2e-home/index.ts`, `src/${pagesDir}/e2e-home/model/e2e-home.ts`, 'src/features/e2e-probe/ui/index.ts', 'src/features/e2e-probe/api/index.ts']) {
     if (!existsSync(join(fsdApp.dir, rel))) fail('slice generators', `${rel} is missing`);
@@ -391,7 +436,6 @@ if (fsdApp !== null) {
 // 6. doctor gate — the same gate the README documents for CI. yarn 1 prints a
 // "yarn run v1.x" banner and a "Done in" line on stdout, so the README's yarn-classic
 // form adds --silent (berry prints neither and rejects the flag).
-const yarnClassic = pm === 'yarn' && !/^__metadata:/m.test(readFileSync(join(demoDir, 'yarn.lock'), 'utf-8'));
 const { stdout: doctorStdout, output: doctorCombined } = run(
   'doctor --json',
   pm,
