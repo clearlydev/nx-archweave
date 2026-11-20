@@ -43,9 +43,10 @@ describe('runAddFsdLite — no folders, a rule', () => {
     fromConfig.write('toolkit.config.json', JSON.stringify({ packageManager: 'bun' }));
     expect(runAddFsdLite(fromConfig, { frontend: 'react-vite' }).layerGuide).toContain('  bun nx g @clearlydev/nx-archweave:feature');
 
+    // unknown: the same default as every other generator's printed commands
     const unknown = runAddFsdLite(appTree(), { frontend: 'react-vite', locale: 'ko' }).layerGuide;
-    expect(unknown).toContain('  nx g @clearlydev/nx-archweave:feature');
-    expect(unknown).not.toMatch(/(pnpm|npm|yarn|bun) (exec )?nx/);
+    expect(unknown).toContain('  pnpm nx g @clearlydev/nx-archweave:feature');
+    expect(unknown).toContain('pnpm nx g @clearlydev/nx-archweave:widget');
   });
 
   it('without --applyEslint it is report-only: the snippet carries the import and the entry', () => {
