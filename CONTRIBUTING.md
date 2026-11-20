@@ -91,7 +91,7 @@ The internal packages are bundled into the two published packages. Nothing named
 - New behavior comes with tests for its refusal and conflict paths, not only the happy path.
 - When a generator creates a whole file, that file is a template in the generator's `files/` directory. Nx's `generateFiles` renders it: `__name__` in paths, EJS in contents, a `.template` suffix.
 - Text that's spliced into existing files or composed per option lives in `packages/templates`. Generators never inline content.
-- Generators preview with `--dryRun` and write nothing until you ask. Integrations act only with `--apply`. When a precondition fails, the generator reports it instead of throwing.
+- Generators preview with `--dryRun` and write nothing until you ask. Integrations act only with `--apply`. When a precondition fails, the generator reports it instead of throwing. `init` then exits non-zero with a one-line error that points back to its report.
 - `CHANGELOG.md` and the package versions are written at release time from the pull request titles. Don't edit them in a pull request.
 
 ### Changes that affect existing workspaces

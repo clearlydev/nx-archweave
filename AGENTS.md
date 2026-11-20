@@ -43,7 +43,8 @@ Always run tasks through `pnpm nx`, never the underlying tool directly.
   third-party code (an audit can't see an inlined copy, and its license notice gets dropped). A new
   runtime dependency goes into `tools/tarball-policy.json` in the same change.
 - Generators preview with `--dryRun` and write nothing until asked; integrations act only with
-  `--apply`. A failed precondition is reported in the generator's report, not thrown.
+  `--apply`. A failed precondition is reported in the generator's report, not thrown; `init` then
+  exits non-zero with a one-line error that points back to its report.
 - Test the refusal and conflict paths, not only the happy path. Snapshot tests run in CI mode, so a
   renamed test needs its snapshot key renamed too.
 - Nothing commits for the user or deletes a directory it created. Anything that acts outside the
