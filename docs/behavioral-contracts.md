@@ -12,12 +12,26 @@ All 16 generators follow these contracts, and tests cover them.
 
 ## Refusals are reports, not exceptions
 
-In each of these 4 cases, the generator tells you why in a structured refusal report instead of throwing:
+In each of these 4 cases, the generator tells you why in a structured refusal report instead of throwing. `init` then exits non-zero (see [How `init` exits](#how-init-exits)):
 
 - a dirty tree
 - no frontend app, or more than one
 - a segment named by essence (`components`, `hooks`)
 - an unusable public API name
+
+## How `init` exits
+
+| Outcome | Exit code |
+| --- | --- |
+| Everything you asked for was applied | 0 |
+| Skipped to keep your changes, or needs a manual step (listed at the end of the report) | 0; non-zero with `--strict` |
+| A section aborted, or `toolkit.config.json` is not a JSON object (init can't record its choices) | non-zero; the files the other sections wrote stay |
+| Refused: the working tree has uncommitted changes | non-zero; nothing is written |
+
+- The report comes first. The last line Nx prints is a one-line message that points back to it.
+- A dry run exits the same way. It still never runs git.
+- `create-nx-archweave` stops when init exits non-zero, prints the remaining steps, and exits non-zero too.
+- A generator run on its own (`add-review`, `add-fsd-lite`, …) still exits 0 after a refusal or an abort, and says so in its report.
 
 ## Conflicts are never silently overwritten
 

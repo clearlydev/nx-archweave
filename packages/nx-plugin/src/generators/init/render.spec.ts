@@ -22,10 +22,17 @@ describe('renderInitReport — toolkit.config.json block', () => {
     expect(output).toContain('created');
   });
 
-  it('explains an unrecognized config without claiming a write', () => {
-    const output = renderInitReport({ ...BASE, sections: [], config: { action: 'unrecognized', fields: ['fsd.enforcement'], notRecorded: [] } });
+  it('reports an unrecognized config as aborted, with the rollback guidance, without claiming a write', () => {
+    const output = renderInitReport({
+      ...BASE,
+      sections: [],
+      config: { action: 'unrecognized', fields: ['fsd.enforcement'], notRecorded: [] },
+      written: { created: ['CLAUDE.md'], modified: [] },
+    });
     expect(output).toContain('## toolkit.config.json');
-    expect(output).toMatch(/not updated/i);
+    expect(output).toMatch(/aborted — the file is not a JSON object/);
+    expect(output).toContain('then rerun init');
+    expect(output).toContain('One or more sections aborted.');
     expect(output).not.toMatch(/recorded fsd/);
   });
 
@@ -36,12 +43,52 @@ describe('renderInitReport — toolkit.config.json block', () => {
 });
 
 describe('renderInitReport — refusal', () => {
-  it('prints the dirty-tree refusal message and nothing else', () => {
-    const output = renderInitReport({ ...BASE, cleanTree: false, refused: true, sections: [] });
+  const refused = (dirtyFiles?: string[]) => renderInitReport({ ...BASE, cleanTree: false, refused: true, sections: [], ...(dirtyFiles ? { dirtyFiles } : {}) });
+
+  it('prints the dirty-tree refusal message and nothing else when git could not list the files', () => {
+    const output = refused();
     expect(output).toContain('Refused');
     expect(output).toContain('uncommitted changes');
     expect(output).toContain('commit or stash your changes, then rerun');
+    expect(output).toContain('--allowDirty');
     expect(output).not.toContain('git restore .');
+  });
+
+  it('lists the uncommitted files without a command to copy, and says what --allowDirty means', () => {
+    const output = refused(['src/app.tsx', '.env']);
+    expect(output).toContain('    src/app.tsx\n    .env');
+    expect(output).toContain('Check them with `git status`, then commit or stash them, and rerun init.');
+    expect(output).not.toContain('git add');
+    expect(output).toContain('--allowDirty');
+    expect(output).toMatch(/also reverts/);
+  });
+
+  it.each([
+    [['package.json', 'pnpm-lock.yaml']],
+    [['package.json', 'package-lock.json']],
+    [['package.json', 'yarn.lock']],
+    [['package.json', 'bun.lock']],
+    [['package.json']],
+  ])('gives the exact commit command when only the plugin install changed files (%j)', (files) => {
+    const output = refused(files);
+    expect(output).toContain(`git add ${files.join(' ')} && git commit -m "chore: add @clearlydev/nx-archweave"`);
+    expect(output).toMatch(/plugin install/);
+    expect(output).not.toContain('git status');
+  });
+
+  it('gives no command when anything besides the plugin install changed', () => {
+    for (const files of [['package.json', 'pnpm-lock.yaml', '.env'], ['pnpm-lock.yaml'], ['package.json', 'pnpm-workspace.yaml']]) {
+      expect(refused(files)).not.toContain('git add');
+    }
+  });
+
+  it('lists at most 20 files, still without a command', () => {
+    const files = Array.from({ length: 25 }, (_, i) => `file-${i}.txt`);
+    const output = refused(files);
+    expect(output).toContain('    file-19.txt');
+    expect(output).not.toContain('    file-20.txt');
+    expect(output).toContain('… and 5 more');
+    expect(output).not.toContain('git add');
   });
 });
 

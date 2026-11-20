@@ -13,6 +13,7 @@
 //
 // pnpm only: the package manager is not what this covers (e2e-create.mjs runs all four).
 // Asserts:
+//   0. init on the tree the plugin install dirtied is refused: it names the files and exits non-zero
 //   1. init without --frontend detects Expo, records it, and wires the rule with the platform suffixes
 //   2. the layer guide keeps the app layer in app/ (Nx's Expo app has no expo-router)
 //   3. the page and feature generators land in the app's source root
@@ -97,21 +98,50 @@ run('pack plugin', 'npm', ['pack', '--pack-destination', packDir], { cwd: join(r
 const pluginTgz = readdirSync(packDir).find((f) => f.startsWith('clearlydev-nx-archweave-'));
 if (!pluginTgz) fail('locate tarball', `found: ${readdirSync(packDir).join(', ')}`);
 
-// 2. the workspace, from Nx's own Expo preset — not from create-nx-archweave
+// 2. the workspace, from Nx's own Expo preset — not from create-nx-archweave. A git identity
+// lets create-nx-workspace make its initial commit, as it does on a developer's machine (a CI
+// runner has none configured).
 const demo = 'e2e-expo';
 const app = 'mobile';
+const gitIdentity = { GIT_AUTHOR_NAME: 'e2e', GIT_AUTHOR_EMAIL: 'e2e@example.com', GIT_COMMITTER_NAME: 'e2e', GIT_COMMITTER_EMAIL: 'e2e@example.com' };
 run(
   'create workspace',
   'pnpm',
   ['dlx', `create-nx-workspace@${nxVersion}`, demo, '--preset=expo', `--appName=${app}`, '--e2eTestRunner=none', '--pm=pnpm', '--nxCloud=skip', '--interactive=false'],
-  { cwd: work },
+  { cwd: work, env: { ...process.env, ...gitIdentity } },
 );
 const demoDir = join(work, demo);
+// The refusal check below assumes the workspace starts committed, so the plugin install is the
+// only change.
+const initialCommit = spawnSync('git', ['log', '--oneline', '-1'], { cwd: demoDir, encoding: 'utf-8' });
+const uncommitted = spawnSync('git', ['status', '--porcelain'], { cwd: demoDir, encoding: 'utf-8' });
+console.log(`initial commit: ${initialCommit.status === 0 ? initialCommit.stdout.trim() : '(none)'}; uncommitted entries: ${(uncommitted.stdout ?? '').split('\n').filter(Boolean).length}`);
+if (initialCommit.status !== 0 || (uncommitted.stdout ?? '').trim() !== '') {
+  fail('initial commit', 'create-nx-workspace left the workspace uncommitted even with a git identity', `${initialCommit.stderr ?? ''}${uncommitted.stdout ?? ''}`);
+}
 const appDir = join(demoDir, 'apps', app);
 const project = JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf-8')).name ?? app;
 
 // 3. the plugin goes in the way a user adds it to a workspace they already have
 run('add plugin', 'pnpm', ['add', '-D', '-w', join(packDir, pluginTgz)], { cwd: demoDir });
+
+// 3b. init on the tree the plugin install just dirtied: refused, with the files to commit, and
+// a non-zero exit whose last line is init's one-line message (Nx adds a stack only with --verbose).
+const refusal = spawnSync('pnpm', ['nx', 'g', '@clearlydev/nx-archweave:init', '--preset=solo', '--review=false'], {
+  cwd: demoDir,
+  encoding: 'utf-8',
+  maxBuffer: MAX_BUFFER,
+});
+const refusalOutput = `${refusal.stdout ?? ''}${refusal.stderr ?? ''}`;
+if (refusal.status === 0) fail('init refusal', 'init exited 0 on a dirty tree', refusalOutput);
+if (!refusalOutput.includes('git add package.json pnpm-lock.yaml && git commit -m "chore: add @clearlydev/nx-archweave"')) {
+  fail('init refusal', 'the refusal does not name the plugin install files', refusalOutput);
+}
+const refusalLastLine = (refusal.stderr || refusal.stdout || '').trimEnd().split('\n').at(-1) ?? '';
+if (!refusalLastLine.includes('init refused: the working tree has uncommitted changes — see the report above.')) {
+  fail('init refusal', `the last line is not init's message: ${refusalLastLine}`, refusalOutput);
+}
+stepLog.record('init refusal');
 
 // 4. init without --frontend: the framework comes from the app (app.json's expo key)
 const { output: initOutput } = run(

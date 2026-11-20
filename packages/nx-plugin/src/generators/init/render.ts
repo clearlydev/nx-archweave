@@ -5,6 +5,7 @@ import { renderAddAgentRulesReport, type AddAgentRulesReport } from '../add-agen
 import { renderAddGithubTemplatesReport, type AddGithubTemplatesReport } from '../add-github-templates/render.ts';
 import { renderAddReviewReport, type AddReviewReport } from '../add-review/render.ts';
 import { renderAddBackendBody, type AddBackendReport } from '../add-backend/render.ts';
+import { leftForYou, renderLeftForYou } from './left-for-you.ts';
 
 export type InitSectionId = 'fsd' | 'agentRules' | 'githubTemplates' | 'review' | 'backend';
 
@@ -73,6 +74,9 @@ export interface InitReport {
   /** True when the run was refused outright because the (non-dryRun) tree was dirty —
    * `sections` is empty in that case. */
   refused: boolean;
+  /** On a refused run, the uncommitted files `git status` listed; absent when git could
+   * not be run. */
+  dirtyFiles?: string[];
   sections: InitSection[];
   /** Absent on a refused run. */
   config?: InitConfigOutcome;
@@ -115,9 +119,12 @@ function sectionAborted(section: InitSection): boolean {
   return false;
 }
 
-/** The sections that aborted or were refused, by generator name — what `--strict` fails on. */
+/** The sections that aborted or were refused, by generator name — what makes init fail. A
+ * toolkit.config.json that is not a JSON object counts too: init could not record its choices,
+ * and the generators run later (slices, reruns) resolve the frontend and locale from it. */
 export function failedSections(report: InitReport): string[] {
-  return report.sections.filter(sectionAborted).map((section) => SECTION_TITLES[section.id]);
+  const failed = report.sections.filter(sectionAborted).map((section) => SECTION_TITLES[section.id]);
+  return report.config?.action === 'unrecognized' ? [...failed, 'toolkit.config.json'] : failed;
 }
 
 export function renderInitReport(report: InitReport): string {
@@ -130,10 +137,7 @@ export function renderInitReport(report: InitReport): string {
   }
 
   if (report.refused) {
-    lines.push('');
-    lines.push('Refused: the working tree has uncommitted changes.');
-    lines.push('  init only runs against a clean working tree, so a partial run can be rolled back exactly');
-    lines.push('  to what was committed — commit or stash your changes, then rerun.');
+    lines.push('', ...renderRefusal(report.dirtyFiles));
     return lines.join('\n');
   }
 
@@ -178,8 +182,9 @@ export function renderInitReport(report: InitReport): string {
         lines.push(`  already records ${fieldList} (unchanged)`);
         break;
       case 'unrecognized':
-        lines.push(`  not updated — the file is not a JSON object, so init left it alone (it never rewrites a shape it`);
-        lines.push(`  does not recognize). Add ${fieldList} by hand so standalone reruns resolve the same values.`);
+        lines.push(`  aborted — the file is not a JSON object, so init left it alone (it never rewrites a shape it`);
+        lines.push(`  does not recognize) and could not record ${fieldList}. The generators you run next read`);
+        lines.push('  them from here: make the file a JSON object (or delete it), then rerun init.');
         break;
       case 'skipped':
         break;
@@ -199,7 +204,7 @@ export function renderInitReport(report: InitReport): string {
     lines.push('restoring the files this run modified also reverts your earlier changes to them.');
   }
 
-  const hadAbort = report.sections.some(sectionAborted);
+  const hadAbort = failedSections(report).length > 0;
   if (!report.dryRun && hadAbort) {
     lines.push('');
     lines.push('One or more sections aborted. To undo what this run wrote:');
@@ -214,5 +219,36 @@ export function renderInitReport(report: InitReport): string {
     }
   }
 
+  lines.push(...renderLeftForYou(leftForYou(report)));
+
   return lines.join('\n');
+}
+
+const SHOWN_DIRTY_FILES = 20;
+const LOCKFILES = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock', 'bun.lockb']);
+
+/** The dirty-tree refusal: which files are uncommitted and the two ways forward. Only the plugin
+ * install's own files get a command to copy: anything else may hold a file that must not be
+ * committed (an untracked .env), so the user checks it first. */
+function renderRefusal(dirtyFiles: string[] | undefined): string[] {
+  const lines = ['Refused: the working tree has uncommitted changes.'];
+  lines.push('  init only runs against a clean working tree, so a partial run can be rolled back exactly');
+  if (dirtyFiles === undefined || dirtyFiles.length === 0) {
+    lines.push('  to what was committed — commit or stash your changes, then rerun.');
+  } else {
+    lines.push('  to what was committed. Uncommitted:');
+    for (const path of dirtyFiles.slice(0, SHOWN_DIRTY_FILES)) lines.push(`    ${path}`);
+    if (dirtyFiles.length > SHOWN_DIRTY_FILES) lines.push(`    … and ${dirtyFiles.length - SHOWN_DIRTY_FILES} more`);
+    // Right after `add -D @clearlydev/nx-archweave`, only the manifest and the lockfile changed.
+    const pluginInstall = dirtyFiles.includes('package.json') && dirtyFiles.every((path) => path === 'package.json' || LOCKFILES.has(path));
+    if (pluginInstall) {
+      lines.push('  These are the plugin install. Commit them, then rerun init:');
+      lines.push(`    git add ${dirtyFiles.join(' ')} && git commit -m "chore: add @clearlydev/nx-archweave"`);
+    } else {
+      lines.push('  Check them with `git status`, then commit or stash them, and rerun init.');
+    }
+  }
+  lines.push('  Or pass --allowDirty to run anyway: restoring a file this run modifies then also reverts');
+  lines.push('  the changes you had made to it.');
+  return lines;
 }

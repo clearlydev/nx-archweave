@@ -14,8 +14,8 @@ function appTree(): Tree {
 }
 
 const BROKEN_MARKERS = '<!-- nx-archweave:agent-rules start -->\nhalf a block\n';
-const CLEAN: InitDeps = { isWorkingTreeClean: () => true };
-const DIRTY: InitDeps = { isWorkingTreeClean: () => false };
+const CLEAN: InitDeps = { workingTreeChanges: () => [] };
+const DIRTY: InitDeps = { workingTreeChanges: () => ['README.md'] };
 
 function section(report: ReturnType<typeof runInit>, id: 'fsd' | 'agentRules' | 'githubTemplates' | 'review' | 'backend') {
   return report.sections.find((s) => s.id === id);
@@ -36,11 +36,23 @@ describe('runInit — dirty tree refusal', () => {
     expect(tree.listChanges().length).toBe(before);
   });
 
-  it('never even calls isWorkingTreeClean when dryRun is set', () => {
+  it('carries the uncommitted files into the report', () => {
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, { workingTreeChanges: () => ['package.json', 'pnpm-lock.yaml'] });
+    expect(report.refused).toBe(true);
+    expect(report.dirtyFiles).toEqual(['package.json', 'pnpm-lock.yaml']);
+  });
+
+  it('refuses when git could not be run, with no file list', () => {
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite' }, { workingTreeChanges: () => null });
+    expect(report.refused).toBe(true);
+    expect(report.dirtyFiles).toBeUndefined();
+  });
+
+  it('never even calls workingTreeChanges when dryRun is set', () => {
     const before = tree.listChanges().length;
-    const isWorkingTreeClean = jest.fn(() => false);
-    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', dryRun: true }, { isWorkingTreeClean });
-    expect(isWorkingTreeClean).not.toHaveBeenCalled();
+    const workingTreeChanges = jest.fn(() => ['README.md']);
+    const report = runInit(tree, { preset: 'solo', frontend: 'react-vite', dryRun: true }, { workingTreeChanges });
+    expect(workingTreeChanges).not.toHaveBeenCalled();
     expect(report.refused).toBe(false);
     expect(report.cleanTree).toBe(true);
     expect(tree.listChanges().length).toBe(before);
@@ -510,8 +522,7 @@ describe('initGenerator — top-level wiring', () => {
   it('a virtual tree (non-existent real root) treats a failed git check as dirty and refuses', async () => {
     const before = tree.listChanges().length;
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const callback = await initGenerator(tree, { preset: 'solo', frontend: 'react-vite' });
-    expect(callback).toBeUndefined();
+    await expect(initGenerator(tree, { preset: 'solo', frontend: 'react-vite' })).rejects.toThrow('init refused');
     expect(tree.listChanges().length).toBe(before);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('could not determine the working tree status'));
   });
@@ -632,16 +643,16 @@ describe('runInit — packageManager threading', () => {
   it('detects npm from the lockfile when no option is passed', () => {
     const tree = appTree();
     tree.write('package-lock.json', '{}\n');
-    const report = runInit(tree, { preset: 'quick-start', frontend: 'react-vite', allowDirty: true, dryRun: true }, { isWorkingTreeClean: () => true });
+    const report = runInit(tree, { preset: 'quick-start', frontend: 'react-vite', allowDirty: true, dryRun: true }, { workingTreeChanges: () => [] });
     expect(report.packageManager).toBe('npm');
   });
 
   it('an explicit option outranks detection, and no signals default to pnpm', () => {
     const tree = appTree();
     tree.write('package-lock.json', '{}\n');
-    const explicit = runInit(tree, { preset: 'quick-start', frontend: 'react-vite', allowDirty: true, dryRun: true, packageManager: 'pnpm' }, { isWorkingTreeClean: () => true });
+    const explicit = runInit(tree, { preset: 'quick-start', frontend: 'react-vite', allowDirty: true, dryRun: true, packageManager: 'pnpm' }, { workingTreeChanges: () => [] });
     expect(explicit.packageManager).toBe('pnpm');
-    const bare = runInit(appTree(), { preset: 'quick-start', frontend: 'react-vite', allowDirty: true, dryRun: true }, { isWorkingTreeClean: () => true });
+    const bare = runInit(appTree(), { preset: 'quick-start', frontend: 'react-vite', allowDirty: true, dryRun: true }, { workingTreeChanges: () => [] });
     expect(bare.packageManager).toBe('pnpm');
   });
 });
@@ -651,7 +662,7 @@ it('threads the resolved packageManager into the review workflow', () => {
   const report = runInit(
     tree,
     { preset: 'quick-start', review: true, frontend: 'react-vite', allowDirty: true, packageManager: 'npm' },
-    { isWorkingTreeClean: () => true },
+    { workingTreeChanges: () => [] },
   );
   expect(report.refused).toBe(false);
   const workflow = tree.read('.github/workflows/claude-code-review.yml', 'utf-8');
@@ -772,35 +783,107 @@ describe('runInit — --project picks the frontends', () => {
   });
 });
 
-describe('initGenerator — --strict', () => {
+describe('initGenerator — exit codes', () => {
   function ambiguous(): Tree {
     const tree = appTree();
     tree.write('apps/admin/package.json', JSON.stringify({ name: 'admin', nx: { projectType: 'application' } }));
     return tree;
   }
-  const quiet = () => jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  /** A hand-edited agent-rules block: init keeps it, so something is left for the user. */
+  function handEdited(): Tree {
+    const tree = appTree();
+    tree.write('CLAUDE.md', `${renderAgentRulesBlock('## My own rules\n')}\n`.replace('## My own rules', '## My own rules, edited'));
+    return tree;
+  }
+  let logs: string[];
+  beforeEach(() => {
+    logs = [];
+    jest.spyOn(console, 'log').mockImplementation((line: string) => {
+      logs.push(line);
+    });
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
-  it('fails after writing what succeeded when a section aborted', async () => {
-    const log = quiet();
+  async function thrown(run: () => Promise<unknown>): Promise<Error> {
+    try {
+      const callback = await run();
+      if (typeof callback === 'function') (callback as () => void)();
+    } catch (error) {
+      return error as Error;
+    }
+    throw new Error('expected init to fail');
+  }
+
+  it('a refused run fails after printing the report, and writes nothing', async () => {
+    const tree = appTree();
+    const before = tree.listChanges().length;
+    const error = await thrown(() => initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }, DIRTY));
+    expect(error.message).toBe('init refused: the working tree has uncommitted changes — see the report above.');
+    expect(logs.join('\n')).toContain('Refused');
+    expect(tree.listChanges().length).toBe(before);
+  });
+
+  it('an aborted section fails from the callback, after the other sections wrote their files', async () => {
     const tree = ambiguous();
-    const callback = await initGenerator(tree, { preset: 'solo', frontend: 'react-vite', strict: true }, CLEAN);
-    log.mockRestore();
-    expect(tree.exists('toolkit.config.json')).toBe(true);
+    const callback = await initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    expect(tree.exists('CLAUDE.md')).toBe(true);
     expect(typeof callback).toBe('function');
-    expect(() => (callback as () => void)()).toThrow('init --strict: a section aborted (add-fsd-lite)');
+    expect(() => (callback as () => void)()).toThrow('init: a section aborted (add-fsd-lite) — see the report above.');
   });
 
-  it('a dry run fails right away, after printing the report', async () => {
-    const log = quiet();
-    await expect(initGenerator(ambiguous(), { preset: 'solo', frontend: 'react-vite', strict: true, dryRun: true }, CLEAN)).rejects.toThrow('init --strict');
-    log.mockRestore();
+  it('a toolkit.config.json that is not a JSON object fails the run: the next generators read their choices from it', async () => {
+    const tree = appTree();
+    tree.write('toolkit.config.json', '[]\n');
+    const callback = await initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    expect(tree.read('toolkit.config.json', 'utf-8')).toBe('[]\n');
+    expect(() => (callback as () => void)()).toThrow('init: a section aborted (toolkit.config.json) — see the report above.');
   });
 
-  it('without --strict it never fails', async () => {
-    const log = quiet();
-    const callback = await initGenerator(ambiguous(), { preset: 'solo', frontend: 'react-vite', dryRun: true }, CLEAN);
-    log.mockRestore();
-    expect(callback).toBeUndefined();
+  it('a dry run with an aborted section fails right away, after printing the report', async () => {
+    await expect(initGenerator(ambiguous(), { preset: 'solo', frontend: 'react-vite', dryRun: true }, CLEAN)).rejects.toThrow(
+      'init: a section aborted (add-fsd-lite)',
+    );
+    expect(logs.join('\n')).toContain('dry run');
+  });
+
+  it('something left for the user is not a failure without --strict', async () => {
+    const tree = handEdited();
+    const callback = await initGenerator(tree, { preset: 'team', frontend: 'react-vite' }, CLEAN);
+    expect(() => (callback as () => void)()).not.toThrow();
+    expect(logs.join('\n')).toContain('Skipped to keep your changes:');
+  });
+
+  it('--strict fails when init could not do something it was asked for', async () => {
+    const tree = handEdited();
+    const callback = await initGenerator(tree, { preset: 'team', frontend: 'react-vite', strict: true }, CLEAN);
+    expect(tree.exists('toolkit.config.json')).toBe(true);
+    expect(() => (callback as () => void)()).toThrow("init --strict: init couldn't do everything you asked for (1 item) — see the report above.");
+  });
+
+  it('--strict in a dry run fails right away', async () => {
+    await expect(initGenerator(handEdited(), { preset: 'team', frontend: 'react-vite', strict: true, dryRun: true }, CLEAN)).rejects.toThrow('init --strict');
+  });
+
+  it('--strict passes a run that did everything, including a snippet-only ESLint outcome (no --applyEslint)', async () => {
+    const callback = await initGenerator(appTree(), { preset: 'team', frontend: 'react-vite', strict: true }, CLEAN);
+    expect(() => (callback as () => void)()).not.toThrow();
+  });
+
+  it('an aborted section and leftovers under --strict report the abort', async () => {
+    const tree = ambiguous();
+    tree.write('CLAUDE.md', `${renderAgentRulesBlock('## My own rules\n')}\n`.replace('## My own rules', '## My own rules, edited'));
+    const callback = await initGenerator(tree, { preset: 'team', frontend: 'react-vite', strict: true }, CLEAN);
+    expect(() => (callback as () => void)()).toThrow('init: a section aborted (add-fsd-lite)');
+  });
+
+  it("the error carries no stack, so Nx's last line is the message (no --verbose hint)", async () => {
+    const error = await thrown(() => initGenerator(appTree(), { preset: 'solo', frontend: 'react-vite' }, DIRTY));
+    expect(error.stack ?? '').toBe('');
+    const callback = await initGenerator(ambiguous(), { preset: 'solo', frontend: 'react-vite' }, CLEAN);
+    const fromCallback = await thrown(async () => callback);
+    expect(fromCallback.stack ?? '').toBe('');
   });
 });
 

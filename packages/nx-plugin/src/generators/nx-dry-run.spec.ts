@@ -39,7 +39,8 @@ const withPnpm = (tree: Tree) => {
 // every row has four cells: a shorter row would make jest read the 4th parameter as a `done` callback
 const noop = () => undefined;
 const ENTRIES: [string, (tree: Tree) => Promise<unknown>, RegExp, (tree: Tree) => void][] = [
-  ['init', (tree) => initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }), /— dry run/, noop],
+  // an app to set up: a dry run whose FSD section aborts exits non-zero
+  ['init', (tree) => initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }), /— dry run/, withApp],
   ['add-fsd-lite', (tree) => addFsdLiteGenerator(tree, { frontend: 'react-vite' }), /add-fsd-lite dry-run/, withApp],
   ['add-agent-rules', (tree) => addAgentRulesGenerator(tree, {}), /add-agent-rules dry-run/, noop],
   ['add-github-templates', (tree) => addGithubTemplatesGenerator(tree, {}), /add-github-templates dry-run/, noop],
@@ -91,9 +92,10 @@ describe("Nx entry points honour Nx's --dry-run (NX_DRY_RUN=true) even though nx
 
   it('init: the dry run never invokes the clean-tree check (a tree Nx will not flush has nothing to protect)', async () => {
     // would refuse the run if it were consulted — so "not refused" below is the check being skipped, not passing
-    const isWorkingTreeClean = jest.fn<boolean, [string]>().mockReturnValue(false);
-    await initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }, { isWorkingTreeClean });
-    expect(isWorkingTreeClean).not.toHaveBeenCalled();
+    const workingTreeChanges = jest.fn<string[] | null, [string]>().mockReturnValue(['README.md']);
+    withApp(tree);
+    await initGenerator(tree, { preset: 'solo', frontend: 'react-vite' }, { workingTreeChanges });
+    expect(workingTreeChanges).not.toHaveBeenCalled();
     expect(logs.join('\n')).toMatch(/— dry run/);
     expect(logs.join('\n')).not.toMatch(/Refused/);
   });

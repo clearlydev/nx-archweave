@@ -24,7 +24,7 @@ A preset-driven pipeline. It runs `add-fsd-lite`, `add-agent-rules`, `add-github
 - `--fsd`, `--agentRules`, `--githubTemplates`, `--review`
 - `--applyEslint`, `--allowDirty`, `--dryRun`
 - `--project=web,admin` — the frontend app(s) the FSD section sets up. Needed with more than one frontend. Each app gets the rule with the framework found in it (`--frontend` only for an app nx-archweave does not recognise) and is recorded in `toolkit.config.json`'s `frontends`. With exactly one, it is also the frontend `add-backend` wires.
-- `--strict` — exit non-zero when a section aborts or is refused, for CI. The files the other sections wrote stay. Without it, `init` always succeeds and puts every problem in its report.
+- `--strict` — also fail when init couldn't do something you asked for: a file it kept to protect your changes, or a step left for you to do by hand (both listed at the end of the report). For CI. A refused run or an aborted section exits non-zero without it, and the files the other sections wrote stay. See [How `init` exits](behavioral-contracts.md#how-init-exits).
 - Without `--frontend`, `init` uses the framework of the workspace's one frontend app when it recognises it.
 
 Here's how `init` resolves the five options that have a fallback:
