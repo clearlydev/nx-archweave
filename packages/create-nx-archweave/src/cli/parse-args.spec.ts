@@ -124,7 +124,7 @@ describe('parseCliArgs', () => {
     const outcome = parseCliArgs(['my-app', '--preset=nope']);
     expect(outcome).toEqual({
       kind: 'error',
-      message: 'Invalid --preset value "nope". Expected one of: quick-start, solo, team',
+      message: 'Invalid --preset value "nope". Expected one of: quick-start, team',
     });
   });
 

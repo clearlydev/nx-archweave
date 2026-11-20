@@ -4,7 +4,9 @@ import {
   DEFAULT_AI_HOSTS,
   FRONTEND_VALUES,
   LOCALE_VALUES,
+  PRESET_CHOICES,
   PRESET_VALUES,
+  resolvePresetAlias,
   REVIEW_PROVIDER_CHOICES,
   type CliAiHost,
   type CliReviewProvider,
@@ -64,6 +66,15 @@ async function askChoice<T extends string>(ask: Ask, question: string, choices: 
   }
 }
 
+/** Like askChoice, but Enter takes `fallback`. */
+async function askChoiceOrDefault<T extends string>(ask: Ask, question: string, choices: readonly T[], fallback: T): Promise<T> {
+  for (;;) {
+    const answer = (await ask(question)).trim();
+    if (answer === '') return fallback;
+    if ((choices as readonly string[]).includes(answer)) return answer as T;
+  }
+}
+
 function parseYesNo(answer: string): boolean {
   return /^y(es)?$/i.test(answer.trim());
 }
@@ -114,30 +125,29 @@ async function askAiHosts(ask: Ask, installed: InstalledHosts | undefined): Prom
 /**
  * Only asks about whatever `input` doesn't already have (flags always win; only the
  * gaps become interactive questions):
- *  - preset: asked if missing.
+ *  - preset: asked if missing, offering quick-start and team; `solo` (flag or answer) is
+ *    an alias of quick-start and comes back as quick-start.
  *  - frontend: asked if missing, for every preset; `none` makes a backend-only workspace,
  *    so a backend is then required (and `none` is not offered when the backend is none).
  *  - backend: asked if missing, for every preset — the stack choice is never
  *    minimized away.
- *  - locale: quick-start forces 'en' with NO question (keep later questions minimal);
- *    solo/team ask if missing.
+ *  - locale: asked if missing. For quick-start, Enter means en, and no terminal means en
+ *    without asking; team asks.
  *  - aiHosts: asked if missing, for every preset, as a numbered multi-select;
  *    never without a terminal (the default host then).
  *  - review: asked with a single yes/no (default no) ONLY when the resolved preset is
  *    quick-start, no --review/--no-review flag was given, and there is a terminal.
  *    AI review needs a provider API key and a repository secret, so this CLI leaves it
- *    off unless asked: quick-start without an answer and solo without a flag pass
- *    `--review=false` to init. team keeps init's own default (on): `review` stays
+ *    off unless asked: quick-start without an answer passes `--review=false` to init. team keeps init's own default (on): `review` stays
  *    undefined. add-review adds it to any workspace later.
  *
- * NOTE: the init generator's own preset defaults
- * (`packages/template-engine/src/presets/preset-config.ts`: quick-start off, solo/team
- * on) are unchanged; this CLI decides solo by passing the flag. The CLI must not depend
- * on template-engine, so `reviewWillBeOn` below is a deliberate hand-synced literal of
- * the result.
+ * NOTE: this matches the init generator's own preset defaults
+ * (`packages/template-engine/src/presets/preset-config.ts`: quick-start and its alias solo
+ * off, team on). The CLI must not depend on template-engine, so `reviewWillBeOn` below is a
+ * deliberate hand-synced copy of that rule.
  */
 export async function collectMissingInputs(input: PromptInput, ask: Ask): Promise<PromptResult> {
-  const preset = input.preset ?? (await askChoice(ask, `Preset (${PRESET_VALUES.join('/')}): `, PRESET_VALUES));
+  const preset = resolvePresetAlias(input.preset ?? (await askChoice(ask, `Preset (${PRESET_CHOICES.join('/')}): `, PRESET_VALUES)));
   // none/none would build nothing: whichever is asked second leaves `none` out when the
   // other is already none (both passed as flags is refused by parse-args).
   const frontendChoices = input.backend === 'none' ? FRONTEND_VALUES.filter((value) => value !== 'none') : FRONTEND_VALUES;
@@ -149,9 +159,12 @@ export async function collectMissingInputs(input: PromptInput, ask: Ask): Promis
     input.backend ?? (await askChoice(ask, `Backend (${backendChoices.join('/')}): `, backendChoices));
 
   const locale =
-    preset === 'quick-start'
-      ? input.locale ?? 'en'
-      : input.locale ?? (await askChoice(ask, `Locale (${LOCALE_VALUES.join('/')}): `, LOCALE_VALUES));
+    input.locale ??
+    (preset === 'quick-start'
+      ? input.interactive
+        ? await askChoiceOrDefault(ask, 'Locale (en/ko) [en]: ', LOCALE_VALUES, 'en')
+        : 'en'
+      : await askChoice(ask, `Locale (${LOCALE_VALUES.join('/')}): `, LOCALE_VALUES));
 
   // Asked for every preset: the hosts decide which files the workspace gets.
   const aiHosts = input.aiHosts ?? (input.interactive ? await askAiHosts(ask, input.installedHosts) : [...DEFAULT_AI_HOSTS]);
