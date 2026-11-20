@@ -11,7 +11,7 @@ import { doctorGenerator } from '../doctor/generator.ts';
 // template set as well, then rerun with the current init. doctor reads the workspace from
 // disk, so every file the tree holds is written to a temporary directory before it runs.
 
-const CLEAN: InitDeps = { isWorkingTreeClean: () => true };
+const CLEAN: InitDeps = { workingTreeChanges: () => [] };
 
 function writeTreeTo(tree: Tree, dir: string): void {
   for (const change of tree.listChanges()) {

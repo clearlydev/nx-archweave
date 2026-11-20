@@ -9,6 +9,7 @@ import { runAddGithubTemplates } from '../add-github-templates/generator.ts';
 import { recordedReview, runAddReview } from '../add-review/generator.ts';
 import { runAddBackend } from '../add-backend/generator.ts';
 import type { InitGeneratorSchema } from './schema.d.ts';
+import { leftForYou } from './left-for-you.ts';
 import { failedSections, renderInitReport, type InitConfigOutcome, type InitReport, type InitSection } from './render.ts';
 import { createProcessExec, runPostInitValidation } from './validation.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
@@ -30,7 +31,9 @@ import {
 } from '../shared/toolkit-config-file.ts';
 
 export interface InitDeps {
-  isWorkingTreeClean(root: string): boolean;
+  /** The paths `git status` lists as changed or untracked (empty on a clean tree); null when
+   * git could not be run, which init treats as dirty. */
+  workingTreeChanges(root: string): string[] | null;
 }
 
 /**
@@ -174,9 +177,10 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
   // dirties the tree (create-nx-archweave installs this plugin right before init);
   // the report then warns that the rollback command covers more than this run.
   const allowDirty = options.allowDirty ?? false;
-  const cleanTree = dryRun ? true : deps.isWorkingTreeClean(tree.root);
+  const changes = dryRun ? [] : deps.workingTreeChanges(tree.root);
+  const cleanTree = changes !== null && changes.length === 0;
   if (!cleanTree && !allowDirty) {
-    return { preset, frontend, backend, dryRun, cleanTree: false, allowDirty, refused: true, sections: [] };
+    return { preset, frontend, backend, dryRun, cleanTree: false, allowDirty, refused: true, ...(changes === null ? {} : { dirtyFiles: changes }), sections: [] };
   }
 
   // Explicit option > detection > recorded > pnpm. The CLI always passes
@@ -381,20 +385,50 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
   };
 }
 
-/** Real `isWorkingTreeClean`: a failed git invocation (not a repo, git missing, ...) is
- * treated as NOT clean — the safer default — with a distinct console note explaining why,
- * separate from `runInit`'s own dirty-tree refusal report. */
-function gitIsWorkingTreeClean(root: string): boolean {
+/** Real `workingTreeChanges`: a failed git invocation (not a repo, git missing, ...) returns
+ * null, which init treats as NOT clean — the safer default — with a distinct console note
+ * explaining why, separate from `runInit`'s own dirty-tree refusal report. */
+function gitWorkingTreeChanges(root: string): string[] | null {
   try {
-    const output = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' });
-    return output.trim().length === 0;
+    // -z: paths come unquoted, each entry ends in NUL, and a rename's old path follows its new one.
+    const output = execFileSync('git', ['status', '--porcelain', '-z'], { cwd: root, encoding: 'utf-8' });
+    const entries = output.split('\0');
+    const paths: string[] = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      if (entry.length < 4) continue;
+      paths.push(entry.slice(3));
+      if (/[RC]/.test(entry.slice(0, 2))) index += 1;
+    }
+    return paths;
   } catch (error) {
     console.warn(
       'init: could not determine the working tree status (the git command failed) — treating it as dirty for safety.',
     );
     if (error instanceof Error) console.warn(`  ${error.message}`);
-    return false;
+    return null;
   }
+}
+
+/** Why init exits non-zero, or null when it succeeds. The report has already said all of it, so
+ * the message only points back there. A refusal or an aborted section always fails; with
+ * --strict, so does anything init was asked for but did not do. */
+function initFailure(report: InitReport, strict: boolean): string | null {
+  if (report.refused) return 'init refused: the working tree has uncommitted changes — see the report above.';
+  const aborted = failedSections(report);
+  if (aborted.length > 0) return `init: a section aborted (${aborted.join(', ')}) — see the report above.`;
+  if (!strict) return null;
+  const left = leftForYou(report);
+  const count = left.kept.length + left.manual.length;
+  return count === 0 ? null : `init --strict: init couldn't do everything you asked for (${count} ${count === 1 ? 'item' : 'items'}) — see the report above.`;
+}
+
+/** An error without a stack: Nx prints a stack only with --verbose and otherwise adds a
+ * "Pass --verbose" line under the message, so the message stays the last line. */
+function reportedFailure(message: string): Error {
+  const error = new Error(message);
+  error.stack = '';
+  return error;
 }
 
 /** Workflow files (relative to `tree.root`) this run actually wrote — the only sub-call
@@ -418,7 +452,7 @@ function collectWrittenWorkflowPaths(report: InitReport): string[] {
 export async function initGenerator(
   tree: Tree,
   options: InitGeneratorSchema,
-  deps: InitDeps = { isWorkingTreeClean: gitIsWorkingTreeClean },
+  deps: InitDeps = { workingTreeChanges: gitWorkingTreeChanges },
 ): Promise<GeneratorCallback | void> {
   // A delta, not an absolute count: a real `Tree` normally starts a generator run with
   // zero pending changes, but nothing here assumes that — comparing against the count
@@ -428,17 +462,17 @@ export async function initGenerator(
   const report = runInit(tree, { ...options, dryRun: resolveDryRun(options) }, deps);
   console.log(renderInitReport(report));
 
-  // --strict: `nx g` exits non-zero only when the generator (or its callback) throws. Throwing
-  // here would discard what the other sections wrote, so a real run fails from the callback,
-  // which Nx runs after writing the files; a dry or refused run has nothing to keep.
-  const failed = options.strict === true ? (report.refused ? ['the dirty-tree check'] : failedSections(report)) : [];
-  const strictFailure = failed.length === 0 ? null : new Error(`init --strict: a section aborted (${failed.join(', ')}) — see the report above.`);
-  if (strictFailure !== null && (report.dryRun || report.refused)) throw strictFailure;
+  // `nx g` exits non-zero only when the generator (or its callback) throws. Throwing here
+  // would discard what the other sections wrote, so a real run fails from the callback, which
+  // Nx runs after writing the files; a dry or refused run has nothing to keep.
+  const message = initFailure(report, options.strict === true);
+  const failure = message === null ? null : reportedFailure(message);
+  if (failure !== null && (report.dryRun || report.refused)) throw failure;
 
   if (report.dryRun || report.refused) return;
   const wrote = tree.listChanges().length !== changesBefore;
   if (!wrote) {
-    if (strictFailure !== null) throw strictFailure;
+    if (failure !== null) throw failure;
     return;
   }
 
@@ -448,7 +482,7 @@ export async function initGenerator(
 
   return () => {
     runPostInitValidation({ root, workflowPaths, graphOutputFile }, createProcessExec());
-    if (strictFailure !== null) throw strictFailure;
+    if (failure !== null) throw failure;
   };
 }
 

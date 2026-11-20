@@ -12,7 +12,7 @@ jest.mock('../add-fsd-lite/generator.ts', () => ({
 
 import { runInit, type InitDeps } from './generator.ts';
 
-const CLEAN: InitDeps = { isWorkingTreeClean: () => true };
+const CLEAN: InitDeps = { workingTreeChanges: () => [] };
 
 describe('runInit — fsd throw folds into an aborted-style section, pipeline continues', () => {
   let tree: Tree;

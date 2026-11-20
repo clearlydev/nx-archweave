@@ -83,7 +83,7 @@
     "strict": {
       "type": "boolean",
       "default": false,
-      "description": "Fail the run (non-zero exit) when a section aborts or is refused. Files the other sections wrote stay; the report lists them. Without it init always succeeds and reports"
+      "description": "Also fail (non-zero exit) when init couldn't do something you asked for: a file it kept to protect your changes, or a step left for you to do by hand. A refusal or an aborted section fails without it. Files the other sections wrote stay"
     },
     "allowDirty": {
       "type": "boolean",

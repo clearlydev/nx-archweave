@@ -37,6 +37,8 @@ describe('initGenerator — real git wiring', () => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 
+  const logs = () => (console.log as jest.Mock).mock.calls.map((call) => String(call[0])).join('\n');
+
   afterEach(() => {
     jest.restoreAllMocks();
     rmSync(cleanRepo, { recursive: true, force: true });
@@ -54,8 +56,8 @@ describe('initGenerator — real git wiring', () => {
     const before = tree.listChanges().length;
     writeFileSync(join(cleanRepo, 'dirty.txt'), 'uncommitted\n');
     pointTreeAt(tree, cleanRepo);
-    const callback = await initGenerator(tree, { preset: 'solo', frontend: 'react-vite' });
-    expect(callback).toBeUndefined();
+    await expect(initGenerator(tree, { preset: 'solo', frontend: 'react-vite' })).rejects.toThrow('init refused');
+    expect(logs()).toContain('    dirty.txt');
     expect(tree.listChanges().length).toBe(before);
   });
 
@@ -64,9 +66,17 @@ describe('initGenerator — real git wiring', () => {
     writeFileSync(join(cleanRepo, 'README.md'), 'changed\n');
     execFileSync('git', ['add', '.'], { cwd: cleanRepo });
     pointTreeAt(tree, cleanRepo);
-    const callback = await initGenerator(tree, { preset: 'team', frontend: 'next' });
-    expect(callback).toBeUndefined();
+    await expect(initGenerator(tree, { preset: 'team', frontend: 'next' })).rejects.toThrow('init refused');
+    expect(logs()).toContain('    README.md');
     expect(tree.listChanges().length).toBe(before);
+  });
+
+  it('lists a renamed file by its new path, and a path with spaces as it is', async () => {
+    execFileSync('git', ['mv', 'README.md', 'READ ME.md'], { cwd: cleanRepo });
+    pointTreeAt(tree, cleanRepo);
+    await expect(initGenerator(tree, { preset: 'solo', frontend: 'react-vite' })).rejects.toThrow('init refused');
+    expect(logs()).toContain('    READ ME.md');
+    expect(logs()).not.toMatch(/^ {4}README\.md$/m);
   });
 
   it('does not return a callback when every toggle is off and nothing is written, even on a clean tree', async () => {
