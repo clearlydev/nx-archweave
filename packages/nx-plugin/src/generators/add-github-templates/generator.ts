@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Tree } from '@nx/devkit';
-import type { ToolkitLocale } from '@nx-archweave/shared';
+import { sameFileText, type ToolkitLocale } from '@nx-archweave/shared';
 import type { AddGithubTemplatesGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
 import { readToolkitConfig, resolveLocaleOption } from '../shared/toolkit-config-file.ts';
@@ -49,7 +49,7 @@ export function runAddGithubTemplates(tree: Tree, options: AddGithubTemplatesGen
     if (existing === null) {
       action = 'created';
       if (!dryRun) tree.write(filePath, content);
-    } else if (existing === content) {
+    } else if (sameFileText(existing, content)) {
       action = 'unchanged';
     } else {
       action = 'skipped';

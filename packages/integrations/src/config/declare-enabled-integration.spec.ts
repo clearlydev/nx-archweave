@@ -4,6 +4,28 @@ import { join } from 'node:path';
 import { declareEnabledIntegration } from './declare-enabled-integration.ts';
 import { readEnabledIntegrationIds } from './read-enabled-integrations.ts';
 
+// Windows has no POSIX permission bits: chmod there only toggles read-only, so a mode
+// round-trip can't be observed.
+const itWithPosixModes = process.platform === 'win32' ? it.skip : it;
+
+// Creating a symlink on Windows needs Developer Mode or an elevated shell. Without either the OS
+// refuses (EPERM), so a test that needs one is skipped there instead of failing on setup.
+const itWithSymlinks = canCreateSymlinks() ? it : it.skip;
+
+function canCreateSymlinks(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), 'archweave-symlink-probe-'));
+  try {
+    writeFileSync(join(dir, 'target'), '');
+    symlinkSync(join(dir, 'target'), join(dir, 'link'));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EPERM') return false;
+    throw error;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 describe('declareEnabledIntegration', () => {
   let root: string;
   beforeEach(() => {
@@ -41,7 +63,7 @@ describe('declareEnabledIntegration', () => {
     expect(raw.replace(/\r\n/g, '')).not.toContain('\n');
   });
 
-  it('preserves the file mode across the atomic rewrite', () => {
+  itWithPosixModes('preserves the file mode across the atomic rewrite', () => {
     writeFileSync(configPath(), '{}\n');
     chmodSync(configPath(), 0o600);
     declareEnabledIntegration(root, 'ponytail', { write: true });
@@ -54,7 +76,7 @@ describe('declareEnabledIntegration', () => {
     expect(readdirSync(root)).toEqual(['toolkit.config.json']);
   });
 
-  it('refuses to write through a symlinked config (reported as unrecognized, target untouched)', () => {
+  itWithSymlinks('refuses to write through a symlinked config (reported as unrecognized, target untouched)', () => {
     const target = join(root, 'real.json');
     writeFileSync(target, '{}');
     symlinkSync(target, configPath());

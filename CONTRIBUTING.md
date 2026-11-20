@@ -44,7 +44,9 @@ The scope is optional (`cli`, `plugin`, `docs` …). A check validates the title
 
 ## Setup
 
-You need Node >= 22.18 and pnpm. Use the pnpm version pinned in `package.json`'s `packageManager`, via Corepack.
+You need Node >= 22.18 and pnpm. Use the pnpm version pinned in `package.json`'s `packageManager`, via Corepack. A few tests run the generated review workflow's shell steps with the real `bash` and `jq`, so `jq` needs to be on your `PATH` as well.
+
+On Windows, run the commands from Git Bash: in PowerShell, `bash` can resolve to WSL's instead of Git's. Tests that create a symlink are skipped unless Developer Mode is on or the shell is elevated.
 
 ```bash
 pnpm install

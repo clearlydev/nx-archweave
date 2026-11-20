@@ -57,6 +57,19 @@ describe('runAddFsdLite — no folders, a rule', () => {
     expect(runAddFsdLite(tree, { frontend: 'react-vite' }).eslint).toBe('already-applied');
   });
 
+  it('--applyEslint keeps a CRLF config CRLF, idempotently', () => {
+    const tree = appTree();
+    const crlfConfig = REACT_APP_CONFIG.replace(/\r?\n/g, '\r\n');
+    tree.write(ESLINT, crlfConfig);
+    expect(runAddFsdLite(tree, { frontend: 'react-vite', applyEslint: true }).eslint).toBe('applied');
+    const written = tree.read(ESLINT, 'utf-8') as string;
+    expect(written).toContain("import { fsdBoundaries } from '@clearlydev/nx-archweave/eslint';\r\n");
+    expect(written).toContain("  ...fsdBoundaries({ severity: 'warn', cwd: import.meta.dirname, root: 'src' }),\r\n];");
+    expect(written.replace(/\r\n/g, '')).not.toContain('\n');
+    expect(runAddFsdLite(tree, { frontend: 'react-vite', applyEslint: true }).eslint).toBe('already-applied');
+    expect(tree.read(ESLINT, 'utf-8')).toBe(written);
+  });
+
   it('never touches a config shape it does not own, and says so with the snippet', () => {
     const tree = appTree();
     tree.write(ESLINT, "const config = buildConfig();\nexport default config;\n");
@@ -217,6 +230,10 @@ describe('runAddFsdLite — --steiger', () => {
     expect(second.steiger).toMatchObject({ config: 'unchanged', target: 'present', targetPath: 'apps/web/project.json', dependencies: 'present' });
     const project = JSON.parse(tree.read('apps/web/project.json', 'utf-8') as string);
     expect(Object.keys(project.targets)).toEqual(['build', 'fsd-check']);
+    const crlf = (tree.read('apps/web/steiger.config.mjs', 'utf-8') as string).replace(/\n/g, '\r\n');
+    tree.write('apps/web/steiger.config.mjs', crlf);
+    expect(runAddFsdLite(tree, { frontend: 'react-vite', steiger: true }).steiger?.config).toBe('unchanged');
+    expect(tree.read('apps/web/steiger.config.mjs', 'utf-8')).toBe(crlf);
     tree.write('apps/web/steiger.config.mjs', 'export default [];\n');
     expect(runAddFsdLite(tree, { frontend: 'react-vite', steiger: true }).steiger?.config).toBe('kept');
     expect(tree.read('apps/web/steiger.config.mjs', 'utf-8')).toBe('export default [];\n');

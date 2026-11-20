@@ -148,6 +148,13 @@ describe('runAddGithubTemplates — conflict handling (skip-always, no onConflic
     expect(tree.exists(CODEOWNERS_PATH)).toBe(true);
   });
 
+  it('the generated file checked out with CRLF line endings is unchanged and left as it is', () => {
+    const crlf = contentFor(PR_TEMPLATE_PATH, 'en').replace(/\n/g, '\r\n');
+    tree.write(PR_TEMPLATE_PATH, crlf);
+    expect(runAddGithubTemplates(tree, {}).files[0].action).toBe('unchanged');
+    expect(tree.read(PR_TEMPLATE_PATH, 'utf-8')).toBe(crlf);
+  });
+
   it('a file matching the generated content exactly is reported unchanged, not skipped', () => {
     tree.write(PR_TEMPLATE_PATH, contentFor(PR_TEMPLATE_PATH, 'en'));
     const report = runAddGithubTemplates(tree, {});

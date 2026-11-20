@@ -41,6 +41,15 @@ describe('addSharedTypesWorkspaceGlob', () => {
     }
   });
 
+  it('keeps a CRLF file CRLF, the new entry included', () => {
+    const result = addSharedTypesWorkspaceGlob(templateYaml.replace(/\n/g, '\r\n'));
+    expect(result.status).toBe('added');
+    if (result.status === 'added') {
+      expect(result.text).toBe(`packages:\r\n  - 'apps/*'\r\n  - 'packages/api/products'\r\n  - 'packages/shared/*'\r\n  - 'libs/shared-types'\r\n`);
+    }
+    expect(addSharedTypesWorkspaceGlob(`packages:\r\n  - 'libs/*'\r\n`).status).toBe('present');
+  });
+
   it('is idempotent — an existing libs glob reports present', () => {
     expect(addSharedTypesWorkspaceGlob(`packages:\n  - 'apps/*'\n  - 'libs/shared-types'\n`).status).toBe('present');
     expect(addSharedTypesWorkspaceGlob(`packages:\n  - 'libs/*'\n`).status).toBe('present');

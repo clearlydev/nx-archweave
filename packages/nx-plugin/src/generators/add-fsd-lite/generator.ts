@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 import type { Tree } from '@nx/devkit';
-import { readFsdEnforcement, type FsdEnforcement } from '@nx-archweave/shared';
+import { readFsdEnforcement, sameFileText, type FsdEnforcement } from '@nx-archweave/shared';
 import {
   applyFsdEslintConfig,
   buildFsdCheckTarget,
@@ -133,7 +133,7 @@ function addSteiger(
     configAction = 'created';
     if (input.write) tree.write(configPath, configText);
   } else {
-    configAction = existing === configText ? 'unchanged' : 'kept';
+    configAction = sameFileText(existing, configText) ? 'unchanged' : 'kept';
   }
 
   // the source root relative to the app root is what the target hands steiger

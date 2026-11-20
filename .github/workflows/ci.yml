@@ -75,6 +75,28 @@ jobs:
       # project, assert generators.json loads and every factory imports.
       - run: node tools/verify-tarball.mjs
 
+  # The unit tests on Windows, so a test (or a file comparison) that assumes POSIX paths,
+  # permissions or LF-only text is caught. Nightly and on a manual run only: pull requests
+  # don't wait on a Windows runner. The CRLF handling itself is covered by unit tests that
+  # write CRLF text directly; the checkout here is LF (.gitattributes).
+  verify-windows:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.repository == 'clearlydev/nx-archweave')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          check-latest: true
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm nx run-many -t test
+
   # Full create-flow release gate: pack → create a real workspace from the
   # real template → assert wiring, registration, build/lint, doctor gate.
   # Hybrid gate: on PRs this runs only when code changed, and only OUR

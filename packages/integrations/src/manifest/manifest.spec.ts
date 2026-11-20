@@ -10,6 +10,24 @@ import {
   withManifestEntry,
 } from './manifest.ts';
 
+// Creating a symlink on Windows needs Developer Mode or an elevated shell. Without either the OS
+// refuses (EPERM), so a test that needs one is skipped there instead of failing on setup.
+const itWithSymlinks = canCreateSymlinks() ? it : it.skip;
+
+function canCreateSymlinks(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), 'archweave-symlink-probe-'));
+  try {
+    writeFileSync(join(dir, 'target'), '');
+    symlinkSync(join(dir, 'target'), join(dir, 'link'));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EPERM') return false;
+    throw error;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const FIXTURES = join(__dirname, '../../../../tools/fixtures/integrations');
 
 describe('createEmptyManifest', () => {
@@ -198,7 +216,7 @@ describe('writeManifestAtomic', () => {
     }
   });
 
-  it('refuses to write through a symlinked manifest path rather than following it', () => {
+  itWithSymlinks('refuses to write through a symlinked manifest path rather than following it', () => {
     const dir = mkdtempSync(join(tmpdir(), 'archweave-atomic-test-'));
     const outsideDir = mkdtempSync(join(tmpdir(), 'archweave-atomic-outside-'));
     try {

@@ -1,3 +1,5 @@
+import { normalizeFileText } from '@nx-archweave/shared';
+
 export type WorkflowAction =
   | 'created'
   | 'overwritten'
@@ -33,10 +35,11 @@ export interface AddReviewReport {
   dependabotProposal: string | null;
 }
 
-/** Line-level LCS diff — small generated files, no diff library. */
+/** Line-level LCS diff — small generated files, no diff library. CRLF and a leading BOM are
+ * not shown as changes: every line of a CRLF checkout would otherwise differ. */
 export function renderLineDiff(existing: string, generated: string): string {
-  const a = existing.split('\n');
-  const b = generated.split('\n');
+  const a = normalizeFileText(existing).split('\n');
+  const b = normalizeFileText(generated).split('\n');
   const m = a.length;
   const n = b.length;
   const lcs: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
