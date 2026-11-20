@@ -98,16 +98,27 @@ run('pack plugin', 'npm', ['pack', '--pack-destination', packDir], { cwd: join(r
 const pluginTgz = readdirSync(packDir).find((f) => f.startsWith('clearlydev-nx-archweave-'));
 if (!pluginTgz) fail('locate tarball', `found: ${readdirSync(packDir).join(', ')}`);
 
-// 2. the workspace, from Nx's own Expo preset — not from create-nx-archweave
+// 2. the workspace, from Nx's own Expo preset — not from create-nx-archweave. A git identity
+// lets create-nx-workspace make its initial commit, as it does on a developer's machine (a CI
+// runner has none configured).
 const demo = 'e2e-expo';
 const app = 'mobile';
+const gitIdentity = { GIT_AUTHOR_NAME: 'e2e', GIT_AUTHOR_EMAIL: 'e2e@example.com', GIT_COMMITTER_NAME: 'e2e', GIT_COMMITTER_EMAIL: 'e2e@example.com' };
 run(
   'create workspace',
   'pnpm',
   ['dlx', `create-nx-workspace@${nxVersion}`, demo, '--preset=expo', `--appName=${app}`, '--e2eTestRunner=none', '--pm=pnpm', '--nxCloud=skip', '--interactive=false'],
-  { cwd: work },
+  { cwd: work, env: { ...process.env, ...gitIdentity } },
 );
 const demoDir = join(work, demo);
+// The refusal check below assumes the workspace starts committed, so the plugin install is the
+// only change.
+const initialCommit = spawnSync('git', ['log', '--oneline', '-1'], { cwd: demoDir, encoding: 'utf-8' });
+const uncommitted = spawnSync('git', ['status', '--porcelain'], { cwd: demoDir, encoding: 'utf-8' });
+console.log(`initial commit: ${initialCommit.status === 0 ? initialCommit.stdout.trim() : '(none)'}; uncommitted entries: ${(uncommitted.stdout ?? '').split('\n').filter(Boolean).length}`);
+if (initialCommit.status !== 0 || (uncommitted.stdout ?? '').trim() !== '') {
+  fail('initial commit', 'create-nx-workspace left the workspace uncommitted even with a git identity', `${initialCommit.stderr ?? ''}${uncommitted.stdout ?? ''}`);
+}
 const appDir = join(demoDir, 'apps', app);
 const project = JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf-8')).name ?? app;
 
