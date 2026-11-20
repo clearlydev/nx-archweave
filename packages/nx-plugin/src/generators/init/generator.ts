@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GeneratorCallback, Tree } from '@nx/devkit';
-import { buildPresetConfig, readBoundaryTags } from '@nx-archweave/template-engine';
+import { buildPresetConfig, readBoundaryTags, REVIEW_PROVIDERS } from '@nx-archweave/template-engine';
 import { runAddFsdLite } from '../add-fsd-lite/generator.ts';
 import { runAddAgentRules } from '../add-agent-rules/generator.ts';
 import { runAddGithubTemplates } from '../add-github-templates/generator.ts';
@@ -101,6 +101,15 @@ function recordPresetChoices(
 
 /** The recorded review provider, kept unless this run's --aiHosts changes the first AI host
  * (the provider's default follows that host — a new first host re-derives it). */
+/** The review files a workspace already has: any provider's workflow, and the review field of
+ * toolkit.config.json. A run with review off leaves them alone and names them in the report. */
+function existingReviewFiles(tree: Tree, config: Record<string, unknown> | null): string[] {
+  const workflows = Object.values(REVIEW_PROVIDERS)
+    .map((provider) => provider.workflowFileName)
+    .filter((path) => tree.exists(path));
+  return config?.['review'] === undefined ? workflows : [...workflows, 'toolkit.config.json (review field)'];
+}
+
 function keptReviewProvider(option: InitGeneratorSchema['aiHosts'], config: Record<string, unknown> | null) {
   const recordedHosts = resolveAiHostsOption(undefined, config);
   const hosts = resolveAiHostsOption(option, config);
@@ -293,7 +302,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     });
     sections.push({ id: 'review', enabled: true, report: { kind: 'review', report } });
   } else {
-    sections.push({ id: 'review', enabled: false, report: null });
+    sections.push({ id: 'review', enabled: false, report: null, keptFiles: existingReviewFiles(tree, recorded) });
   }
 
   // Record only what was actually applied: an aborted fsd section or an agent-rules file

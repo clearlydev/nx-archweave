@@ -97,11 +97,11 @@ export interface InitOptions {
   locale?: CliLocale | undefined;
 }
 
-/** solo and generic when not passed: init has no question for either, and generic makes no
+/** quick-start and generic when not passed: init has no question for either, and generic makes no
  * assumption about the app. The refusal says to change them to fit the repository. */
 function initFlags(options: InitOptions): string {
   return [
-    `--preset=${options.preset ?? 'solo'}`,
+    `--preset=${options.preset ?? 'quick-start'}`,
     `--frontend=${options.frontend ?? 'generic'}`,
     ...(options.backend === undefined ? [] : [`--backend=${options.backend}`]),
     ...(options.locale === undefined ? [] : [`--locale=${options.locale}`]),
@@ -144,7 +144,7 @@ export function renderLocationRefusal(
     `To set up this repository with nx-archweave instead, run these in ${check.at} (${repo.packageManager}, ${repo.source}):`,
     ...existingRepositoryCommands(repo, options).map((command) => `  ${command}`),
     ...(options.preset === undefined || options.frontend === undefined
-      ? ['Change --preset and --frontend to fit the repository (presets: quick-start, solo, team; frontends: react-vite, next, expo, generic, none).']
+      ? ['Change --preset and --frontend to fit the repository (presets: quick-start, team; frontends: react-vite, next, expo, generic, none).']
       : []),
     'The last command only previews the changes. To apply them, commit what the first two commands changed (init needs a clean working tree), then run it again without --dryRun.',
     'To create a separate workspace, run create-nx-archweave from a folder outside it.',

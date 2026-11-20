@@ -20,7 +20,8 @@ export function buildInitPlan(doctorReport: DoctorReport, options: BuildInitPlan
 
   const frontend = options.frontend ?? 'react-vite';
   const reviewMode = options.preset === 'team' ? 'standard' : 'fast';
-  const prOnly = options.preset === 'quick-start';
+  // solo is an alias of quick-start: the same minimal template set.
+  const prOnly = options.preset !== 'team';
 
   plan.commands.push(`nx g @clearlydev/nx-archweave:add-fsd-lite --frontend=${frontend}`);
   plan.commands.push(`nx g @clearlydev/nx-archweave:add-review --mode=${reviewMode}`);

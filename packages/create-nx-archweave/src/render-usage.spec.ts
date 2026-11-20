@@ -7,7 +7,7 @@ describe('renderUsage', () => {
     const usage = renderUsage();
 
     expect(usage).toContain('Usage: create-nx-archweave <name> [options]');
-    expect(usage).toContain('--preset <quick-start|solo|team>');
+    expect(usage).toContain('--preset <quick-start|team>');
     expect(usage).toContain('--frontend <react-vite|next|none>');
     expect(usage).toContain('--backend <express|nest|none>');
     expect(usage).toContain('--locale <ko|en>');

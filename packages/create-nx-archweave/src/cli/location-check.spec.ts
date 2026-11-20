@@ -97,13 +97,13 @@ describe('existingRepositoryCommands', () => {
   });
 
   it.each<[string, Partial<ExistingRepository>, string[]]>([
-    ['npm', { packageManager: 'npm' }, [`npx ${nx} init`, `npm install -D ${plugin}`, 'npm exec nx -- g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
-    ['pnpm, single package (no -w)', { packageManager: 'pnpm' }, [`pnpm dlx ${nx} init`, `pnpm add -D ${plugin}`, 'pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
-    ['pnpm, workspace root', { packageManager: 'pnpm', workspaceRoot: true }, [`pnpm dlx ${nx} init`, `pnpm add -D -w ${plugin}`, 'pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
-    ['yarn 2+', { packageManager: 'yarn', yarnBerry: true, workspaceRoot: true }, [`yarn dlx ${nx} init`, `yarn add -D ${plugin}`, 'yarn nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
-    ['yarn 1, single package', { packageManager: 'yarn' }, [`npx ${nx} init`, `yarn add -D ${plugin}`, 'yarn nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
-    ['yarn 1, workspace root', { packageManager: 'yarn', workspaceRoot: true }, [`npx ${nx} init`, `yarn add -D -W ${plugin}`, 'yarn nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
-    ['bun', { packageManager: 'bun' }, [`bunx ${nx} init`, `bun add -d ${plugin}`, 'bun nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun']],
+    ['npm', { packageManager: 'npm' }, [`npx ${nx} init`, `npm install -D ${plugin}`, 'npm exec nx -- g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
+    ['pnpm, single package (no -w)', { packageManager: 'pnpm' }, [`pnpm dlx ${nx} init`, `pnpm add -D ${plugin}`, 'pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
+    ['pnpm, workspace root', { packageManager: 'pnpm', workspaceRoot: true }, [`pnpm dlx ${nx} init`, `pnpm add -D -w ${plugin}`, 'pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
+    ['yarn 2+', { packageManager: 'yarn', yarnBerry: true, workspaceRoot: true }, [`yarn dlx ${nx} init`, `yarn add -D ${plugin}`, 'yarn nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
+    ['yarn 1, single package', { packageManager: 'yarn' }, [`npx ${nx} init`, `yarn add -D ${plugin}`, 'yarn nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
+    ['yarn 1, workspace root', { packageManager: 'yarn', workspaceRoot: true }, [`npx ${nx} init`, `yarn add -D -W ${plugin}`, 'yarn nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
+    ['bun', { packageManager: 'bun' }, [`bunx ${nx} init`, `bun add -d ${plugin}`, 'bun nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun']],
   ])('%s', (_name, overrides, expected) => {
     expect(existingRepositoryCommands(repo(overrides))).toEqual(expected);
   });
@@ -133,7 +133,7 @@ describe('renderLocationRefusal', () => {
     expect(text).toContain('run these in /repo (pnpm, from pnpm-lock.yaml):');
     expect(text).toContain(`  pnpm dlx nx@${VALIDATED_CREATE_NX_WORKSPACE_VERSION} init`);
     expect(text).toContain(`  pnpm add -D ${DEFAULT_PLUGIN_SOURCE}`);
-    expect(text).toContain('  pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=generic --dryRun');
+    expect(text).toContain('  pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=generic --dryRun');
     expect(text).toContain('Change --preset and --frontend to fit the repository');
     expect(text).toContain('commit what the first two commands changed (init needs a clean working tree), then run it again without --dryRun');
     expect(text).toContain('--allow-nested');

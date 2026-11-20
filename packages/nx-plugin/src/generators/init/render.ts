@@ -23,6 +23,9 @@ export interface InitSection {
   enabled: boolean;
   /** null when the section is disabled for this run. */
   report: InitSectionReport | null;
+  /** Set only for a disabled 'review' section: the review files already in the workspace,
+   * which init leaves as they are (turning review off never removes them). */
+  keptFiles?: string[];
   /** Set only for the 'fsd' section when `runAddFsdLite` threw — the raw throw is caught
    * and folded into an aborted-style section instead of failing the whole run, so the
    * rest of the pipeline still gets a chance to proceed. */
@@ -122,6 +125,9 @@ export function renderInitReport(report: InitReport): string {
   const backendSuffix = report.backend === 'none' ? '' : `, backend: ${report.backend}`;
   const header = `init (preset: ${report.preset}, frontend: ${report.frontend}${backendSuffix})`;
   lines.push(report.dryRun ? `${header} — dry run` : header);
+  if (report.preset === 'solo') {
+    lines.push('Note: solo is now an alias of quick-start — AI PR review stays off unless you pass --review.');
+  }
 
   if (report.refused) {
     lines.push('');
@@ -144,6 +150,9 @@ export function renderInitReport(report: InitReport): string {
           ? '  skipped (backend-only workspace — no frontend to structure)'
           : '  skipped (disabled for this run)',
       );
+      if (section.keptFiles !== undefined && section.keptFiles.length > 0) {
+        lines.push(`  Kept as they are: ${section.keptFiles.join(', ')}. To update them, run add-review.`);
+      }
       continue;
     }
     if (section.thrownError !== undefined) {

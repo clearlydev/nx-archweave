@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises';
 import { parseCliArgs } from './cli/parse-args.ts';
 import { checkInvocationDirectory, readExistingRepository, renderLocationRefusal } from './cli/location-check.ts';
 import { collectMissingInputs, reviewProviderConflict } from './cli/prompts.ts';
+import { resolvePresetAlias, SOLO_ALIAS_NOTE } from './cli/types.ts';
 import { buildPlan, nxGenerateCommand } from './cli/plan.ts';
 import { detectInstalledHosts } from './cli/host-probe.ts';
 import { choosePlugins, resolvePluginFlag } from './cli/plugins.ts';
@@ -89,8 +90,10 @@ async function main(argv: readonly string[]): Promise<number> {
       return 1;
     }
   }
+  if (args.preset === 'solo') console.error(SOLO_ALIAS_NOTE);
+  const preset = args.preset === undefined ? undefined : resolvePresetAlias(args.preset);
   // --review-provider with review already known to be off fails before any question too.
-  const earlyConflict = reviewProviderConflict(args.preset, args.review, args.reviewProvider);
+  const earlyConflict = reviewProviderConflict(preset, args.review, args.reviewProvider);
   if (earlyConflict !== undefined) {
     console.error(earlyConflict);
     return 1;
@@ -107,7 +110,7 @@ async function main(argv: readonly string[]): Promise<number> {
   try {
     inputs = await collectMissingInputs(
       {
-        preset: args.preset,
+        preset,
         frontend: args.frontend,
         backend: args.backend,
         locale: args.locale,

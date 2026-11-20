@@ -14,7 +14,18 @@ export type CliFrontend = 'react-vite' | 'next' | 'none';
 export type CliBackend = 'express' | 'nest' | 'none';
 export type CliLocale = 'ko' | 'en';
 
+/** Every value --preset accepts. `solo` is an alias of quick-start (the two differed only in
+ * turning review on) kept so existing commands keep working; it is not offered. */
 export const PRESET_VALUES: readonly CliPreset[] = ['quick-start', 'solo', 'team'];
+/** The presets the question offers and the help lists. */
+export const PRESET_CHOICES: readonly CliPreset[] = ['quick-start', 'team'];
+
+/** solo → quick-start; any other preset as it is. */
+export function resolvePresetAlias(preset: CliPreset): CliPreset {
+  return preset === 'solo' ? 'quick-start' : preset;
+}
+
+export const SOLO_ALIAS_NOTE = 'Note: solo is now an alias of quick-start — AI PR review stays off unless you pass --review.';
 export const FRONTEND_VALUES: readonly CliFrontend[] = ['react-vite', 'next', 'none'];
 export const BACKEND_VALUES: readonly CliBackend[] = ['express', 'nest', 'none'];
 export const LOCALE_VALUES: readonly CliLocale[] = ['ko', 'en'];

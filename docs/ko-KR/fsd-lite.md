@@ -23,7 +23,7 @@ nx-archweave는 프론트엔드 앱을 정식 [Feature-Sliced Design](https://fe
 - **레이어** — FSD Lite의 기본 범위는 레이어 5개, Next.js에서는 4개예요(프레임워크별 목록은 아래 '레이어' 참고). `widgets`는 `widget` 제너레이터로 요청할 때만 생겨요. 린트 규칙은 레이어 6개를 모두 알아요.
 - **슬라이스** — 슬라이스 안에 세그먼트가 들어가요. `page`/`widget`/`feature`/`entity` 제너레이터가 `index.ts` + `model/`을 만들고, `--segments`로 더 추가할 수 있어요.
 - **import** — 같은 레이어의 슬라이스끼리는 import하지 않아요. 예외는 `@x/<consumer>`를 거치는 경우예요. 린트 규칙 1개가 프론트엔드 앱의 소스 루트 안에서 이 import 규칙을 모두 검사해요. 다른 워크스페이스 프로젝트를 가져오는 import는 Nx의 모듈 경계 규칙이 맡아요.
-- **강제 수준** — `team`은 `error`, `solo`와 `quick-start`는 `warn`이에요. 프리셋별로 다른 건 심각도뿐이에요.
+- **강제 수준** — `team`은 `error`, `quick-start`는 `warn`이에요. 프리셋별로 다른 건 심각도뿐이에요.
 
 ## 레이어
 

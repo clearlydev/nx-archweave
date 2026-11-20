@@ -5,6 +5,7 @@ import {
   FRONTEND_VALUES,
   LOCALE_VALUES,
   PLUGIN_VALUES,
+  PRESET_CHOICES,
   PRESET_VALUES,
   REVIEW_PROVIDER_VALUES,
   type CliAiHost,
@@ -147,7 +148,7 @@ export function parseCliArgs(argv: readonly string[]): ParseArgsOutcome {
 
   const preset = parsed.values.preset;
   if (preset !== undefined && !PRESET_VALUES.includes(preset as CliPreset)) {
-    return { kind: 'error', message: invalidChoiceMessage('--preset', preset, PRESET_VALUES) };
+    return { kind: 'error', message: invalidChoiceMessage('--preset', preset, PRESET_CHOICES) };
   }
 
   const frontend = parsed.values.frontend;

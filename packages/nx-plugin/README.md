@@ -44,20 +44,20 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 Preview the full run first. This writes nothing:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint --dryRun
+pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --applyEslint --dryRun
 ```
 
 Then run it for real:
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=solo --frontend=next --review=false --applyEslint
+pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --applyEslint
 ```
 
-- This sets up the `solo` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review.
+- This sets up the `quick-start` preset (the FSD rule as `warn`, agent rules, a PR template) without AI review.
 - `--applyEslint` writes the FSD rule into the app's `eslint.config.mjs`. Without it, `init` leaves your ESLint config alone and prints the two lines to paste, so the rule isn't on until you add them. `--preset=team` is for a team repository: the FSD rule as `error`, issue templates, and AI review on (see [Presets](#presets)).
 - Only the FSD rule: add `--agentRules=false --githubTemplates=false --review=false`.
 
-- `init` runs the content generators below according to the preset (`quick-start` | `solo` | `team`).
+- `init` runs the content generators below according to the preset (`quick-start` | `team`; `solo` is an alias of `quick-start`).
 - `init` requires a clean git working tree, so a partial run can be undone exactly: the report lists the files it modified (`git restore -- …`) and the files it created.
 - `--allowDirty` opts out of the clean-tree check. The report then warns you that the rollback scope is wider.
 - `--locale=ko|en` sets the language of generated content. Reports are always in English.
@@ -200,16 +200,16 @@ Options: `--packages`\*, `--apply`
 
 ## Presets
 
-| | `quick-start` | `solo` | `team` |
-| --- | --- | --- | --- |
-| FSD Lite | on | on | on |
-| FSD rule severity | `warn` | `warn` | `error` |
-| Agent rules | the AI hosts' files | the AI hosts' files | the AI hosts' files + Team Rules section |
-| GitHub templates | PR only | PR only | Issue + PR |
-| Review default | off (opt-in) | on | on |
-| Review mode | `fast` | `fast` | `standard` |
+| | `quick-start` | `team` |
+| --- | --- | --- |
+| FSD Lite | on | on |
+| FSD rule severity | `warn` | `error` |
+| Agent rules | the AI hosts' files | the AI hosts' files + Team Rules section |
+| GitHub templates | PR only | Issue + PR |
+| Review default | off (opt-in) | on |
+| Review mode | `fast` | `standard` |
 
-Explicit flags always win over preset defaults. create-nx-archweave passes `--review=false` for `quick-start` and `solo` unless you pass `--review`, so from the CLI only `team` starts with review on.
+Explicit flags always win over preset defaults. `solo` is an alias of `quick-start`: it still works and gets quick-start's defaults. Turning review off never removes a review workflow a workspace already has; update it with `add-review`.
 
 ## AI PR review (optional)
 

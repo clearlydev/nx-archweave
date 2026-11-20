@@ -1,7 +1,7 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`runInit — backend section backend omitted equals backend 'none' — the post-rename baseline (regression) 1`] = `
-"init (preset: solo, frontend: react-vite)
+"init (preset: quick-start, frontend: react-vite)
 
 ## add-fsd-lite
 FSD layers (in web, apps/web/src):

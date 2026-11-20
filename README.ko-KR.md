@@ -10,7 +10,7 @@
 
 ## 제공하는 것
 
-- 프런트엔드 앱의 FSD 레이어를 알아보고 레이어 사이 import를 검사하는 **Feature-Sliced Design (Lite) 린트 규칙**(solo·quick-start는 `warn`, team은 `error`)
+- 프런트엔드 앱의 FSD 레이어를 알아보고 레이어 사이 import를 검사하는 **Feature-Sliced Design (Lite) 린트 규칙**(quick-start는 `warn`, team은 `error`)
 - 백엔드를 고르면 **프런트엔드/백엔드 경계**: nx-archweave가 태그를 붙인 프런트엔드·백엔드 프로젝트 사이의 import가 린트 에러가 돼요
 - 필요할 때 FSD 슬라이스와 세그먼트를 만드는 **제너레이터**
 

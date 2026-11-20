@@ -214,20 +214,21 @@ pnpm 전용이에요. pnpm이 건너뛰었거나 거부로 기록된 의존성 �
 > [!IMPORTANT]
 > 직접 넘긴 플래그는 항상 프리셋 기본값보다 우선해요.
 
-| | `quick-start` | `solo` | `team` |
-| --- | --- | --- | --- |
-| FSD Lite | 활성 | 활성 | 활성 |
-| FSD 규칙 심각도(`fsd.enforcement`) | `warn` | `warn` | `error` |
-| 에이전트 규칙 | AI 호스트의 파일 | AI 호스트의 파일 | AI 호스트의 파일 + Team Rules 섹션 |
-| 팀 규칙 섹션 | — | — | 포함 |
-| GitHub 템플릿 | PR만 | PR만 | Issue + PR |
-| 리뷰 기본 활성 | **아니오** (옵트인) | 예 | 예 |
-| 리뷰 모드 | `fast` | `fast` | `standard` |
-| 최대 리뷰 라운드 | 3 | 3 | 3 |
-| 충돌 정책 | `merge-proposal` | `merge-proposal` | `merge-proposal` |
-| 외부 통합 | 없음 (항상 사용자 주도) | 없음 | 없음 |
+| | `quick-start` | `team` |
+| --- | --- | --- |
+| FSD Lite | 활성 | 활성 |
+| FSD 규칙 심각도(`fsd.enforcement`) | `warn` | `error` |
+| 에이전트 규칙 | AI 호스트의 파일 | AI 호스트의 파일 + Team Rules 섹션 |
+| 팀 규칙 섹션 | — | 포함 |
+| GitHub 템플릿 | PR만 | Issue + PR |
+| 리뷰 기본 활성 | **아니오** (옵트인) | 예 |
+| 리뷰 모드 | `fast` | `standard` |
+| 최대 리뷰 라운드 | 3 | 3 |
+| 충돌 정책 | `merge-proposal` | `merge-proposal` |
+| 외부 통합 | 없음 (항상 사용자 주도) | 없음 |
 
 > [!NOTE]
-> - **`frontend`/`backend`는 표에 없어요.** 두 값은 프리셋 정책이 아니라 축이에요. 프리셋 3종 모두 스택은 직접 골라요.
-> - **판정(verdict) 동작은 프리셋 3종 모두 같아요.** 설정값이 아니라 고정된 알고리즘이에요.
-> - **create-nx-archweave는 `solo`를 리뷰 없이 시작해요.** `--review`를 주지 않으면 `quick-start`와 `solo`에 `--review=false`를 넘겨서, CLI로 만들면 `team`만 기본으로 리뷰가 켜져요. `init`을 직접 실행하면 위 표대로예요.
+> - **`frontend`/`backend`는 표에 없어요.** 두 값은 프리셋 정책이 아니라 축이에요. 두 프리셋 모두 스택은 직접 골라요.
+> - **판정(verdict) 동작은 두 프리셋이 같아요.** 설정값이 아니라 고정된 알고리즘이에요.
+> - **`solo`는 `quick-start`의 별칭이에요.** 예전에는 리뷰를 기본으로 켜는 것만 달랐어요. `--preset=solo`도 그대로 쓸 수 있고 quick-start의 기본값을 따라요. `solo`로 기록된 워크스페이스도 그대로 둬요.
+> - **리뷰를 꺼도 지우지 않아요.** 리뷰 워크플로가 이미 있는 워크스페이스에서 리뷰를 끈 채 `init`을 실행하면, 워크플로와 review 필드는 그대로 두고 보고서에 그 파일을 알려 줘요. 갱신은 `add-review`로 해요.
