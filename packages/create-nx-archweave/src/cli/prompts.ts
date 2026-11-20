@@ -1,11 +1,6 @@
 import {
   AI_HOST_CHOICES,
-  BACKEND_VALUES,
   DEFAULT_AI_HOSTS,
-  FRONTEND_VALUES,
-  LOCALE_VALUES,
-  PRESET_CHOICES,
-  PRESET_VALUES,
   resolvePresetAlias,
   REVIEW_PROVIDER_CHOICES,
   type CliAiHost,
@@ -59,19 +54,73 @@ export interface PromptResult {
   reviewProvider: CliReviewProvider | undefined;
 }
 
-async function askChoice<T extends string>(ask: Ask, question: string, choices: readonly T[]): Promise<T> {
-  for (;;) {
-    const answer = (await ask(question)).trim();
-    if ((choices as readonly string[]).includes(answer)) return answer as T;
-  }
+/** One line of a numbered question: the value and what picking it means. */
+export interface ChoiceOption<T extends string> {
+  value: T;
+  description: string;
 }
 
-/** Like askChoice, but Enter takes `fallback`. */
-async function askChoiceOrDefault<T extends string>(ask: Ask, question: string, choices: readonly T[], fallback: T): Promise<T> {
-  for (;;) {
-    const answer = (await ask(question)).trim();
-    if (answer === '') return fallback;
-    if ((choices as readonly string[]).includes(answer)) return answer as T;
+export const PRESET_OPTIONS: readonly ChoiceOption<CliPreset>[] = [
+  { value: 'quick-start', description: 'trying it out, or your own project; AI review if you ask' },
+  { value: 'team', description: 'a shared repo: stricter FSD rule, issue templates, AI review' },
+];
+export const FRONTEND_OPTIONS: readonly ChoiceOption<CliFrontend>[] = [
+  { value: 'react-vite', description: 'a React app built with Vite, in apps/web' },
+  { value: 'next', description: 'a Next.js app, in apps/web' },
+  { value: 'none', description: 'no frontend: a backend-only workspace' },
+];
+export const BACKEND_OPTIONS: readonly ChoiceOption<CliBackend>[] = [
+  { value: 'none', description: 'no backend' },
+  { value: 'express', description: 'Express API in apps/api, shared types, enforced boundaries' },
+  { value: 'nest', description: 'NestJS API in apps/api, shared types, enforced boundaries' },
+];
+export const LOCALE_OPTIONS: readonly ChoiceOption<CliLocale>[] = [
+  { value: 'en', description: 'English' },
+  { value: 'ko', description: 'Korean' },
+];
+
+export const INVALID_CHOICE_HINT = 'Type a number or a name from the list.';
+
+/** A numbered question in the same shape as the AI-tool and package-manager ones:
+ * `? <title>`, one `n) value  description` line per option, then `Choose 1-n [default]: `.
+ * Without a default (`fallback` undefined) Enter is not an answer. */
+export function choiceQuestion<T extends string>(title: string, options: readonly ChoiceOption<T>[], fallback: T | undefined): string {
+  const width = Math.max(...options.map((option) => option.value.length)) + 2;
+  const defaultIndex = options.findIndex((option) => option.value === fallback);
+  return [
+    `? ${title}`,
+    ...options.map((option, index) => `  ${index + 1}) ${option.value.padEnd(width)}${option.description}`),
+    `Choose 1-${options.length}${defaultIndex === -1 ? '' : ` [${defaultIndex + 1}]`}: `,
+  ].join('\n');
+}
+
+/** The number, the name (any case), or Enter for `fallback`. Undefined for anything else.
+ * `aliases` maps a name the list doesn't show to the value it stands for. */
+export function parseChoiceAnswer<T extends string>(
+  answer: string,
+  options: readonly ChoiceOption<T>[],
+  fallback: T | undefined,
+  aliases: Readonly<Record<string, T>> = {},
+): T | undefined {
+  const token = answer.trim().toLowerCase();
+  if (token === '') return fallback;
+  if (/^\d+$/.test(token)) return options[Number(token) - 1]?.value;
+  return options.find((option) => option.value === token)?.value ?? aliases[token];
+}
+
+/** Asks until the answer is one of `options`; after a wrong answer the question comes back
+ * with one line saying what to type. */
+async function askNumberedChoice<T extends string>(
+  ask: Ask,
+  title: string,
+  options: readonly ChoiceOption<T>[],
+  fallback: T | undefined,
+  aliases?: Readonly<Record<string, T>>,
+): Promise<T> {
+  const question = choiceQuestion(title, options, fallback);
+  for (let wrong = false; ; wrong = true) {
+    const picked = parseChoiceAnswer(await ask(wrong ? `${INVALID_CHOICE_HINT}\n${question}` : question), options, fallback, aliases);
+    if (picked !== undefined) return picked;
   }
 }
 
@@ -131,8 +180,9 @@ async function askAiHosts(ask: Ask, installed: InstalledHosts | undefined): Prom
  *    so a backend is then required (and `none` is not offered when the backend is none).
  *  - backend: asked if missing, for every preset — the stack choice is never
  *    minimized away.
- *  - locale: asked if missing. For quick-start, Enter means en, and no terminal means en
- *    without asking; team asks.
+ *  - locale: asked if missing (Enter means en); quick-start without a terminal takes en.
+ *  - preset, frontend, backend and locale are numbered questions with a default for Enter:
+ *    quick-start, react-vite, none (none only when there is a frontend) and en.
  *  - aiHosts: asked if missing, for every preset, as a numbered multi-select;
  *    never without a terminal (the default host then).
  *  - review: asked with a single yes/no (default no) ONLY when the resolved preset is
@@ -147,24 +197,22 @@ async function askAiHosts(ask: Ask, installed: InstalledHosts | undefined): Prom
  * deliberate hand-synced copy of that rule.
  */
 export async function collectMissingInputs(input: PromptInput, ask: Ask): Promise<PromptResult> {
-  const preset = resolvePresetAlias(input.preset ?? (await askChoice(ask, `Preset (${PRESET_CHOICES.join('/')}): `, PRESET_VALUES)));
+  const preset = resolvePresetAlias(
+    input.preset ?? (await askNumberedChoice(ask, 'Preset', PRESET_OPTIONS, 'quick-start', { solo: 'quick-start' })),
+  );
   // none/none would build nothing: whichever is asked second leaves `none` out when the
-  // other is already none (both passed as flags is refused by parse-args).
-  const frontendChoices = input.backend === 'none' ? FRONTEND_VALUES.filter((value) => value !== 'none') : FRONTEND_VALUES;
-  const frontend =
-    input.frontend ?? (await askChoice(ask, `Frontend (${frontendChoices.join('/')}): `, frontendChoices));
+  // other is already none (both passed as flags is refused by parse-args). The backend
+  // question then has no default: Enter would mean the none that was left out.
+  const frontendOptions = input.backend === 'none' ? FRONTEND_OPTIONS.filter((option) => option.value !== 'none') : FRONTEND_OPTIONS;
+  const frontend = input.frontend ?? (await askNumberedChoice(ask, 'Frontend', frontendOptions, 'react-vite'));
 
-  const backendChoices = frontend === 'none' ? BACKEND_VALUES.filter((value) => value !== 'none') : BACKEND_VALUES;
-  const backend =
-    input.backend ?? (await askChoice(ask, `Backend (${backendChoices.join('/')}): `, backendChoices));
+  const backendOptions = frontend === 'none' ? BACKEND_OPTIONS.filter((option) => option.value !== 'none') : BACKEND_OPTIONS;
+  const backend = input.backend ?? (await askNumberedChoice(ask, 'Backend', backendOptions, frontend === 'none' ? undefined : 'none'));
 
+  // quick-start without a terminal takes en; team without one fails like any missing input.
   const locale =
     input.locale ??
-    (preset === 'quick-start'
-      ? input.interactive
-        ? await askChoiceOrDefault(ask, 'Locale (en/ko) [en]: ', LOCALE_VALUES, 'en')
-        : 'en'
-      : await askChoice(ask, `Locale (${LOCALE_VALUES.join('/')}): `, LOCALE_VALUES));
+    (preset === 'quick-start' && !input.interactive ? 'en' : await askNumberedChoice(ask, 'Language of the generated content', LOCALE_OPTIONS, 'en'));
 
   // Asked for every preset: the hosts decide which files the workspace gets.
   const aiHosts = input.aiHosts ?? (input.interactive ? await askAiHosts(ask, input.installedHosts) : [...DEFAULT_AI_HOSTS]);

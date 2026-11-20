@@ -76,7 +76,7 @@ async function main(argv: readonly string[]): Promise<number> {
     if (!process.stdin.isTTY) {
       return Promise.reject(
         new NonInteractiveInputError(
-          `Missing required input (would have asked: ${question.trim()}) and stdin is not interactive — pass the missing flags explicitly.`,
+          `Missing required input (would have asked: ${question.trim().split('\n')[0]}) and stdin is not interactive — pass the missing flags explicitly.`,
         ),
       );
     }

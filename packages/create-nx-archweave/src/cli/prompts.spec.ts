@@ -1,5 +1,12 @@
 import {
   aiHostsQuestion,
+  BACKEND_OPTIONS,
+  choiceQuestion,
+  FRONTEND_OPTIONS,
+  INVALID_CHOICE_HINT,
+  LOCALE_OPTIONS,
+  parseChoiceAnswer,
+  PRESET_OPTIONS,
   collectMissingInputs,
   parseAiHostAnswer,
   parseReviewProviderAnswer,
@@ -20,6 +27,11 @@ function scriptedAsk(answers: string[]): { ask: Ask; calls: string[] } {
   };
   return { ask, calls };
 }
+
+const Q_PRESET = choiceQuestion('Preset', PRESET_OPTIONS, 'quick-start');
+const Q_FRONTEND = choiceQuestion('Frontend', FRONTEND_OPTIONS, 'react-vite');
+const Q_BACKEND = choiceQuestion('Backend', BACKEND_OPTIONS, 'none');
+const Q_LOCALE = choiceQuestion('Language of the generated content', LOCALE_OPTIONS, 'en');
 
 // interactive: false keeps the AI-host question out of the existing scripts (non-TTY → the default host).
 const allMissing: PromptInput = { preset: undefined, frontend: undefined, backend: undefined, locale: undefined, aiHosts: undefined, review: undefined, interactive: false };
@@ -42,9 +54,9 @@ describe('collectMissingInputs', () => {
     const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', aiHosts: ['claude-code'], interactive: true }, ask);
 
     expect(calls).toEqual([
-      'Frontend (react-vite/next/none): ',
-      'Backend (express/nest/none): ',
-      'Locale (en/ko) [en]: ',
+      Q_FRONTEND,
+      Q_BACKEND,
+      Q_LOCALE,
       'Enable AI PR review? (y/N): ',
       reviewProviderQuestion('claude-code'),
     ]);
@@ -65,7 +77,7 @@ describe('collectMissingInputs', () => {
   it('quick-start without a terminal: no review question, review off', async () => {
     const { ask, calls } = scriptedAsk(['next', 'none']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start' }, ask);
-    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ']);
+    expect(calls).toEqual([Q_FRONTEND, Q_BACKEND]);
     expect(result.review).toBe(false);
   });
 
@@ -73,14 +85,14 @@ describe('collectMissingInputs', () => {
     const { ask, calls } = scriptedAsk(['react-vite', 'express']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', review: false }, ask);
 
-    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ']);
+    expect(calls).toEqual([Q_FRONTEND, Q_BACKEND]);
     expect(result.review).toBe(false);
   });
 
   it('quick-start: the locale question takes ko, and asks again on anything else', async () => {
     const { ask, calls } = scriptedAsk(['next', 'none', 'fr', 'ko', 'n']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', aiHosts: ['claude-code'], interactive: true }, ask);
-    expect(calls.filter((q) => q.startsWith('Locale'))).toHaveLength(2);
+    expect(calls.filter((q) => q.includes('? Language'))).toHaveLength(2);
     expect(result.locale).toBe('ko');
   });
 
@@ -88,7 +100,7 @@ describe('collectMissingInputs', () => {
     const { ask, calls } = scriptedAsk(['react-vite', 'nest']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'solo' }, ask);
 
-    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ']);
+    expect(calls).toEqual([Q_FRONTEND, Q_BACKEND]);
     expect(result).toEqual({ preset: 'quick-start', frontend: 'react-vite', backend: 'nest', locale: 'en', aiHosts: ['claude-code'], review: false });
   });
 
@@ -103,7 +115,7 @@ describe('collectMissingInputs', () => {
     const { ask, calls } = scriptedAsk(['next', 'none', 'en']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'team' }, ask);
 
-    expect(calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest/none): ', 'Locale (ko/en): ']);
+    expect(calls).toEqual([Q_FRONTEND, Q_BACKEND, Q_LOCALE]);
     expect(result.review).toBeUndefined();
   });
 
@@ -117,7 +129,7 @@ describe('collectMissingInputs', () => {
     const { ask, calls } = scriptedAsk(['quick-start', 'react-vite', 'none', 'y']);
     const result = await collectMissingInputs(allMissing, ask);
 
-    expect(calls[0]).toBe('Preset (quick-start/team): ');
+    expect(calls[0]).toBe(Q_PRESET);
     expect(result.preset).toBe('quick-start');
   });
 
@@ -130,7 +142,7 @@ describe('collectMissingInputs', () => {
     const { ask, calls } = scriptedAsk(['not-a-preset', 'still-invalid', 'team', 'react-vite', 'none', 'ko']);
     const result = await collectMissingInputs(allMissing, ask);
 
-    expect(calls.filter((q) => q.startsWith('Preset'))).toHaveLength(3);
+    expect(calls.filter((q) => q.includes('? Preset'))).toHaveLength(3);
     expect(result.preset).toBe('team');
   });
 
@@ -139,7 +151,7 @@ describe('collectMissingInputs', () => {
       const answers = preset === 'quick-start' ? ['react-vite', 'none', 'n'] : ['react-vite', 'none', 'en'];
       const { ask, calls } = scriptedAsk(answers);
       const result = await collectMissingInputs({ ...allMissing, preset }, ask);
-      expect(calls[1]).toBe('Backend (express/nest/none): ');
+      expect(calls[1]).toBe(Q_BACKEND);
       expect(result.backend).toBe('none');
     }
   });
@@ -147,7 +159,7 @@ describe('collectMissingInputs', () => {
   it('never asks backend when --backend was given', async () => {
     const { ask, calls } = scriptedAsk(['en']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'team', frontend: 'next', backend: 'nest' }, ask);
-    expect(calls).toEqual(['Locale (ko/en): ']);
+    expect(calls).toEqual([Q_LOCALE]);
     expect(result.backend).toBe('nest');
   });
 });
@@ -156,7 +168,7 @@ describe('collectMissingInputs — AI hosts', () => {
   it('interactive: asks a numbered multi-select after locale, for every preset (quick-start included)', async () => {
     const { ask, calls } = scriptedAsk(['react-vite', 'none', '', '1,3', 'n']);
     const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', interactive: true }, ask);
-    expect(calls[2]).toBe('Locale (en/ko) [en]: ');
+    expect(calls[2]).toBe(Q_LOCALE);
     expect(calls[3]).toBe(
       '? AI coding tools you use (choose one or more)\n  1) Claude Code\n  2) Codex\n  3) Cursor\n  4) Gemini CLI\nChoose, e.g. 1,3 [1]: ',
     );
@@ -283,17 +295,69 @@ describe('review provider question', () => {
 });
 
 describe('collectMissingInputs — backend-only workspaces (frontend none)', () => {
-  it('frontend none: the backend question leaves none out', async () => {
-    const io = scriptedAsk(['none', 'none', 'nest']);
-    const result = await collectMissingInputs({ ...allMissing, preset: 'solo', locale: 'en' }, io.ask);
+  const backendNoNone = choiceQuestion('Backend', BACKEND_OPTIONS.filter((option) => option.value !== 'none'), undefined);
+  const frontendNoNone = choiceQuestion('Frontend', FRONTEND_OPTIONS.filter((option) => option.value !== 'none'), 'react-vite');
+
+  it('frontend none: the backend question leaves none out and has no default, so Enter and none ask again', async () => {
+    const io = scriptedAsk(['none', '', 'none', 'nest']);
+    const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', locale: 'en' }, io.ask);
     expect(result).toMatchObject({ frontend: 'none', backend: 'nest' });
-    expect(io.calls).toEqual(['Frontend (react-vite/next/none): ', 'Backend (express/nest): ', 'Backend (express/nest): ']);
+    expect(backendNoNone).toContain('Choose 1-2: ');
+    expect(io.calls).toEqual([Q_FRONTEND, backendNoNone, `${INVALID_CHOICE_HINT}\n${backendNoNone}`, `${INVALID_CHOICE_HINT}\n${backendNoNone}`]);
   });
 
   it('--backend=none: the frontend question leaves none out', async () => {
     const io = scriptedAsk(['none', 'next']);
-    const result = await collectMissingInputs({ ...allMissing, preset: 'solo', locale: 'en', backend: 'none' }, io.ask);
+    const result = await collectMissingInputs({ ...allMissing, preset: 'quick-start', locale: 'en', backend: 'none' }, io.ask);
     expect(result.frontend).toBe('next');
-    expect(io.calls).toEqual(['Frontend (react-vite/next): ', 'Frontend (react-vite/next): ']);
+    expect(io.calls).toEqual([frontendNoNone, `${INVALID_CHOICE_HINT}\n${frontendNoNone}`]);
+  });
+});
+
+describe('numbered questions', () => {
+  it('lists every option with its number and description, and the default in brackets', () => {
+    expect(Q_FRONTEND).toBe(
+      [
+        '? Frontend',
+        '  1) react-vite  a React app built with Vite, in apps/web',
+        '  2) next        a Next.js app, in apps/web',
+        '  3) none        no frontend: a backend-only workspace',
+        'Choose 1-3 [1]: ',
+      ].join('\n'),
+    );
+    expect(Q_BACKEND).toContain('Choose 1-3 [1]: ');
+    expect(Q_PRESET).toContain('  1) quick-start');
+    expect(Q_PRESET).not.toContain('solo');
+  });
+
+  it('takes Enter as the default, a number, or a name in any case; anything else is no answer', () => {
+    expect(parseChoiceAnswer('', FRONTEND_OPTIONS, 'react-vite')).toBe('react-vite');
+    expect(parseChoiceAnswer(' 2 ', FRONTEND_OPTIONS, 'react-vite')).toBe('next');
+    expect(parseChoiceAnswer('Next', FRONTEND_OPTIONS, 'react-vite')).toBe('next');
+    expect(parseChoiceAnswer('4', FRONTEND_OPTIONS, 'react-vite')).toBeUndefined();
+    expect(parseChoiceAnswer('0', FRONTEND_OPTIONS, 'react-vite')).toBeUndefined();
+    expect(parseChoiceAnswer('nxt', FRONTEND_OPTIONS, 'react-vite')).toBeUndefined();
+    expect(parseChoiceAnswer('', BACKEND_OPTIONS, undefined)).toBeUndefined();
+  });
+
+  it('Enter through every question gives quick-start, react-vite, no backend and en', async () => {
+    const io = scriptedAsk(['', '', '', '', '', '']);
+    const result = await collectMissingInputs({ ...allMissing, aiHosts: ['claude-code'], interactive: true }, io.ask);
+    expect(io.calls).toEqual([Q_PRESET, Q_FRONTEND, Q_BACKEND, Q_LOCALE, 'Enable AI PR review? (y/N): ']);
+    expect(result).toEqual({ preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], review: false });
+  });
+
+  it('a typo shows the hint once and asks the same question again', async () => {
+    const io = scriptedAsk(['tem', '2', '', '', '']);
+    const result = await collectMissingInputs({ ...allMissing, aiHosts: ['claude-code'], locale: 'en' }, io.ask);
+    expect(io.calls.slice(0, 2)).toEqual([Q_PRESET, `${INVALID_CHOICE_HINT}\n${Q_PRESET}`]);
+    expect(result.preset).toBe('team');
+  });
+
+  it('team asks the language too, and Enter means en', async () => {
+    const io = scriptedAsk(['']);
+    const result = await collectMissingInputs({ ...allMissing, preset: 'team', frontend: 'next', backend: 'none' }, io.ask);
+    expect(io.calls).toEqual([Q_LOCALE]);
+    expect(result.locale).toBe('en');
   });
 });

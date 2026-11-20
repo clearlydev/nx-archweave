@@ -314,29 +314,31 @@ api에는 Nx 24.0 기준으로 기존 앱에 e2e 프로젝트를 추가하는 �
 | `--package-manager` | `npm` \| `pnpm` \| `yarn` \| `bun` |
 | `-h`, `--help` / `-v`, `--version` | — |
 
+CLI가 묻는 질문은 번호 목록이에요. 선택지마다 짧은 설명이 붙고, 기본값은 대괄호 안에 있어요. 번호나 이름을 입력하거나, 엔터로 기본값을 고르세요. 잘못 입력하면 `Type a number or a name from the list.`가 나오고 같은 질문을 다시 물어요. 끝까지 엔터만 누르면 `quick-start`, `react-vite`, 백엔드 없음, `en`이 돼요.
+
 stdin이 TTY가 아니고 필수 입력이 빠졌다면, CLI는 명확한 메시지와 함께 바로 실패해요. 멈춘 채 기다리거나, 조용히 성공으로 끝나지 않아요.
 
 #### `--preset`
 
-- 생략하면 CLI가 물어요. 프리셋 이름을 입력하세요.
+- 생략하면 CLI가 물어요. 엔터는 `quick-start`예요.
 - `quick-start` — 써 보기나 혼자 하는 프로젝트용이에요. FSD 규칙은 경고, 에이전트 규칙, PR 템플릿을 만들고, AI 리뷰는 "y"라고 답할 때만 켜요.
 - `team` — 함께 쓰는 저장소용이에요. FSD 규칙 위반은 lint 실패, 에이전트 규칙에 Team Rules 절, 이슈·PR 템플릿, AI 리뷰 켜짐(`standard` 모드)이에요.
 - 고르기 어려우면 `quick-start`로 시작하세요. 나중에 제너레이터로 무엇이든 바꿀 수 있어요. 전체 표는 [프리셋](generators.md#프리셋)에 있어요.
 
 #### `--frontend`
 
-- 생략하면 CLI가 물어요.
+- 생략하면 CLI가 물어요. 엔터는 `react-vite`예요.
 - `none`은 백엔드 단독 워크스페이스예요. `--backend`가 필요해요.
 
 #### `--backend`
 
-- 생략하면 CLI가 물어요.
+- 생략하면 CLI가 물어요. 엔터는 백엔드 없음이에요. 백엔드 단독 워크스페이스에서는 기본값이 없어요.
 - 백엔드를 고르면 `apps/api`와 shared-types, **강제되는** 경계가 추가돼요.
 
 #### `--locale`
 
-- 생략하면 CLI가 물어요.
-- `quick-start`는 엔터를 누르면 `en`이에요. 터미널이 아니면 묻지 않고 `en`을 써요.
+- 생략하면 CLI가 물어요. 엔터는 `en`이에요.
+- `quick-start`는 터미널이 아니면 묻지 않고 `en`을 써요.
 
 #### `--review` / `--no-review`
 

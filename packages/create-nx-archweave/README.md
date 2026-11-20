@@ -108,6 +108,7 @@ init then wires `shared-types` and `scope:` tags, and writes the boundary constr
 When something goes wrong:
 
 - If a step fails, the CLI stops right away. It leaves the created directory in place (it never auto-deletes), tells you how to recover, and prints the failed step and every step after it as commands you can run yourself. It never re-runs them for you.
+- Each question is a numbered list with the default in brackets: type a number or a name, or press Enter. Enter all the way gives `quick-start`, `react-vite`, no backend and `en`.
 - When stdin isn't a TTY and a required input is missing, the CLI fails fast instead of hanging.
 
 ## Options
@@ -130,7 +131,7 @@ When something goes wrong:
 
 ### `--preset`
 
-Asked if omitted (type the preset's name).
+Asked if omitted; Enter means `quick-start`.
 
 - `quick-start`: to try it out or for a project of your own. FSD rule as a warning, agent rules, a PR template; AI review only if you answer "y".
 - `team`: a shared repository. FSD rule as an error, Team Rules, issue and PR templates, AI review on.
@@ -139,18 +140,18 @@ Not sure? Start with `quick-start`. The full table is in [Presets](https://githu
 
 ### `--frontend`
 
-- Asked if omitted.
+- Asked if omitted; Enter means `react-vite`.
 - `none` means a backend-only workspace. It needs `--backend`.
 
 ### `--backend`
 
-- Asked if omitted.
+- Asked if omitted; Enter means no backend (no default for a backend-only workspace).
 - Adds `apps/api`, `shared-types` and enforced boundaries.
 
 ### `--locale`
 
 - Sets the language of generated content.
-- Asked if omitted. With `quick-start`, Enter means `en`; without a terminal it is `en`.
+- Asked if omitted; Enter means `en`. With `quick-start` and no terminal it is `en`.
 
 ### `--review` / `--no-review`
 

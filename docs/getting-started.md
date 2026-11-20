@@ -314,29 +314,31 @@ If you run `add-backend` by hand on such a workspace, you get the same result.
 | `--package-manager` | `npm` \| `pnpm` \| `yarn` \| `bun` |
 | `-h`, `--help` / `-v`, `--version` | — |
 
+Each question you leave to the CLI is a numbered list with a short description per option and the default in brackets: type the number or the name, or press Enter for the default. A wrong answer shows `Type a number or a name from the list.` and the same question again. Pressing Enter all the way gives `quick-start`, `react-vite`, no backend and `en`.
+
 When stdin isn't a TTY and a required input is missing, the CLI fails fast with a clear message. It doesn't hang, and it doesn't silently exit with success.
 
 #### `--preset`
 
-- If you leave it out, the CLI asks: type the preset's name.
+- If you leave it out, the CLI asks. Enter means `quick-start`.
 - `quick-start` — to try it out or for a project of your own. The FSD rule warns, agent rules, a PR template; AI review only if you answer "y".
 - `team` — a shared repository. The FSD rule fails the lint, agent rules with a Team Rules section, issue and PR templates, and AI review on (`standard` mode).
 - Not sure? Start with `quick-start`: you can change any of it later with the generators. The full table is in [Presets](generators.md#presets).
 
 #### `--frontend`
 
-- If you leave it out, the CLI asks.
+- If you leave it out, the CLI asks. Enter means `react-vite`.
 - `none` means a backend-only workspace. It needs `--backend`.
 
 #### `--backend`
 
-- If you leave it out, the CLI asks.
+- If you leave it out, the CLI asks. Enter means no backend; for a backend-only workspace there is no default.
 - A backend adds `apps/api`, plus shared-types and **enforced** boundaries.
 
 #### `--locale`
 
-- If you leave it out, the CLI asks.
-- With `quick-start`, Enter means `en`. Without a terminal it is `en` without asking.
+- If you leave it out, the CLI asks. Enter means `en`.
+- With `quick-start` and no terminal it is `en` without asking.
 
 #### `--review` / `--no-review`
 
