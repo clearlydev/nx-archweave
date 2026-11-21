@@ -64,6 +64,8 @@ It reads the workspace's projects from its Nx configuration, so a frontend at th
 - the slice groups the FSD rule will see, and the test runner the slice generators will find
 - imports into `shared` that reach past a segment's index, with the `sharedPublicApi` setting that fits them
 - an FSD rule wired without `cwd` (an editor or a root-level `eslint` would check nothing)
+- whether `toolkit.config.json` is among the lint inputs of the projects that wire the FSD rule (`fsd-lint-cache`). Without it, Nx can replay a cached lint result after you change the `fsd` policy. The check never changes the overall status. It prints the snippet that fits: `targetDefaults` with `"..."` when every lint target is inferred by `@nx/eslint/plugin`, or the project's own lint target when some project writes its own (there `"..."` has nothing to keep)
+- a lint target a project writes itself without inputs, while `targetDefaults` gives lint inputs that start with `"..."` (`lint-inputs-spread`), as a warning: the project's files drop out of its lint inputs, so a source change can come back from the cache. This is how Nx merges `"..."` (checked on Nx 23.3.1 and 24.0.1)
 - projects that carry none of the frontend, backend or shared tags, which the boundary rules therefore don't cover
 - an installed nx outside the majors the plugin's own `@nx/devkit` supports, as an error: the generators may not even load there. `@nx/devkit` supports its own major, one before and one after ([Nx's plugin publishing guide](https://nx.dev/docs/kb/publish-plugin)), so the plugin's devkit 23 means nx 22 to 24
 - a review workflow nx-archweave did not generate, review workflows of two providers, and a pinned pnpm version next to a `packageManager` field

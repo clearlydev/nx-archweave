@@ -75,7 +75,8 @@ export function buildFsdEnforcementCheck(root: string, projects?: DoctorProject[
   });
 }
 
-function appliedFsdConfigs(root: string, projects?: DoctorProject[]): string[] {
+/** The ESLint configs (relative paths) that wire the FSD rule. */
+export function appliedFsdConfigs(root: string, projects?: DoctorProject[]): string[] {
   return eslintConfigPaths(root, projects).filter((rel) => classifyFsdEslintConfig(readFileSync(join(root, rel), 'utf-8')) === 'applied');
 }
 
