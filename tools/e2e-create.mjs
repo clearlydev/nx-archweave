@@ -349,6 +349,27 @@ for (const target of ['dev', 'serve']) {
 }
 stepLog.record('dev and serve targets');
 
+// 5-'. init put toolkit.config.json in lint's inputs after "...": the web app's lint keeps the
+// inputs @nx/eslint/plugin infers (default among them) and re-runs when the fsd policy changes.
+if (frontend !== 'none') {
+  const eslintPlugin = (JSON.parse(readFileSync(join(demoDir, 'nx.json'), 'utf-8')).plugins ?? []).find(
+    (plugin) => plugin === '@nx/eslint/plugin' || plugin?.plugin === '@nx/eslint/plugin',
+  );
+  const lintTarget = eslintPlugin?.options?.targetName ?? 'lint';
+  const shown = spawnSync(pm, shellArgs([...silent, ...nxArgs(['show', 'project', web, '--json'])]), { cwd: demoDir, encoding: 'utf-8', maxBuffer: MAX_BUFFER, shell: SHELL });
+  let inputs;
+  try {
+    inputs = JSON.parse(shown.stdout).targets?.[lintTarget]?.inputs;
+  } catch {
+    fail('lint inputs', `nx show project ${web} printed no JSON`, `${shown.stdout ?? ''}${shown.stderr ?? ''}`);
+  }
+  console.log(`lint inputs of ${web}: ${JSON.stringify(inputs)}`);
+  if (!Array.isArray(inputs) || !inputs.includes('default') || !inputs.includes('{workspaceRoot}/toolkit.config.json')) {
+    fail('lint inputs', `${web}'s ${lintTarget} inputs lack default or toolkit.config.json: ${JSON.stringify(inputs)}`);
+  }
+  stepLog.record('lint inputs');
+}
+
 // 5'. express 5 on every path and manager: @nx/express installs it, and Nx 24's @nx/react no
 // longer peers on express 4, so the frontend choice can't pull the api back to 4.
 if (backend === 'express') {

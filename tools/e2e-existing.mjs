@@ -15,12 +15,14 @@
 // Asserts:
 //   0. init on the tree the plugin install dirtied is refused: it names the files and exits non-zero
 //   1. init without --frontend detects Expo, records it, and wires the rule with the platform suffixes
+//      and puts toolkit.config.json in lint's inputs after "..." (default kept)
 //   2. the layer guide keeps the app layer in app/ (Nx's Expo app has no expo-router)
 //   3. the page and feature generators land in the app's source root
 //   4. lint: an index.ios.ts slice is a public API (no finding); an upward import is reported
 //   5. `doctor --json --quiet` names the framework and reports safe or manual-review-required
 //   6. targetDefaults lint inputs with "...": kept on an inferred target, nothing to keep on an own
 //      target (with the plugin or without); doctor's lint-inputs-spread names that project
+//      (a package.json lint script is only logged)
 //
 // Read-only toward the repo; everything happens in a temp directory.
 
@@ -163,6 +165,17 @@ const recorded = JSON.parse(readFileSync(join(demoDir, 'toolkit.config.json'), '
 if (recorded.frontend !== 'expo') fail('toolkit.config.json', `frontend: ${JSON.stringify(recorded.frontend)}`);
 stepLog.record('init wiring');
 
+// 4b. init's first run put toolkit.config.json in lint's inputs after "...": the app's lint keeps
+// the inferred inputs (default among them) and re-runs when the fsd policy changes.
+{
+  const { stdout } = run('init lint inputs', 'pnpm', ['--silent', 'nx', 'show', 'project', project, '--json'], { cwd: demoDir });
+  const targets = JSON.parse(stdout).targets ?? {};
+  const lintTargetName = Object.keys(targets).find((name) => targets[name]?.inputs?.includes('{workspaceRoot}/toolkit.config.json'));
+  const inputs = lintTargetName === undefined ? undefined : targets[lintTargetName].inputs;
+  console.log(`lint inputs after init: ${JSON.stringify(inputs ?? targets.lint?.inputs)}`);
+  if (!Array.isArray(inputs) || !inputs.includes('default')) fail('init lint inputs', `no lint target has both default and toolkit.config.json: ${JSON.stringify(targets.lint?.inputs)}`);
+}
+
 // 5. slices land in the app's source root
 run('slice generators', 'pnpm', ['nx', 'g', '@clearlydev/nx-archweave:page', '--name=e2e-home'], { cwd: demoDir });
 run('slice generators', 'pnpm', ['nx', 'g', '@clearlydev/nx-archweave:feature', '--name=e2e-probe', '--segments=ui,api'], { cwd: demoDir });
@@ -257,6 +270,23 @@ writeNxJson(true);
 const { stdout: spreadStdout } = run('doctor: lint-inputs-spread', 'pnpm', ['--silent', 'nx', 'g', '@clearlydev/nx-archweave:doctor', '--json', '--quiet'], { cwd: demoDir });
 const spread = (JSON.parse(spreadStdout).checks ?? []).find((check) => check.id === 'lint-inputs-spread');
 if (spread?.status !== 'warning' || !spread.evidence.includes(project)) fail('doctor: lint-inputs-spread', JSON.stringify(spread), spreadStdout);
+
+// A package.json lint script (nx:run-script) next to the inferred target: logged only, not
+// asserted yet — init counts it as an own target to be safe, doctor's warning does not.
+writeFileSync(appPackagePath, appPackageText);
+{
+  const pkg = JSON.parse(appPackageText);
+  if (pkg.scripts?.[lintTarget] === undefined) {
+    pkg.scripts = { ...(pkg.scripts ?? {}), [lintTarget]: 'eslint .' };
+    writeFileSync(appPackagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+  }
+  const { stdout } = run('lint inputs: lint script', 'pnpm', ['--silent', 'nx', 'show', 'project', project, '--json'], { cwd: demoDir });
+  const shown = JSON.parse(stdout).targets?.[lintTarget];
+  console.log(
+    `lint inputs, lint script + plugin + targetDefaults: ${JSON.stringify({ executor: shown?.executor, command: shown?.options?.command, script: shown?.options?.script, inputs: shown?.inputs })}`,
+  );
+}
+
 writeFileSync(nxJsonPath, nxJsonText);
 writeFileSync(appPackagePath, appPackageText);
 stepLog.record('lint inputs');
