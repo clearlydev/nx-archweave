@@ -19,6 +19,8 @@
 //   3. the page and feature generators land in the app's source root
 //   4. lint: an index.ios.ts slice is a public API (no finding); an upward import is reported
 //   5. `doctor --json --quiet` names the framework and reports safe or manual-review-required
+//   6. targetDefaults lint inputs with "...": kept on an inferred target, nothing to keep on an own
+//      target (with the plugin or without); doctor's lint-inputs-spread names that project
 //
 // Read-only toward the repo; everything happens in a temp directory.
 
@@ -200,6 +202,64 @@ if (report.overallStatus !== 'safe' && report.overallStatus !== 'manual-review-r
 const framework = (report.checks ?? []).find((check) => check.id === 'framework-profile');
 if (framework?.status !== 'pass' || framework.message !== 'expo') fail('doctor gate', `framework-profile: ${JSON.stringify(framework)}`, JSON.stringify(report, null, 2));
 stepLog.record('doctor gate');
+
+// 8. How Nx merges targetDefaults lint inputs that start with "..." (what doctor's snippet and
+// its lint-inputs-spread warning rely on). Inferred target: "..." keeps the inferred inputs. A lint
+// target the project writes itself has nothing for "..." to keep, with @nx/eslint/plugin
+// registered or not: only the other entries are left. Checked on the Nx this workspace runs.
+const TOOLKIT_INPUT = '{workspaceRoot}/toolkit.config.json';
+const nxJsonPath = join(demoDir, 'nx.json');
+const appPackagePath = join(appDir, 'package.json');
+const nxJsonText = readFileSync(nxJsonPath, 'utf-8');
+const appPackageText = readFileSync(appPackagePath, 'utf-8');
+const nxJson = JSON.parse(nxJsonText);
+const eslintPlugin = (nxJson.plugins ?? []).find((plugin) => plugin === '@nx/eslint/plugin' || plugin?.plugin === '@nx/eslint/plugin');
+if (eslintPlugin === undefined) fail('lint inputs', '@nx/eslint/plugin is not registered in nx.json', nxJsonText);
+const lintTarget = eslintPlugin?.options?.targetName ?? 'lint';
+const lintInputs = (step) => {
+  const { stdout } = run(step, 'pnpm', ['--silent', 'nx', 'show', 'project', project, '--json'], { cwd: demoDir });
+  return JSON.parse(stdout).targets?.[lintTarget]?.inputs;
+};
+const writeNxJson = (withPlugin) => {
+  const next = JSON.parse(nxJsonText);
+  next.targetDefaults = { ...(next.targetDefaults ?? {}), [lintTarget]: { inputs: ['...', TOOLKIT_INPUT] } };
+  if (!withPlugin) next.plugins = next.plugins.filter((plugin) => plugin !== eslintPlugin);
+  writeFileSync(nxJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+};
+const writeOwnLintTarget = () => {
+  const pkg = JSON.parse(appPackageText);
+  if (pkg.nx?.targets?.[lintTarget] !== undefined) fail('lint inputs', `${project} already writes its own ${lintTarget} target`, appPackageText);
+  pkg.nx = { ...(pkg.nx ?? {}), targets: { ...(pkg.nx?.targets ?? {}), [lintTarget]: { executor: '@nx/eslint:lint' } } };
+  writeFileSync(appPackagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+};
+
+writeNxJson(true);
+const inferred = lintInputs('lint inputs: inferred');
+console.log(`lint inputs, inferred target + targetDefaults ["...", toolkit.config.json]: ${JSON.stringify(inferred)}`);
+if (!Array.isArray(inferred) || !inferred.includes('default') || !inferred.includes(TOOLKIT_INPUT)) {
+  fail('lint inputs', `"..." did not keep the inferred inputs: ${JSON.stringify(inferred)}`);
+}
+
+writeOwnLintTarget();
+const ownWithPlugin = lintInputs('lint inputs: own target, plugin registered');
+console.log(`lint inputs, own target + plugin + targetDefaults: ${JSON.stringify(ownWithPlugin)}`);
+writeNxJson(false);
+const ownWithoutPlugin = lintInputs('lint inputs: own target, no plugin');
+console.log(`lint inputs, own target, no plugin + targetDefaults: ${JSON.stringify(ownWithoutPlugin)}`);
+for (const [label, inputs] of [['with the plugin', ownWithPlugin], ['without the plugin', ownWithoutPlugin]]) {
+  if (JSON.stringify(inputs) !== JSON.stringify([TOOLKIT_INPUT])) {
+    fail('lint inputs', `an own lint target (${label}) kept other inputs than Nx 23.3.1 did (only toolkit.config.json): ${JSON.stringify(inputs)}`);
+  }
+}
+
+// doctor names the project whose own lint target lost its files (plugin registered again)
+writeNxJson(true);
+const { stdout: spreadStdout } = run('doctor: lint-inputs-spread', 'pnpm', ['--silent', 'nx', 'g', '@clearlydev/nx-archweave:doctor', '--json', '--quiet'], { cwd: demoDir });
+const spread = (JSON.parse(spreadStdout).checks ?? []).find((check) => check.id === 'lint-inputs-spread');
+if (spread?.status !== 'warning' || !spread.evidence.includes(project)) fail('doctor: lint-inputs-spread', JSON.stringify(spread), spreadStdout);
+writeFileSync(nxJsonPath, nxJsonText);
+writeFileSync(appPackagePath, appPackageText);
+stepLog.record('lint inputs');
 
 console.log(`\ne2e-existing (${frontend}) PASSED — ${steps.length} steps: ${steps.join(' → ')}`);
 console.log(`\ntimings:\n${stepLog.timings()}`);
