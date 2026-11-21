@@ -6,12 +6,15 @@ import { buildReviewChecks, REVIEW_CHECK_IDS } from './review-checks.ts';
 import { buildBackendChecks, BACKEND_CHECK_IDS } from './backend-checks.ts';
 import { buildFsdLikeCheck } from './fsd-like-check.ts';
 import { buildFsdEnforcementCheck, buildFsdRuleAnchoredCheck } from './fsd-enforcement-check.ts';
+import { buildLintCacheCheck, buildLintInputsSpreadCheck } from './lint-cache-check.ts';
 import type { DoctorProject } from './doctor-projects.ts';
 
 const NOT_APPLICABLE_IDS = [
   'fsd-like-structure',
   'fsd-enforcement-applied',
   'fsd-rule-anchored',
+  'fsd-lint-cache',
+  'lint-inputs-spread',
   'nx-version',
   'package-manager',
   'workspace-root',
@@ -78,6 +81,8 @@ export function runDoctorChecks(root: string, projects?: DoctorProject[], nxSupp
     buildFsdLikeCheck(root, projects),
     buildFsdEnforcementCheck(root, projects),
     buildFsdRuleAnchoredCheck(root, projects),
+    buildLintCacheCheck(root, projects),
+    buildLintInputsSpreadCheck(root, projects),
     createDoctorCheck({
       id: 'package-manager',
       label: 'Package manager',
