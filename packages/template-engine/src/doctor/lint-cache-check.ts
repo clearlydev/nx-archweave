@@ -190,11 +190,15 @@ export function buildLintCacheCheck(root: string, projects?: DoctorProject[]): D
     status: 'pass',
     message: 'toolkit.config.json is not among lint\'s inputs: after a change to the fsd policy, Nx can replay a cached lint result',
     evidence: missing.map((project) => project.name),
-    suggestedAction: [...lines, `Or, after changing the fsd policy, check with: ${skipCache}`].join('\n    '),
+    suggestedAction: [
+      'A workspace init sets up from nx-archweave 0.5.0 on has it already (when its lint targets are inferred).',
+      ...lines,
+      `Or, after changing the fsd policy, check with: ${skipCache}`,
+    ].join('\n    '),
   });
 }
 
-/** targetDefaults inputs that start with "..." keep what the target already has. A lint target a
+/** A "..." anywhere in targetDefaults inputs keeps what the target already has, at that spot. A lint target a
  * project writes itself without inputs has nothing to keep, so its inputs become exactly the
  * other entries — without the project's files, a source change can be served from the cache. */
 export function buildLintInputsSpreadCheck(root: string, projects?: DoctorProject[]): DoctorCheck {
@@ -216,7 +220,7 @@ export function buildLintInputsSpreadCheck(root: string, projects?: DoctorProjec
     id,
     label,
     status: 'warning',
-    message: `targetDefaults gives the ${setup.target} target inputs that start with "...", but these projects write their own ${setup.target} target without inputs, so "..." has nothing to keep: their lint inputs leave out the project's files, and a source change can come back from the cache`,
+    message: `targetDefaults gives the ${setup.target} target inputs with "...", but these projects write their own ${setup.target} target without inputs, so "..." has nothing to keep: their lint inputs leave out the project's files, and a source change can come back from the cache`,
     evidence: affected.map((project) => project.name),
     suggestedAction: [
       `Give each of these ${setup.target} targets its own inputs, or list "default" and "^default" in targetDefaults next to "...":`,

@@ -63,6 +63,7 @@ describe('buildLintCacheCheck — the FSD rule reads toolkit.config.json; does l
     expect(check.suggestedAction).toContain('"targetDefaults": { "lint": { "inputs": ["...", "{workspaceRoot}/toolkit.config.json"] } }');
     expect(check.suggestedAction).toMatch(/Keep "\.\.\.".*dropped/s);
     expect(check.suggestedAction).toContain('nx lint web --skip-nx-cache');
+    expect(check.suggestedAction).toContain('from nx-archweave 0.5.0 on has it already');
   });
 
   it('gives a per-project snippet instead when any project in the workspace writes its own lint target', () => {
@@ -119,6 +120,14 @@ describe('buildLintInputsSpreadCheck — "..." with nothing to keep', () => {
     expect(check).toMatchObject({ id: 'lint-inputs-spread', status: 'warning', evidence: ['api'] });
     expect(check.message).toMatch(/source change/);
     expect(check.suggestedAction).toContain('apps/api');
+  });
+
+  it('a "..." in the middle spreads the same way (Nx expands it where it stands)', () => {
+    const dir = workspace(
+      { plugins: [ESLINT_PLUGIN], targetDefaults: { lint: { inputs: ['{workspaceRoot}/toolkit.config.json', '...'] } } },
+      { 'apps/api/project.json': JSON.stringify({ name: 'api', targets: { lint: { executor: '@nx/eslint:lint' } } }) },
+    );
+    expect(buildLintInputsSpreadCheck(dir, [WEB, API])).toMatchObject({ status: 'warning', evidence: ['api'] });
   });
 
   it('warns for the executor key too, with the plugin not registered', () => {
