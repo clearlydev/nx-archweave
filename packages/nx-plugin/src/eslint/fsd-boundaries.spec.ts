@@ -81,6 +81,43 @@ describe('archweave/fsd-boundaries — what is allowed', () => {
   });
 });
 
+describe('archweave/fsd-boundaries — Storybook stories', () => {
+  // A story sits next to its component (src/shared/ui/button/button.stories.tsx) and is judged
+  // like any file in that slice or segment: no exception, no extra finding.
+  const STORY = "import { fn } from 'storybook/test';\n";
+
+  it('a story next to a shared UI component imports it and Storybook freely', () => {
+    expect(lint('src/shared/ui/button/button.stories.tsx', `${STORY}import { Button } from './button';\nexport default { component: Button };`)).toEqual([]);
+    expect(lint('src/shared/ui/button/button.stories.tsx', `${STORY}import { Button } from '.';\nexport default { component: Button };`)).toEqual([]);
+  });
+
+  it("a story in a slice uses the slice's own files and the layers below through their public API", () => {
+    const code = `${STORY}import { SignInForm } from './form';\nimport { useSignIn } from '../model/use-sign-in';\nimport { Button } from '../../../shared/ui';\nimport { userMock } from '../../../entities/user';\nexport default { component: SignInForm };`;
+    expect(lint('src/features/sign-in/ui/form.stories.tsx', code)).toEqual([]);
+  });
+
+  it('a story still may not import upward', () => {
+    expect(lint('src/shared/ui/button/button.stories.tsx', `${STORY}import { user } from '../../../entities/user';`)[0]).toMatch(/higher layer/);
+  });
+
+  it("reaching into another slice's internals (a mock in its model) is a finding, as for any file", () => {
+    expect(lint('src/features/sign-in/ui/form.stories.tsx', `${STORY}import { userMock } from '../../../entities/user/model/mock';`)[0]).toMatch(/public API/);
+  });
+
+  it('testFiles can let stories reach into other slices too, never upward', () => {
+    const options = { testFiles: ['**/*.stories.*'] };
+    expect(lint('src/features/sign-in/ui/form.stories.tsx', `${STORY}import { userMock } from '../../../entities/user/model/mock';`, options)).toEqual([]);
+    expect(lint('src/entities/user/ui/card.stories.tsx', `${STORY}import { signIn } from '../../../features/sign-in';`, options)[0]).toMatch(/higher layer/);
+  });
+
+  it("Storybook's own folders are outside the layers: .storybook/ and an example src/stories/", () => {
+    // .storybook/ is outside the source root, so the rule's config does not even apply there
+    const preview = lint('.storybook/preview.ts', "import '../src/app/styles/index.css';\nimport { withTheme } from '../src/shared/lib/theme/with-theme';");
+    expect(preview.filter((message) => message.startsWith('archweave/'))).toEqual([]);
+    expect(lint('src/stories/button.stories.tsx', `${STORY}import { Button } from './button';\nimport { userMock } from '../entities/user/model/mock';`)).toEqual([]);
+  });
+});
+
 describe('archweave/fsd-boundaries — Next.js', () => {
   it("resolves the template's @/ alias to src and names _pages as the pages layer", () => {
     expect(lint('src/entities/product/model/bad.js', "import { addToCart } from '@/features/add-to-cart';")[0]).toMatch(/higher layer/);
