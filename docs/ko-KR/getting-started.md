@@ -200,7 +200,7 @@ pnpm nx g @clearlydev/nx-archweave:init …
 
 ### 생성한 뒤 처음 5분
 
-명령은 어떤 패키지 매니저에서도 되는 `npx nx`로 적었어요(`pnpm nx`, `yarn nx`, `bun nx`처럼 쓰는 패키지 매니저의 형식으로 실행해도 돼요). 앱 프로젝트 이름은 `@<이름>/web`이고, `<이름>`은 워크스페이스 이름이에요.
+CLI는 끝날 때 이 단계들을 "Next steps"로, 같은 묶음으로 출력해요. `npx nx`는 어떤 패키지 매니저에서도 되고, CLI는 고른 패키지 매니저의 형식으로 출력해요(`pnpm nx`, `npm exec nx --`, `yarn nx`, `bun nx`). 웹 앱 프로젝트 이름은 `@<이름>/web`, API는 `@<이름>/api`이고, `<이름>`은 워크스페이스 이름이에요(Nx의 백엔드 단독 Nest 워크스페이스에서는 API가 `api`예요).
 
 1. 워크스페이스로 들어가요. 백엔드가 있으면 패키지 매니저의 install을 한 번 실행하세요. shared-types 패키지를 연결해요.
 
@@ -214,27 +214,60 @@ pnpm nx g @clearlydev/nx-archweave:init …
    git add -A && git commit -m "chore: initial commit"
    ```
 
-3. lint와 테스트를 돌려요. 새 워크스페이스는 둘 다 통과해요(bun과 Next.js 조합은 [알려진 문제](#생성된-워크스페이스의-알려진-문제) 참고).
+3. **확인:** lint와 테스트를 돌려요. 새 워크스페이스는 둘 다 통과해요(bun과 Next.js 조합은 [알려진 문제](#생성된-워크스페이스의-알려진-문제) 참고).
 
    ```bash
    npx nx run-many -t lint,test
    ```
 
-4. 앱을 실행해요(React + Vite와 Next.js 모두 `dev` 타깃이 있어요).
+4. **개발 시작:** 웹 앱의 개발 서버를 띄워요. 백엔드가 있으면 다른 터미널에서 API를 띄우세요. 둘 다 계속 실행돼요.
 
    ```bash
-   npx nx run @my-app/web:dev
+   npx nx run-many -t dev
+   npx nx serve @my-app/api
    ```
 
-5. 첫 슬라이스를 만들어요. 슬라이스는 `apps/web/src` 아래 FSD 레이어에 들어가고, 레이어 폴더는 첫 슬라이스와 함께 생겨요.
+   그다음 첫 슬라이스를 만들어요. 슬라이스는 `apps/web/src` 아래 FSD 레이어에 들어가고, 레이어 폴더는 첫 슬라이스와 함께 생겨요.
 
    ```bash
-   npx nx g @clearlydev/nx-archweave:feature --name=sign-in
+   npx nx g @clearlydev/nx-archweave:feature --name=counter
    ```
 
    레이어 규칙을 어기는 import는 `nx lint`와 에디터의 ESLint에 나타나요. `quick-start`는 경고, `team`은 에러예요. [FSD Lite](fsd-lite.md)를 보세요.
 
-6. AI PR 리뷰가 필요하면 나중에 추가하세요: [자동 PR 리뷰](pr-review.md#설정하기).
+5. **선택:** 프로젝트끼리 어떻게 의존하는지 브라우저에서 봐요. `--focus`를 주면 한 프로젝트와 그 프로젝트가 닿는 것만 보여요.
+
+   ```bash
+   npx nx graph
+   npx nx graph --focus=@my-app/web
+   ```
+
+   AI PR 리뷰가 필요하면 나중에 추가하세요: [자동 PR 리뷰](pr-review.md#설정하기).
+
+### 설치 뒤 보이는 보안 경고
+
+create 직후 `npm install`(또는 다른 매니저의 audit)이 취약점을 알릴 수 있어요. 대부분은 앱 프레임워크(예: Next.js)와 Nx 자체 도구에서 와요. nx-archweave가 가져오는 건 적어요.
+
+- **플러그인 자체**의 의존성은 둘이에요: Nx가 이미 가져오는 `@nx/devkit`과 `jsonc-parser`.
+- **`create-nx-archweave`**는 고른 스택의 Nx 플러그인(`@nx/react`, `@nx/express`, `@nx/nest`)을 Nx 자체 명령으로 더해요.
+- **옵션은 각자 설정하는 패키지를 더해요:** `add-fsd-lite --steiger`는 `steiger`와 `@feature-sliced/steiger-plugin`을 dev 의존성으로 더해요. AI 도구 플러그인(`--plugins`, `install-integration`)은 워크스페이스 의존성이 아니라 AI 도구에 설치돼요.
+
+경고가 어디서 왔는지는 이렇게 확인해요.
+
+1. 목록을 봐요.
+2. 취약한 패키지를 어떤 패키지가 가져왔는지 봐요.
+3. 앱이 직접 쓰는 패키지(예: `next`)면 쓰는 Nx 버전이 지원하는 범위 안에서 앱에서 올려요. Nx가 가져온 것이면 `npx nx migrate latest`로 Nx를 올려요.
+
+| 패키지 매니저 | 목록 | 누가 가져왔나 |
+| --- | --- | --- |
+| npm | `npm audit` | `npm explain <패키지>` (`npm why`와 같음) |
+| pnpm | `pnpm audit` | `pnpm why <패키지>` |
+| yarn 1 | `yarn audit` | `yarn why <패키지>` |
+| yarn 2+ | `yarn npm audit --all --recursive` (모든 워크스페이스, 의존성의 의존성까지) | `yarn why <패키지>` |
+| bun | `bun audit` | `bun why <패키지>` |
+
+> [!WARNING]
+> 자동 수정의 강제 옵션은 쓰지 마세요. `npm audit fix --force`는 Nx 패키지를 예전 메이저 버전으로 내리는 제안을 한 적이 있고, 그러면 워크스페이스가 깨져요. `bun audit fix --latest`도 메이저 버전을 넘어요. 패키지는 직접 올리세요.
 
 ### 백엔드 추가
 

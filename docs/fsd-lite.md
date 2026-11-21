@@ -155,6 +155,40 @@ How the generators behave:
 - doctor's `fsd-enforcement-applied` check warns you when no ESLint config imports the boundary rule.
 - doctor's `fsd-lint-cache` check tells you when `toolkit.config.json` is not among lint's inputs.
 
+## Storybook
+
+nx-archweave doesn't set up Storybook itself. Add it with Nx's own generator, then keep the stories next to their components.
+
+```bash
+npx nx add @nx/storybook
+npx nx g @nx/storybook:configuration @my-app/web --uiFramework=@storybook/react-vite   # Next.js: @storybook/nextjs
+```
+
+- **Where stories go:** next to the component, like `src/shared/ui/button/button.stories.tsx` or `src/features/sign-in/ui/form.stories.tsx`.
+- **The boundary rule treats a story like any file in its slice or segment.** A story may import its component, the rest of its own slice, and the layers below through their public API. An upward import is reported, and so is another slice's internal file.
+- **Mocks from another slice:** to let stories import them, add stories to `testFiles` in `toolkit.config.json`. `testFiles` replaces the preset's list, so keep the test patterns you rely on. Upward imports are still reported in stories.
+
+  ```jsonc
+  {
+    "fsd": {
+      "testFiles": ["**/*.{spec,test}.*", "**/__tests__/**", "**/*.stories.*"]
+    }
+  }
+  ```
+
+- **Storybook's own lint rules:** add `eslint-plugin-storybook` to the app's `eslint.config.mjs`, next to the FSD rule:
+
+  ```js
+  import storybook from 'eslint-plugin-storybook';
+
+  export default [
+    // ...the existing config, with fsdBoundaries(...)
+    ...storybook.configs['flat/recommended'],
+  ];
+  ```
+
+`.storybook/` sits outside the source root, so the boundary rule doesn't check it.
+
 ## Optional: steiger
 
 [steiger](https://github.com/feature-sliced/steiger) is the official FSD linter. The slice generators write canonical FSD, so steiger's recommended rules apply to them as is. Run `add-fsd-lite --steiger` to opt in. It adds three things:

@@ -200,7 +200,7 @@ pnpm nx g @clearlydev/nx-archweave:init …
 
 ### After it's created: the first five minutes
 
-The commands use `npx nx`, which works with any package manager (or use your manager's form: `pnpm nx`, `yarn nx`, `bun nx`). The app project is `@<name>/web`, where `<name>` is the workspace name.
+When it finishes, the CLI prints these steps as "Next steps", grouped the same way. `npx nx` works with any package manager; the CLI prints the form for the one you chose (`pnpm nx`, `npm exec nx --`, `yarn nx`, `bun nx`). The web app project is `@<name>/web` and the API `@<name>/api`, where `<name>` is the workspace name (in Nx's backend-only Nest workspace the API is `api`).
 
 1. Go into the workspace. With a backend, run your package manager's install once: it links the shared-types package.
 
@@ -214,27 +214,60 @@ The commands use `npx nx`, which works with any package manager (or use your man
    git add -A && git commit -m "chore: initial commit"
    ```
 
-3. Run the lint and the tests. A fresh workspace passes both (with bun and Next.js, see [Known issues](#known-issues-in-generated-workspaces)).
+3. **Check:** run the lint and the tests. A fresh workspace passes both (with bun and Next.js, see [Known issues](#known-issues-in-generated-workspaces)).
 
    ```bash
    npx nx run-many -t lint,test
    ```
 
-4. Start the app (React + Vite and Next.js both have a `dev` target):
+4. **Start developing:** start the web app's dev server. With a backend, start the API in another terminal; both keep running.
 
    ```bash
-   npx nx run @my-app/web:dev
+   npx nx run-many -t dev
+   npx nx serve @my-app/api
    ```
 
-5. Add your first slice. Slices go into the FSD layers under `apps/web/src`, and the layer folder appears with its first slice:
+   Then add your first slice. Slices go into the FSD layers under `apps/web/src`, and the layer folder appears with its first slice:
 
    ```bash
-   npx nx g @clearlydev/nx-archweave:feature --name=sign-in
+   npx nx g @clearlydev/nx-archweave:feature --name=counter
    ```
 
    An import that breaks the layer rules shows up in `nx lint` and in your editor's ESLint, as a warning on `quick-start` and an error on `team`. See [FSD Lite](fsd-lite.md).
 
-6. Add AI PR review later if you want it: [Automated PR review](pr-review.md#set-it-up).
+5. **Optional:** see how the projects depend on each other, in the browser. `--focus` narrows it to one project and what it touches:
+
+   ```bash
+   npx nx graph
+   npx nx graph --focus=@my-app/web
+   ```
+
+   Add AI PR review later if you want it: [Automated PR review](pr-review.md#set-it-up).
+
+### Security warnings after install
+
+Right after create, `npm install` (or another manager's audit) may report vulnerabilities. Most come from the app framework (Next.js, for example) and from Nx's own tools. What nx-archweave brings is small:
+
+- **The plugin itself** depends on two packages: `@nx/devkit`, which Nx already brings, and `jsonc-parser`.
+- **`create-nx-archweave`** adds the Nx plugin for the stack you pick (`@nx/react`, `@nx/express` or `@nx/nest`), through Nx's own commands.
+- **Options add what they set up:** `add-fsd-lite --steiger` adds `steiger` and `@feature-sliced/steiger-plugin` as dev dependencies. AI tool plugins (`--plugins`, `install-integration`) go into the AI tool, not into the workspace's dependencies.
+
+To see where a warning comes from:
+
+1. List them.
+2. Find which package brought the vulnerable one in.
+3. If it's a package your app uses directly (like `next`), upgrade it in the app, within the range your Nx version supports. If Nx brought it, upgrade Nx with `npx nx migrate latest`.
+
+| Package manager | List | Who brought it in |
+| --- | --- | --- |
+| npm | `npm audit` | `npm explain <package>` (same as `npm why`) |
+| pnpm | `pnpm audit` | `pnpm why <package>` |
+| yarn 1 | `yarn audit` | `yarn why <package>` |
+| yarn 2+ | `yarn npm audit --all --recursive` (all workspaces, and the dependencies of dependencies) | `yarn why <package>` |
+| bun | `bun audit` | `bun why <package>` |
+
+> [!WARNING]
+> Don't run the automatic fix with its force option. `npm audit fix --force` has proposed moving Nx packages back to an old major version, which breaks the workspace. `bun audit fix --latest` also crosses major versions. Upgrade the packages yourself instead.
 
 ### Adding a backend
 
