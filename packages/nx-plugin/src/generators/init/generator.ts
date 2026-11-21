@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GeneratorCallback, Tree } from '@nx/devkit';
-import { buildPresetConfig, readBoundaryTags, REVIEW_PROVIDERS } from '@nx-archweave/template-engine';
+import { buildPresetConfig, packageManagerCommands, readBoundaryTags, REVIEW_PROVIDERS } from '@nx-archweave/template-engine';
 import { runAddFsdLite } from '../add-fsd-lite/generator.ts';
 import { runAddAgentRules } from '../add-agent-rules/generator.ts';
 import { runAddGithubTemplates } from '../add-github-templates/generator.ts';
@@ -10,6 +10,7 @@ import { recordedReview, runAddReview } from '../add-review/generator.ts';
 import { runAddBackend } from '../add-backend/generator.ts';
 import type { InitGeneratorSchema } from './schema.d.ts';
 import { leftForYou } from './left-for-you.ts';
+import { applyLintInputs } from './lint-inputs.ts';
 import { failedSections, renderInitReport, type InitConfigOutcome, type InitReport, type InitSection } from './render.ts';
 import { createProcessExec, runPostInitValidation } from './validation.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
@@ -148,6 +149,8 @@ function writtenSince(before: Map<string, string | null>, tree: Tree): { created
 
 export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps): InitReport {
   const before = pendingContents(tree);
+  // nx.json's lint inputs are written only on the run that sets the workspace up.
+  const firstRun = !tree.exists('toolkit.config.json');
   // What init recorded last time fills in what this run does not pass, so a standalone rerun
   // keeps the workspace's choices; everything resolved here is recorded again below.
   const recorded = readToolkitConfigFile(tree).parsed;
@@ -340,6 +343,15 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     });
     notRecorded.push({ field: 'aiHosts', rerun: `add-agent-rules --hosts=${config.aiHosts.join(',')}` });
   }
+  // The FSD rule reads toolkit.config.json: lint's cache has to see it.
+  const lintInputs = fsdApplied
+    ? applyLintInputs(tree, {
+        firstRun,
+        fsdProjects: fsdSections.flatMap((s) => (s.report?.kind === 'fsd' && s.report.report.project !== null ? [s.report.report.project] : [])),
+        dryRun,
+        runNx: packageManagerCommands(packageManager).runNx,
+      })
+    : undefined;
   const configOutcome = recordPresetChoices(
     tree,
     {
@@ -381,6 +393,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     refused: false,
     sections,
     config: configOutcome,
+    ...(lintInputs === undefined ? {} : { lintInputs }),
     written: dryRun ? undefined : writtenSince(before, tree),
   };
 }
