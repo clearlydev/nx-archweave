@@ -78,7 +78,8 @@ function projectList(root: string, projects?: DoctorProject[]): { name: string; 
 }
 
 /** The lint target a project writes itself (project.json `targets`, else package.json
- * `nx.targets`), as opposed to one @nx/eslint/plugin infers. */
+ * `nx.targets`, else a package.json script of that name, which Nx runs with nx:run-script), as
+ * opposed to one @nx/eslint/plugin infers. Each one takes the inferred target's place. */
 function ownLintTarget(root: string, project: { name: string; root: string }, target: string): OwnLintTarget | null {
   const prefix = projectPrefix(project.root);
   const candidates: [string, (config: Json) => unknown][] = [
@@ -96,6 +97,10 @@ function ownLintTarget(root: string, project: { name: string; root: string }, ta
       executor: typeof own['executor'] === 'string' ? own['executor'] : undefined,
       inputs: Array.isArray(own['inputs']) ? (own['inputs'] as Input[]) : undefined,
     };
+  }
+  const pkg = readJson(join(root, `${prefix}package.json`));
+  if (pkg !== null && isObject(pkg['scripts']) && typeof pkg['scripts'][target] === 'string') {
+    return { project: project.name, file: `${prefix}package.json`, executor: 'nx:run-script', inputs: undefined };
   }
   return null;
 }

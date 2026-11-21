@@ -80,6 +80,13 @@ describe('buildLintCacheCheck — the FSD rule reads toolkit.config.json; does l
     expect(check.suggestedAction).toContain('--skip-nx-cache');
   });
 
+  it('a package.json lint script counts as an own lint target: no targetDefaults snippet', () => {
+    const dir = workspace({ plugins: [ESLINT_PLUGIN] }, { 'apps/api/package.json': JSON.stringify({ name: 'api', scripts: { lint: 'eslint .' } }) });
+    const check = buildLintCacheCheck(dir, [WEB, API]);
+    expect(check.suggestedAction).not.toContain('targetDefaults": {');
+    expect(check.suggestedAction).toContain('apps/web/package.json');
+  });
+
   it("a project's own lint inputs win over targetDefaults: missing there is missing", () => {
     const dir = workspace(
       { plugins: [ESLINT_PLUGIN], targetDefaults: { lint: { inputs: SPREAD } } },
@@ -114,6 +121,7 @@ describe('buildLintInputsSpreadCheck — "..." with nothing to keep', () => {
   it.each([
     ['project.json', 'apps/api/project.json', JSON.stringify({ name: 'api', targets: { lint: { executor: '@nx/eslint:lint' } } })],
     ['package.json nx.targets', 'apps/api/package.json', JSON.stringify({ name: 'api', nx: { targets: { lint: { executor: '@nx/eslint:lint' } } } })],
+    ['a package.json lint script', 'apps/api/package.json', JSON.stringify({ name: 'api', scripts: { lint: 'eslint .' } })],
   ])('warns and names the project whose own lint target has no inputs (%s)', (_where, file, content) => {
     const dir = workspace({ plugins: [ESLINT_PLUGIN], targetDefaults: { lint: { inputs: SPREAD } } }, { [file]: content });
     const check = buildLintInputsSpreadCheck(dir, [WEB, API]);

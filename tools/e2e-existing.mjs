@@ -22,7 +22,7 @@
 //   5. `doctor --json --quiet` names the framework and reports safe or manual-review-required
 //   6. targetDefaults lint inputs with "...": kept on an inferred target, nothing to keep on an own
 //      target (with the plugin or without); doctor's lint-inputs-spread names that project
-//      (a package.json lint script is only logged)
+//      (and a package.json lint script, which takes the inferred target's place)
 //
 // Read-only toward the repo; everything happens in a temp directory.
 
@@ -271,8 +271,8 @@ const { stdout: spreadStdout } = run('doctor: lint-inputs-spread', 'pnpm', ['--s
 const spread = (JSON.parse(spreadStdout).checks ?? []).find((check) => check.id === 'lint-inputs-spread');
 if (spread?.status !== 'warning' || !spread.evidence.includes(project)) fail('doctor: lint-inputs-spread', JSON.stringify(spread), spreadStdout);
 
-// A package.json lint script (nx:run-script) next to the inferred target: logged only, not
-// asserted yet — init counts it as an own target to be safe, doctor's warning does not.
+// A package.json lint script (nx:run-script) next to the inferred target takes its place, with
+// only toolkit.config.json as inputs (Nx 24.0.1): init and doctor count it as an own lint target.
 writeFileSync(appPackagePath, appPackageText);
 {
   const pkg = JSON.parse(appPackageText);
@@ -282,9 +282,14 @@ writeFileSync(appPackagePath, appPackageText);
   }
   const { stdout } = run('lint inputs: lint script', 'pnpm', ['--silent', 'nx', 'show', 'project', project, '--json'], { cwd: demoDir });
   const shown = JSON.parse(stdout).targets?.[lintTarget];
-  console.log(
-    `lint inputs, lint script + plugin + targetDefaults: ${JSON.stringify({ executor: shown?.executor, command: shown?.options?.command, script: shown?.options?.script, inputs: shown?.inputs })}`,
-  );
+  const summary = JSON.stringify({ executor: shown?.executor, command: shown?.options?.command, script: shown?.options?.script, inputs: shown?.inputs });
+  console.log(`lint inputs, lint script + plugin + targetDefaults: ${summary}`);
+  if (shown?.executor !== 'nx:run-script' || JSON.stringify(shown?.inputs) !== JSON.stringify([TOOLKIT_INPUT])) {
+    fail(
+      'lint inputs: lint script',
+      `expected nx:run-script with inputs ["${TOOLKIT_INPUT}"] only, got ${summary}. If Nx changed this, revisit doctor's lint-script check (lint-inputs-spread) and init's lint input conditions.`,
+    );
+  }
 }
 
 writeFileSync(nxJsonPath, nxJsonText);
