@@ -64,6 +64,8 @@
 - FSD 규칙이 보게 될 슬라이스 그룹, 슬라이스 제너레이터가 찾을 테스트 러너
 - 세그먼트 index를 넘어 `shared` 안쪽으로 들어가는 import와, 그 코드에 맞는 `sharedPublicApi` 값
 - `cwd` 없이 연결된 FSD 규칙(에디터나 루트에서 실행한 `eslint`는 아무것도 검사하지 않음)
+- FSD 규칙을 연결한 프로젝트의 lint 입력에 `toolkit.config.json`이 있는지(`fsd-lint-cache`). 없으면 `fsd` 정책을 바꾼 뒤에도 Nx가 캐시된 lint 결과를 다시 보여 줄 수 있어요. 이 검사는 전체 상태를 바꾸지 않아요. 상황에 맞는 조각을 보여 줘요: 모든 lint 타깃을 `@nx/eslint/plugin`이 추론하면 `"..."`가 든 `targetDefaults` 조각을, lint 타깃을 직접 적은 프로젝트가 있으면 그 프로젝트의 lint 타깃 조각을 줘요(직접 적은 타깃에서는 `"..."`가 유지할 게 없어요)
+- 입력 없이 직접 적은 lint 타깃이 있는데 `targetDefaults`가 `"..."`로 시작하는 lint 입력을 주는 경우(`lint-inputs-spread`, warning). 그 프로젝트의 파일이 lint 입력에서 빠져서, 소스를 고쳐도 캐시된 결과가 나올 수 있어요. Nx가 `"..."`를 합치는 방식이 그래요(Nx 23.3.1·24.0.1에서 확인)
 - frontend·backend·shared 태그가 하나도 없어서 경계 규칙이 적용되지 않는 프로젝트
 - 설치된 nx가 플러그인 자체의 `@nx/devkit`이 지원하는 메이저를 벗어난 경우(error). 그 밖에서는 제너레이터가 아예 로드되지 않을 수 있어요. `@nx/devkit`은 자기 메이저와 그 앞뒤 메이저 하나씩을 지원해요([Nx 플러그인 배포 가이드](https://nx.dev/docs/kb/publish-plugin)). 그래서 플러그인의 devkit 23은 nx 22~24를 뜻해요
 - nx-archweave가 만들지 않은 리뷰 워크플로, 두 공급자의 리뷰 워크플로가 함께 있는 경우, `packageManager`가 있는데 pnpm 버전을 고정한 경우

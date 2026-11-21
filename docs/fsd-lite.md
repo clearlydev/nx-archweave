@@ -125,7 +125,7 @@ The rule's defaults are canonical FSD (the `basic` preset). Existing apps often 
 1. **Describe the conventions the app already follows.** Set `fsd` in `toolkit.config.json` before you look at the report: `"preset": "practical"` when the app imports files from `shared` directly and its tests reach into other slices, plus `sliceGroups` and `segments` for its own folders. `doctor` suggests the `sharedPublicApi` value that fits your imports.
 2. **Start with warnings.** `add-fsd-lite --enforcement=warn` puts `severity: 'warn'` in the app's `eslint.config.mjs` (with `--applyEslint`, or in the snippet it prints). Change it to `'error'` there once the count is down.
 3. **Keep existing violations out of the way.** ESLint's bulk suppressions (`eslint --suppress-all`) record the violations already there, so only new ones are reported. They need ESLint 9.24.0 or later and keep the record in `eslint-suppressions.json`.
-4. **Skip Nx's cache after a policy change.** Nx caches `nx lint` by the project's files and its ESLint config. A `toolkit.config.json` outside the project folder isn't one of them, so after you edit `fsd` there, run `nx lint <app> --skip-nx-cache` to see the new result.
+4. **Skip Nx's cache after a policy change.** Nx caches `nx lint` by the project's files and its ESLint config. A `toolkit.config.json` outside the project folder isn't one of them, so after you edit `fsd` there, run `nx lint <app> --skip-nx-cache` to see the new result. To make Nx see it, add `toolkit.config.json` to lint's inputs: doctor's `fsd-lint-cache` check prints the snippet that fits your workspace.
 
 ## Generators
 
@@ -153,6 +153,7 @@ How the generators behave:
 
 - Whenever FSD is on, the agent-rules block gets a "Frontend Structure (FSD Lite)" section.
 - doctor's `fsd-enforcement-applied` check warns you when no ESLint config imports the boundary rule.
+- doctor's `fsd-lint-cache` check tells you when `toolkit.config.json` is not among lint's inputs.
 
 ## Optional: steiger
 
