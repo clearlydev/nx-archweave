@@ -26,6 +26,7 @@
 - `--project=web,admin` — FSD 섹션을 적용할 프런트 앱. 프런트가 둘 이상이면 필요해요. 앱마다 그 앱에서 찾은 프레임워크로 규칙을 적용하고(`--frontend`는 알아보지 못한 앱에만 쓰여요), `toolkit.config.json`의 `frontends`에 기록해요. 하나만 지정하면 `add-backend`가 연결할 프런트로도 쓰여요.
 - `--strict` — init이 요청받은 것을 다 하지 못했을 때도 실패해요. 변경을 지키려고 건너뛴 파일이나 손으로 할 일이 남은 경우예요(둘 다 리포트 끝에 목록으로 나와요). CI용이에요. 거부나 섹션 중단은 이 옵션 없이도 0이 아닌 코드로 끝나고, 다른 섹션이 쓴 파일은 그대로 남아요. [`init`의 종료 코드](behavioral-contracts.md#init의-종료-코드)를 보세요.
 - `--frontend`가 없으면, 워크스페이스의 프런트 앱이 하나이고 알아볼 수 있는 프레임워크일 때 그 프레임워크를 써요.
+- 워크스페이스를 처음 설정하는 실행(`toolkit.config.json`이 아직 없음)에서는 FSD 섹션이 `nx.json`의 lint 입력에 `"..."` 뒤로 `{workspaceRoot}/toolkit.config.json`을 넣어요: `targetDefaults.lint.inputs = ["...", "{workspaceRoot}/toolkit.config.json"]`. 그러면 `fsd` 정책을 바꾼 뒤 Nx가 lint를 다시 실행해요. 모든 lint 타깃을 `@nx/eslint/plugin`이 추론하고 `targetDefaults`에 아직 lint 입력이 없을 때만 써요. `project.json`이나 `package.json`의 `nx.targets`에 lint 타깃을 직접 적은 프로젝트가 있으면 그 타깃에서는 `"..."`가 유지할 게 없어 프로젝트 파일이 lint 입력에서 빠지기 때문에(Nx 23.3.1·24.0.1에서 확인. `package.json`의 lint 스크립트도 안전하게 같은 경우로 쳐요), 대신 상황에 맞는 조각과 이유를 출력해요. 다시 실행할 때는 조각만 출력해요.
 
 `init`은 대체값이 있는 옵션 5개를 이렇게 정해요.
 
@@ -65,7 +66,7 @@
 - 세그먼트 index를 넘어 `shared` 안쪽으로 들어가는 import와, 그 코드에 맞는 `sharedPublicApi` 값
 - `cwd` 없이 연결된 FSD 규칙(에디터나 루트에서 실행한 `eslint`는 아무것도 검사하지 않음)
 - FSD 규칙을 연결한 프로젝트의 lint 입력에 `toolkit.config.json`이 있는지(`fsd-lint-cache`). 없으면 `fsd` 정책을 바꾼 뒤에도 Nx가 캐시된 lint 결과를 다시 보여 줄 수 있어요. 이 검사는 전체 상태를 바꾸지 않아요. 상황에 맞는 조각을 보여 줘요: 모든 lint 타깃을 `@nx/eslint/plugin`이 추론하면 `"..."`가 든 `targetDefaults` 조각을, lint 타깃을 직접 적은 프로젝트가 있으면 그 프로젝트의 lint 타깃 조각을 줘요(직접 적은 타깃에서는 `"..."`가 유지할 게 없어요)
-- 입력 없이 직접 적은 lint 타깃이 있는데 `targetDefaults`가 `"..."`로 시작하는 lint 입력을 주는 경우(`lint-inputs-spread`, warning). 그 프로젝트의 파일이 lint 입력에서 빠져서, 소스를 고쳐도 캐시된 결과가 나올 수 있어요. Nx가 `"..."`를 합치는 방식이 그래요(Nx 23.3.1·24.0.1에서 확인)
+- 입력 없이 직접 적은 lint 타깃이 있는데 `targetDefaults`가 `"..."`가 든 lint 입력을 주는 경우(`lint-inputs-spread`, warning). 그 프로젝트의 파일이 lint 입력에서 빠져서, 소스를 고쳐도 캐시된 결과가 나올 수 있어요. Nx가 `"..."`를 합치는 방식이 그래요(Nx 23.3.1·24.0.1에서 확인)
 - frontend·backend·shared 태그가 하나도 없어서 경계 규칙이 적용되지 않는 프로젝트
 - 설치된 nx가 플러그인 자체의 `@nx/devkit`이 지원하는 메이저를 벗어난 경우(error). 그 밖에서는 제너레이터가 아예 로드되지 않을 수 있어요. `@nx/devkit`은 자기 메이저와 그 앞뒤 메이저 하나씩을 지원해요([Nx 플러그인 배포 가이드](https://nx.dev/docs/kb/publish-plugin)). 그래서 플러그인의 devkit 23은 nx 22~24를 뜻해요
 - nx-archweave가 만들지 않은 리뷰 워크플로, 두 공급자의 리뷰 워크플로가 함께 있는 경우, `packageManager`가 있는데 pnpm 버전을 고정한 경우
