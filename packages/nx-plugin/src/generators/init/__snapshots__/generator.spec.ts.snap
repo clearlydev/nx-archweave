@@ -44,5 +44,13 @@ Note: this workflow runs with elevated permissions only after it is merged to th
 merging is the first real validation.
 
 ## toolkit.config.json
-  recorded locale, preset, frontend, fsd.enforcement, agentRules.teamRules, aiHosts (updated)"
+  recorded locale, preset, frontend, fsd.enforcement, agentRules.teamRules, aiHosts (updated)
+
+## nx.json
+  toolkit.config.json is not among lint's inputs, so Nx can replay a cached lint result after a change to the
+  fsd policy. Not written — @nx/eslint/plugin is not registered, so targetDefaults would replace the lint targets' inputs.
+    Add to the lint target in apps/web/package.json (not to targetDefaults: a lint target written in a project file
+    keeps only what targetDefaults lists, so its own files would drop out):
+      "inputs": ["default", "^default", "{workspaceRoot}/toolkit.config.json", { "externalDependencies": ["eslint"] }]
+    Or, after changing the fsd policy, check with: pnpm nx lint web --skip-nx-cache"
 `;

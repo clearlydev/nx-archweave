@@ -6,6 +6,7 @@ import { renderAddGithubTemplatesReport, type AddGithubTemplatesReport } from '.
 import { renderAddReviewReport, type AddReviewReport } from '../add-review/render.ts';
 import { renderAddBackendBody, type AddBackendReport } from '../add-backend/render.ts';
 import { leftForYou, renderLeftForYou } from './left-for-you.ts';
+import type { LintInputsOutcome } from './lint-inputs.ts';
 
 export type InitSectionId = 'fsd' | 'agentRules' | 'githubTemplates' | 'review' | 'backend';
 
@@ -80,6 +81,8 @@ export interface InitReport {
   sections: InitSection[];
   /** Absent on a refused run. */
   config?: InitConfigOutcome;
+  /** toolkit.config.json in lint's inputs; absent when no FSD section applied. */
+  lintInputs?: LintInputsOutcome;
   /** What this run wrote, for the rollback guidance. Absent on a dry or refused run. */
   written?: { created: string[]; modified: string[] };
 }
@@ -197,6 +200,8 @@ export function renderInitReport(report: InitReport): string {
     }
   }
 
+  if (report.lintInputs !== undefined) lines.push('', '## nx.json', ...renderLintInputs(report.lintInputs, report.dryRun));
+
   const ranDirty = report.allowDirty === true && !report.cleanTree && !report.dryRun;
   if (ranDirty && report.dirtyFromCaller !== true) {
     lines.push('');
@@ -222,6 +227,28 @@ export function renderInitReport(report: InitReport): string {
   lines.push(...renderLeftForYou(leftForYou(report)));
 
   return lines.join('\n');
+}
+
+function renderLintInputs(outcome: LintInputsOutcome, dryRun: boolean): string[] {
+  if (outcome.action === 'present') return [`  ${outcome.target} inputs already include toolkit.config.json`];
+  if (outcome.action === 'added') {
+    return [
+      `  ${dryRun ? 'would add' : 'added'} "{workspaceRoot}/toolkit.config.json" to targetDefaults.${outcome.target}.inputs, after "..." (which keeps`,
+      '  the inputs @nx/eslint/plugin infers), so Nx re-runs lint after a change to the fsd policy',
+    ];
+  }
+  const reason = {
+    'not-first-run': 'init writes nx.json only when it sets a workspace up for the first time',
+    'no-plugin': "@nx/eslint/plugin is not registered, so targetDefaults would replace the lint targets' inputs",
+    'own-targets': `${(outcome.ownTargets ?? []).join(', ')} write their own ${outcome.target} target, which keeps only what targetDefaults lists`,
+    'existing-inputs': `targetDefaults already gives ${outcome.target} inputs of its own`,
+  }[outcome.reason ?? 'not-first-run'];
+  return [
+    "  toolkit.config.json is not among lint's inputs, so Nx can replay a cached lint result after a change to the",
+    `  fsd policy. Not written — ${reason}.`,
+    ...(outcome.snippet ?? []).map((line) => `    ${line}`),
+    ...((outcome.skipCache ?? []).length > 0 ? [`    Or, after changing the fsd policy, check with: ${(outcome.skipCache ?? []).join(', ')}`] : []),
+  ];
 }
 
 const SHOWN_DIRTY_FILES = 20;
