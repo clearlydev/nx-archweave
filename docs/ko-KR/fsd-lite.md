@@ -155,6 +155,40 @@ export default [...baseConfig, ...fsdBoundaries({ severity: 'error', cwd: import
 - doctor의 `fsd-enforcement-applied` 검사는 경계 규칙을 import하는 ESLint 설정이 하나도 없으면 경고해요.
 - doctor의 `fsd-lint-cache` 검사는 lint 입력에 `toolkit.config.json`이 없으면 알려 줘요.
 
+## Storybook
+
+nx-archweave는 Storybook을 직접 설정하지 않아요. Nx의 공식 생성기로 붙이고, 스토리는 컴포넌트 옆에 두세요.
+
+```bash
+npx nx add @nx/storybook
+npx nx g @nx/storybook:configuration @my-app/web --uiFramework=@storybook/react-vite   # Next.js: @storybook/nextjs
+```
+
+- **스토리 위치:** 컴포넌트 옆이에요. 예: `src/shared/ui/button/button.stories.tsx`, `src/features/sign-in/ui/form.stories.tsx`.
+- **경계 규칙은 스토리를 그 슬라이스나 세그먼트의 일반 파일과 똑같이 봐요.** 스토리는 자기 컴포넌트, 같은 슬라이스의 다른 파일, 아래 레이어의 public API를 import할 수 있어요. 위 레이어 import와 다른 슬라이스의 내부 파일 import는 위반으로 잡혀요.
+- **다른 슬라이스의 mock:** 스토리에서 쓰려면 `toolkit.config.json`의 `testFiles`에 스토리를 더하세요. `testFiles`는 프리셋의 목록을 대신하니, 쓰던 테스트 패턴도 같이 적으세요. 스토리에서도 위 레이어 import는 계속 잡혀요.
+
+  ```jsonc
+  {
+    "fsd": {
+      "testFiles": ["**/*.{spec,test}.*", "**/__tests__/**", "**/*.stories.*"]
+    }
+  }
+  ```
+
+- **Storybook 자체 lint 규칙:** 앱의 `eslint.config.mjs`에 FSD 규칙과 함께 `eslint-plugin-storybook`을 넣으세요.
+
+  ```js
+  import storybook from 'eslint-plugin-storybook';
+
+  export default [
+    // ...기존 설정(fsdBoundaries(...) 포함)
+    ...storybook.configs['flat/recommended'],
+  ];
+  ```
+
+`.storybook/`은 소스 루트 밖이라 경계 규칙이 검사하지 않아요.
+
 ## 선택: steiger
 
 [steiger](https://github.com/feature-sliced/steiger)는 FSD 공식 린터예요. 슬라이스 제너레이터가 정식 FSD 모양으로 만들기 때문에, steiger의 권장 규칙을 그대로 적용할 수 있어요. `add-fsd-lite --steiger`로 켜면 다음 3가지가 추가돼요.
