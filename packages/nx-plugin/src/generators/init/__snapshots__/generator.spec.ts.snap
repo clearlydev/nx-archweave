@@ -11,8 +11,8 @@ FSD layers (in web, apps/web/src):
   apps/web/src/entities  one slice per business object (user, product)
   apps/web/src/shared    segments, not slices: ui, api, lib, model, config — named by purpose
 Layer directories appear with their first slice (canonical FSD):
-  pnpm nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)
-  widgets/ is outside the default scope but one command away: pnpm nx g @clearlydev/nx-archweave:widget
+  npx nx g @clearlydev/nx-archweave:feature --name=<name>   (page, entity and shared work the same way; --segments=ui,api)
+  widgets/ is outside the default scope but one command away: npx nx g @clearlydev/nx-archweave:widget
 Imports go downward only, slices on one layer never import each other, and a slice is
 imported through its index.ts — the archweave/fsd-boundaries ESLint rule reports violations.
 
@@ -52,5 +52,5 @@ merging is the first real validation.
     Add to the lint target in apps/web/package.json (not to targetDefaults: a lint target written in a project file
     keeps only what targetDefaults lists, so its own files would drop out):
       "inputs": ["default", "^default", "{workspaceRoot}/toolkit.config.json", { "externalDependencies": ["eslint"] }]
-    Or, after changing the fsd policy, check with: pnpm nx lint web --skip-nx-cache"
+    Or, after changing the fsd policy, check with: npx nx lint web --skip-nx-cache"
 `;

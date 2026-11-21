@@ -320,6 +320,6 @@ describe('renderInitReport — "record it with" commands', () => {
     const npm = renderInitReport({ ...BASE, packageManager: 'npm', sections: [], config: { action: 'updated', fields: [], notRecorded } });
     expect(npm).toContain('    npm exec nx -- g @clearlydev/nx-archweave:add-agent-rules --hosts=codex');
     const unknown = renderInitReport({ ...BASE, sections: [], config: { action: 'updated', fields: [], notRecorded } });
-    expect(unknown).toContain('    pnpm nx g @clearlydev/nx-archweave:add-agent-rules --hosts=codex');
+    expect(unknown).toContain('    npx nx g @clearlydev/nx-archweave:add-agent-rules --hosts=codex');
   });
 });

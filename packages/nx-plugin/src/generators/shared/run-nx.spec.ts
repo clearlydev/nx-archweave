@@ -20,14 +20,14 @@ describe('diskRunNx', () => {
     expect(diskRunNx(dir)).toBe(runNx);
   });
 
-  it('no lockfile: the package manager init recorded, else pnpm', () => {
+  it('no lockfile: the package manager init recorded', () => {
     writeFileSync(join(dir, 'toolkit.config.json'), '{ "packageManager": "yarn" }');
     expect(diskRunNx(dir)).toBe('yarn nx');
     writeFileSync(join(dir, 'package-lock.json'), '');
     expect(diskRunNx(dir)).toBe('npm exec nx --'); // a lockfile wins over the record
   });
 
-  it('no lockfile and nothing recorded: pnpm, like the other generators', () => {
-    expect(diskRunNx(dir)).toBe('pnpm nx');
+  it('no lockfile and nothing recorded: npx nx, which runs the local nx under any package manager', () => {
+    expect(diskRunNx(dir)).toBe('npx nx');
   });
 });

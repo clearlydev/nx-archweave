@@ -1,3 +1,4 @@
+import { INSTALL_ASSUMES_PNPM } from '@nx-archweave/template-engine';
 import type { FsdEnforcement, ToolkitFrontend } from '@nx-archweave/shared';
 
 /** Why no frontend app could be picked — the rule and the layers live in its source root. */
@@ -18,6 +19,8 @@ export interface SteigerOutcome {
   target: 'added' | 'present' | 'unrecognized';
   dependencies: 'added' | 'present' | 'unrecognized';
   installCommand: string;
+  /** True when the package manager is unknown: installCommand is pnpm's, runCommand uses npx nx. */
+  installAssumed?: true;
   runCommand: string;
 }
 
@@ -118,7 +121,7 @@ export function renderAddFsdLiteReport(report: AddFsdLiteReport): string {
     );
     lines.push(
       st.dependencies === 'added'
-        ? `  devDependencies: steiger + @feature-sliced/steiger-plugin added to package.json — run \`${st.installCommand}\``
+        ? `  devDependencies: steiger + @feature-sliced/steiger-plugin added to package.json — run \`${st.installCommand}\`${st.installAssumed ? ` (${INSTALL_ASSUMES_PNPM})` : ''}`
         : st.dependencies === 'present'
           ? '  devDependencies: already present'
           : '  devDependencies: NOT added — the root package.json could not be parsed',

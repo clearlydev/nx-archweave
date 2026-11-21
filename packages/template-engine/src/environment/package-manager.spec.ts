@@ -1,4 +1,4 @@
-import { detectWorkspacePackageManager, detectYarnFlavor, packageManagerCommands } from './package-manager.ts';
+import { detectWorkspacePackageManager, detectYarnFlavor, packageManagerCommands, runNxCommand, UNKNOWN_PM_RUN_NX } from './package-manager.ts';
 
 const existsIn = (files: string[]) => (p: string) => files.includes(p);
 
@@ -96,5 +96,20 @@ describe('packageManagerCommands', () => {
 
   it('yarn with an unknown flavor renders the classic form — berry is only assumed when a .yarnrc.yml or __metadata says so', () => {
     expect(packageManagerCommands('yarn').addDevAtRoot('x')).toBe('yarn add -D -W x');
+  });
+});
+
+describe('runNxCommand', () => {
+  it("is the known package manager's own form", () => {
+    expect(runNxCommand('pnpm')).toBe('pnpm nx');
+    expect(runNxCommand('npm')).toBe('npm exec nx --');
+    expect(runNxCommand('yarn')).toBe('yarn nx');
+    expect(runNxCommand('bun')).toBe('bun nx');
+  });
+
+  it('is npx nx when the package manager is unknown: npx ships with Node and runs the local nx', () => {
+    expect(UNKNOWN_PM_RUN_NX).toBe('npx nx');
+    expect(runNxCommand(null)).toBe('npx nx');
+    expect(runNxCommand(undefined)).toBe('npx nx');
   });
 });

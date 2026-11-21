@@ -11,6 +11,8 @@ import {
   ESLINT_CONFIG_CANDIDATES,
   readBoundaryTags,
   readSharedTypesConfig,
+  INSTALL_ASSUMES_PNPM,
+  runNxCommand,
 } from '@nx-archweave/template-engine';
 import type { AddBackendGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
@@ -87,9 +89,11 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
     packageManager,
     packageManager === 'yarn' ? detectYarnFlavor((p) => tree.exists(p), (p) => tree.read(p, 'utf-8')) : undefined,
   );
+  // nx commands run through npx nx when the manager is unknown; install commands keep pnpm's form.
+  const runNx = runNxCommand(detectedPm);
   const packageManagerNote =
     detectedPm === null
-      ? 'the package manager could not be detected (no pnpm, yarn, bun or npm markers) — commands below assume pnpm.'
+      ? `the package manager could not be detected (no pnpm, yarn, bun or npm markers) — nx commands use ${runNx}; ${INSTALL_ASSUMES_PNPM}.`
       : undefined;
   const baseNameOf = (root: string): string => root.split('/').pop() ?? root;
   // Two tiers, so inference never changes a workspace that already worked:
@@ -183,8 +187,9 @@ export function runAddBackend(tree: Tree, options: AddBackendOptions): AddBacken
       commands: [
         pmCommands.addDevAtRoot(`@nx/${backend}${nxPin}`),
         ...(quotedExpress ? [pmCommands.addAtRoot(quotedExpress)] : []),
-        `${pmCommands.runNx} g @nx/${backend}:application ${apiDirectory} --frontendProject=${frontendProject}`,
+        `${runNx} g @nx/${backend}:application ${apiDirectory} --frontendProject=${frontendProject}`,
       ],
+      ...(packageManagerNote !== undefined ? { packageManagerNote } : {}),
       ...refusalShape,
     };
   }

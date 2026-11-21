@@ -1,5 +1,5 @@
 import type { ToolkitBackend, ToolkitFrontendChoice, ToolkitPreset } from '@nx-archweave/shared';
-import { packageManagerCommands } from '@nx-archweave/template-engine';
+import { runNxCommand } from '@nx-archweave/template-engine';
 import { renderAddFsdLiteReport, type AddFsdLiteReport } from '../add-fsd-lite/render.ts';
 import { renderAddAgentRulesReport, type AddAgentRulesReport } from '../add-agent-rules/render.ts';
 import { renderAddGithubTemplatesReport, type AddGithubTemplatesReport } from '../add-github-templates/render.ts';
@@ -68,10 +68,12 @@ export interface InitReport {
    * CLI's plugin install), so there are no earlier user changes to warn about. Only the note
    * reads it; the refusal never does. */
   dirtyFromCaller?: boolean;
-  /** Resolved package manager (option > detection > pnpm) — absent on a
-   * refused run, where nothing was resolved. Rendered only in the "record it with"
-   * commands; otherwise carried for callers and tests. */
+  /** Resolved package manager (option > detection > pnpm, the review workflow needs one) —
+   * absent on a refused run, where nothing was resolved. The printed commands use runNx. */
   packageManager?: 'pnpm' | 'npm' | 'yarn' | 'bun';
+  /** How the printed nx commands start: the known package manager's form, `npx nx` when
+   * unknown. Absent on a refused run. */
+  runNx?: string;
   /** True when the run was refused outright because the (non-dryRun) tree was dirty —
    * `sections` is empty in that case. */
   refused: boolean;
@@ -195,7 +197,7 @@ export function renderInitReport(report: InitReport): string {
     if (report.config.notRecorded.length > 0) {
       lines.push(`  not recorded: ${report.config.notRecorded.map((n) => n.field).join(', ')} — that section did not apply cleanly`);
       lines.push('  this run (aborted, or written as an alternate file). Once resolved, record it with:');
-      const runNx = packageManagerCommands(report.packageManager ?? 'pnpm').runNx;
+      const runNx = report.runNx ?? runNxCommand(report.packageManager);
       for (const entry of report.config.notRecorded) lines.push(`    ${runNx} g @clearlydev/nx-archweave:${entry.rerun}`);
     }
   }

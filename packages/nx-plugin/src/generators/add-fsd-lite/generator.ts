@@ -15,6 +15,7 @@ import {
   profileById,
   STEIGER_CONFIG_FILE,
   STEIGER_DEPENDENCIES,
+  runNxCommand,
 } from '@nx-archweave/template-engine';
 import type { AddFsdLiteGeneratorSchema } from './schema.d.ts';
 import { resolveDryRun } from '../shared/dry-run.ts';
@@ -178,7 +179,8 @@ function addSteiger(
     }
   }
 
-  const pm = treePackageManager(tree, input.config) ?? 'pnpm';
+  const known = treePackageManager(tree, input.config);
+  const pm = known ?? 'pnpm';
   const commands = packageManagerCommands(pm, pm === 'yarn' ? detectYarnFlavor((p) => tree.exists(p), (p) => tree.read(p, 'utf-8')) : undefined);
   return {
     configPath,
@@ -187,7 +189,9 @@ function addSteiger(
     target: targetAction,
     dependencies: dependenciesAction,
     installCommand: commands.install,
-    runCommand: `${commands.runNx} run <project>:${FSD_CHECK_TARGET}`,
+    // nx runs through npx nx when the manager is unknown; the install command keeps pnpm's form
+    ...(known === null ? { installAssumed: true as const } : {}),
+    runCommand: `${runNxCommand(known)} run <project>:${FSD_CHECK_TARGET}`,
   };
 }
 
