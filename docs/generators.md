@@ -8,6 +8,8 @@ This page covers all 16 generators and their options, plus the three presets tha
 
 The 16 generators are grouped by what they do. Each group starts with a short table, then gives each generator its own section with its options.
 
+The commands the generators print use the workspace's package manager (`pnpm nx`, `npm exec nx --`, `yarn nx`, `bun nx`), read from its lockfile or from `toolkit.config.json`. When neither says, nx commands are printed as `npx nx`, and install commands in pnpm's form with a note to use your package manager's.
+
 ### Setup and diagnosis
 
 | Generator | What it does |
