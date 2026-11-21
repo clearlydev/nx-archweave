@@ -36,7 +36,7 @@ describe('runAddBackend — refusals', () => {
     expect(report.frontendProject).toBe('web');
     expect(report.commands).toEqual([
       'pnpm add -D -w @nx/nest',
-      'pnpm nx g @nx/nest:application apps/api --frontendProject=web',
+      'npx nx g @nx/nest:application apps/api --frontendProject=web',
     ]);
     expect(tree.listChanges().length).toBe(before); // refusal writes nothing
   });
@@ -426,6 +426,15 @@ describe('runAddBackend — bun workspaces', () => {
     const report = runAddBackend(tree, { backend: 'nest' });
     expect(report.commands).toEqual(['bun add -d @nx/nest@23.2.0', 'bun nx g @nx/nest:application apps/api --frontendProject=web']);
   });
+
+  it('without a known package manager: the nx command uses npx nx, the install command stays pnpm (with a note next to it)', () => {
+    const tree = createTreeWithEmptyWorkspace();
+    addProject(tree, 'web', 'application');
+    tree.write('package.json', `${JSON.stringify({ name: 'x', devDependencies: { nx: '23.2.0' } }, null, 2)}\n`);
+    const report = runAddBackend(tree, { backend: 'nest' });
+    expect(report.commands).toEqual(['pnpm add -D -w @nx/nest@23.2.0', 'npx nx g @nx/nest:application apps/api --frontendProject=web']);
+    expect(renderAddBackendReport(report, false)).toContain("install commands assume pnpm; use your package manager's form");
+  });
 });
 
 it('a blind pnpm fallback on an undetectable tree carries a report note', () => {
@@ -650,7 +659,7 @@ describe('runAddBackend — inference never overrides what worked before', () =>
     tree.write('project.json', json({ name: 'standalone', projectType: 'application', root: '.' }));
     const report = runAddBackend(tree, { backend: 'nest' });
     expect(report.frontendProject).toBe('standalone');
-    expect(report.commands?.[1]).toBe('pnpm nx g @nx/nest:application apps/api --frontendProject=standalone');
+    expect(report.commands?.[1]).toBe('npx nx g @nx/nest:application apps/api --frontendProject=standalone');
   });
 });
 
@@ -720,6 +729,6 @@ describe('runAddBackend — the api app goes next to a root-level frontend', () 
     tree.write('web/project.json', JSON.stringify({ name: 'web', projectType: 'application', sourceRoot: 'web/src' }));
     const report = runAddBackend(tree, { backend: 'express' });
     expect(report.refused).toBe('missing-api-project');
-    expect(report.commands?.at(-1)).toBe('pnpm nx g @nx/express:application api --frontendProject=web');
+    expect(report.commands?.at(-1)).toBe('npx nx g @nx/express:application api --frontendProject=web');
   });
 });

@@ -1,4 +1,4 @@
-import { packageManagerCommands } from '@nx-archweave/template-engine';
+import { packageManagerCommands, runNxCommand } from '@nx-archweave/template-engine';
 import type { InitReport } from './render.ts';
 
 /** What init left for the user after a run that did not abort: printed at the end of the
@@ -15,7 +15,7 @@ export interface LeftForYou {
 const PLUGIN = '@clearlydev/nx-archweave';
 
 export function leftForYou(report: InitReport): LeftForYou {
-  const runNx = packageManagerCommands(report.packageManager ?? 'pnpm').runNx;
+  const runNx = report.runNx ?? runNxCommand(report.packageManager);
   const kept: string[] = [];
   const manual: string[] = [];
 

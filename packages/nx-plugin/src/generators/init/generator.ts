@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GeneratorCallback, Tree } from '@nx/devkit';
-import { buildPresetConfig, packageManagerCommands, readBoundaryTags, REVIEW_PROVIDERS } from '@nx-archweave/template-engine';
+import { buildPresetConfig, readBoundaryTags, REVIEW_PROVIDERS, runNxCommand } from '@nx-archweave/template-engine';
 import { runAddFsdLite } from '../add-fsd-lite/generator.ts';
 import { runAddAgentRules } from '../add-agent-rules/generator.ts';
 import { runAddGithubTemplates } from '../add-github-templates/generator.ts';
@@ -349,7 +349,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
         firstRun,
         fsdProjects: fsdSections.flatMap((s) => (s.report?.kind === 'fsd' && s.report.report.project !== null ? [s.report.report.project] : [])),
         dryRun,
-        runNx: packageManagerCommands(packageManager).runNx,
+        runNx: runNxCommand(knownPackageManager),
       })
     : undefined;
   const configOutcome = recordPresetChoices(
@@ -386,6 +386,7 @@ export function runInit(tree: Tree, options: InitGeneratorSchema, deps: InitDeps
     frontend,
     backend,
     packageManager,
+    runNx: runNxCommand(knownPackageManager),
     dryRun,
     cleanTree,
     allowDirty,

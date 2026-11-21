@@ -43,10 +43,10 @@ describe('runAddFsdLite — no folders, a rule', () => {
     fromConfig.write('toolkit.config.json', JSON.stringify({ packageManager: 'bun' }));
     expect(runAddFsdLite(fromConfig, { frontend: 'react-vite' }).layerGuide).toContain('  bun nx g @clearlydev/nx-archweave:feature');
 
-    // unknown: the same default as every other generator's printed commands
+    // unknown: npx nx, the same default as every other generator's printed nx commands
     const unknown = runAddFsdLite(appTree(), { frontend: 'react-vite', locale: 'ko' }).layerGuide;
-    expect(unknown).toContain('  pnpm nx g @clearlydev/nx-archweave:feature');
-    expect(unknown).toContain('pnpm nx g @clearlydev/nx-archweave:widget');
+    expect(unknown).toContain('  npx nx g @clearlydev/nx-archweave:feature');
+    expect(unknown).toContain('npx nx g @clearlydev/nx-archweave:widget');
   });
 
   it('without --applyEslint it is report-only: the snippet carries the import and the entry', () => {
@@ -237,6 +237,14 @@ describe('runAddFsdLite — --steiger', () => {
     const root = JSON.parse(tree.read('package.json', 'utf-8') as string);
     expect(root.devDependencies).toEqual({ nx: '23.1.0', steiger: '^0.7.0', '@feature-sliced/steiger-plugin': '^0.8.0' });
     expect(tree.read('package.json', 'utf-8')).toMatch(/^ {2}"devDependencies"/m);
+  });
+
+  it('without a known package manager: the run command uses npx nx, the install command stays pnpm (with a note)', () => {
+    const tree = workspace();
+    tree.delete('pnpm-lock.yaml');
+    const report = runAddFsdLite(tree, { frontend: 'react-vite', steiger: true });
+    expect(report.steiger).toMatchObject({ installCommand: 'pnpm install', runCommand: 'npx nx run <project>:fsd-check', installAssumed: true });
+    expect(renderAddFsdLiteReport(report)).toContain("install commands assume pnpm; use your package manager's form");
   });
 
   it('is idempotent, keeps a config with other content, and goes into project.json when there is one', () => {

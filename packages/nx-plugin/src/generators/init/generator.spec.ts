@@ -953,3 +953,21 @@ describe('runInit — rerun on a workspace set up with review on by an earlier v
     expect(review.report.report.workflowAction).toBe('unchanged');
   });
 });
+
+describe('runInit — the nx commands it prints follow the package manager, npx nx when unknown', () => {
+  it('npx nx without a lockfile or a recorded package manager', () => {
+    const tree = appTree();
+    tree.write('CLAUDE.md', `${renderAgentRulesBlock('## My own rules\n')}\n`.replace('## My own rules', '## My own rules, edited'));
+    const report = runInit(tree, { preset: 'team', frontend: 'react-vite' }, CLEAN);
+    expect(report.runNx).toBe('npx nx');
+    expect(renderInitReport(report)).toContain('npx nx g @clearlydev/nx-archweave:add-agent-rules --overwriteBlock');
+    expect(renderInitReport(report)).not.toContain('pnpm nx');
+  });
+
+  it("the known package manager's form otherwise", () => {
+    const tree = appTree();
+    tree.write('pnpm-lock.yaml', "lockfileVersion: '9.0'\n");
+    expect(runInit(tree, { preset: 'solo', frontend: 'react-vite' }, CLEAN).runNx).toBe('pnpm nx');
+    expect(runInit(appTree(), { preset: 'solo', frontend: 'react-vite', packageManager: 'npm' }, CLEAN).runNx).toBe('npm exec nx --');
+  });
+});

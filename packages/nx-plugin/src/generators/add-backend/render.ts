@@ -76,6 +76,7 @@ export function renderAddBackendBody(report: AddBackendReport): string {
     lines.push('  then re-run add-backend to wire it up:');
     lines.push('');
     for (const command of report.commands ?? []) lines.push(`    ${command}`);
+    if (report.packageManagerNote !== undefined) lines.push(`  note: ${report.packageManagerNote}`);
     if (report.expressRange !== undefined) {
       lines.push('');
       lines.push(`  The express line declares express@${report.expressRange}, the range this workspace's @nx/react supports —`);

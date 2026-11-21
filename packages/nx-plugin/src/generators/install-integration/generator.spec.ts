@@ -244,7 +244,7 @@ describe('installIntegrationGenerator', () => {
       expect(s.subcommands()).toEqual(['list', 'marketplace']);
       expect(existsSync(manifestPath())).toBe(false);
       expect(out).toContain('Marketplace declaration: failed — Failed to clone');
-      expect(out).toContain('Nothing was installed. Once resolved, rerun: pnpm nx g @clearlydev/nx-archweave:install-integration --tool=ponytail --apply');
+      expect(out).toContain('Nothing was installed. Once resolved, rerun: npx nx g @clearlydev/nx-archweave:install-integration --tool=ponytail --apply');
     });
 
     it.each(['user', 'local'] as const)('--scope=%s declares nothing (it stays personal)', async (scope) => {

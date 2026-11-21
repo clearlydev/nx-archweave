@@ -78,3 +78,17 @@ export function packageManagerCommands(pm: SupportedPackageManager, flavor: Yarn
       return { addDevAtRoot: (spec) => `npm install -D ${spec}`, addAtRoot: (spec) => `npm install ${spec}`, runNx: 'npm exec nx --', install: 'npm install', workspaceRegistration: 'package.json workspaces' };
   }
 }
+
+/** How the printed nx commands run nx when the package manager is unknown (no lockfile, nothing
+ * recorded): npx ships with Node and runs the nx in node_modules/.bin, whichever manager put it
+ * there. Install commands can't take this form; they keep pnpm's, with a note. A yarn berry PnP
+ * workspace has no node_modules, but its yarn.lock means the manager is never unknown there. */
+export const UNKNOWN_PM_RUN_NX = 'npx nx';
+
+/** The prefix that runs the workspace's local nx: the package manager's own form, npx nx when unknown. */
+export function runNxCommand(pm: SupportedPackageManager | null | undefined): string {
+  return pm === null || pm === undefined ? UNKNOWN_PM_RUN_NX : packageManagerCommands(pm).runNx;
+}
+
+/** Put next to an install command printed for an unknown package manager. */
+export const INSTALL_ASSUMES_PNPM = "install commands assume pnpm; use your package manager's form";
