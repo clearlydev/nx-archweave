@@ -179,6 +179,7 @@ function buildPolicySuggestion(tree: Tree, sourceRoot: string, current: 'segment
     status: 'warning',
     message: `${deeper} of ${deeper + atSegment} imports into shared reach past a segment's index — with sharedPublicApi: segment the FSD rule reports each`,
     evidence: examples,
-    suggestedAction: 'If that is how this code is meant to be organised, set "fsd": { "sharedPublicApi": "file" } (or "component") in toolkit.config.json.',
+    suggestedAction:
+      'If that is how this code is meant to be organised, add "sharedPublicApi": "file" (or "component") to the fsd object in toolkit.config.json, keeping its other keys.',
   });
 }

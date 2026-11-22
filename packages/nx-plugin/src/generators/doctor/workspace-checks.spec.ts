@@ -62,6 +62,9 @@ describe('buildWorkspaceChecks', () => {
       'web/src/pages/home/ui/home.tsx': "import { b } from '@/shared/ui/button/button';\n",
     });
     expect(check(tree, 'fsd-policy-suggestion')).toMatchObject({ status: 'warning', suggestedAction: expect.stringContaining('"sharedPublicApi": "file"') });
+    // one key added to the existing fsd object, never a whole fsd object that would drop its other keys
+    expect(check(tree, 'fsd-policy-suggestion')?.suggestedAction).toContain('to the fsd object in toolkit.config.json');
+    expect(check(tree, 'fsd-policy-suggestion')?.suggestedAction).not.toContain('"fsd": {');
   });
 
   it('no suggestion when imports go through the segments', () => {
