@@ -39,7 +39,7 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 `init`을 실행하기 전에 설치를 먼저 커밋하세요. `init`은 깨끗한 작업 트리에서만 돌고, 플러그인을 설치하면 `package.json`과 lockfile이 바뀌어요.
 
 ```bash
-git add package.json <lockfile> && git commit -m "chore: add nx-archweave"
+git add package.json <lockfile> && git commit -m "chore: add @clearlydev/nx-archweave"
 ```
 
 아래 예시는 `pnpm nx g`로 써요. 다른 패키지 매니저를 쓴다면 위 블록과 같은 방식으로 같은 제너레이터를 실행하세요.
@@ -444,10 +444,10 @@ pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --a
 - FSD 규칙만 쓰려면 `--agentRules=false --githubTemplates=false --review=false`를 더하세요.
 - AI 리뷰는 나중에 `add-review`로 추가할 수 있어요([자동 PR 리뷰](pr-review.md#설정하기) 참고).
 
-레이아웃이 Nx 기본값일 필요는 없어요. `init`과 `doctor`는 Nx 설정에서 프로젝트를 읽기 때문에, 프런트가 `web/`에 있거나 워크스페이스 루트에 있거나 `sourceRoot`가 프로젝트 폴더 자체여도 동작해요. 프런트가 둘 이상이면 이름을 지정하세요.
+레이아웃이 Nx 기본값일 필요는 없어요. `init`과 `doctor`는 Nx 설정에서 프로젝트를 읽기 때문에, 프런트가 `web/`에 있거나 워크스페이스 루트에 있거나 `sourceRoot`가 프로젝트 폴더 자체여도 동작해요. 프런트가 둘 이상이면 이름을 지정하고 `--frontend`도 함께 주세요(init은 프런트 앱이 하나일 때만 워크스페이스에서 프레임워크를 읽어요).
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --project=web,admin --strict
+pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --project=web,admin --strict
 ```
 
 앱이 이미 자기만의 FSD 관례(`features/mypage/order` 같은 슬라이스 그룹, `shared`의 파일 직접 import, 자체 경계 태그)를 따르고 있다면, 강제를 켜기 전에 `toolkit.config.json`에 적어 주세요. [FSD Lite](fsd-lite.md#정책-트리를-얼마나-엄격하게-읽을지)와 [경계](boundaries.md)를 참고하세요. `doctor`가 import 패턴에 맞는 `sharedPublicApi` 값을 제안해요. 이미 있는 위반은 ESLint의 bulk suppressions(`eslint --suppress-all`)로 묶어 두면, 새 위반만 실패로 잡을 수 있어요. 단계는 [기존 앱에 도입하기](fsd-lite.md#기존-앱에-도입하기)에 있어요.

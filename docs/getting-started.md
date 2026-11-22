@@ -39,7 +39,7 @@ bun nx g @clearlydev/nx-archweave:doctor           # bun
 Commit the install before you run `init`. `init` runs only against a clean working tree, and installing the plugin changed `package.json` and the lockfile:
 
 ```bash
-git add package.json <lockfile> && git commit -m "chore: add nx-archweave"
+git add package.json <lockfile> && git commit -m "chore: add @clearlydev/nx-archweave"
 ```
 
 The examples below use `pnpm nx g`. With another package manager, run the same generator the way the block above shows.
@@ -444,10 +444,10 @@ pnpm nx g @clearlydev/nx-archweave:init --preset=quick-start --frontend=next --a
 - Only the FSD rule: add `--agentRules=false --githubTemplates=false --review=false`.
 - Add AI review later with `add-review` (see [Automated PR review](pr-review.md#set-it-up)).
 
-Your layout doesn't need to be Nx's default. `init` and `doctor` read the projects from your Nx configuration: a frontend in `web/`, at the workspace root, or one whose `sourceRoot` is the project folder itself all work. With more than one frontend, name them:
+Your layout doesn't need to be Nx's default. `init` and `doctor` read the projects from your Nx configuration: a frontend in `web/`, at the workspace root, or one whose `sourceRoot` is the project folder itself all work. With more than one frontend, name them, and pass `--frontend` too (init reads the framework from the workspace only when it has one frontend app):
 
 ```bash
-pnpm nx g @clearlydev/nx-archweave:init --preset=team --project=web,admin --strict
+pnpm nx g @clearlydev/nx-archweave:init --preset=team --frontend=next --project=web,admin --strict
 ```
 
 If the app already follows its own FSD conventions (slice groups like `features/mypage/order`, files imported directly from `shared`, its own boundary tags), describe them in `toolkit.config.json` before you turn on enforcement — see [FSD Lite](fsd-lite.md#policy-how-strictly-the-tree-is-read) and [Boundaries](boundaries.md). `doctor` suggests the `sharedPublicApi` value that fits your imports. For violations that already exist, ESLint's bulk suppressions (`eslint --suppress-all`) keep them out of the way while new ones fail. The steps are in [Adopting it in an existing app](fsd-lite.md#adopting-it-in-an-existing-app).

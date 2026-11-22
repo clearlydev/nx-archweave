@@ -25,7 +25,7 @@
 - `--aiHosts`, `--reviewProvider`
 - `--fsd`, `--agentRules`, `--githubTemplates`, `--review`
 - `--applyEslint`, `--allowDirty`, `--dryRun`
-- `--project=web,admin` — FSD 섹션을 적용할 프런트 앱. 프런트가 둘 이상이면 필요해요. 앱마다 그 앱에서 찾은 프레임워크로 규칙을 적용하고(`--frontend`는 알아보지 못한 앱에만 쓰여요), `toolkit.config.json`의 `frontends`에 기록해요. 하나만 지정하면 `add-backend`가 연결할 프런트로도 쓰여요.
+- `--project=web,admin` — FSD 섹션을 적용할 프런트 앱. 프런트가 둘 이상이면 필요해요. 앱마다 그 앱에서 찾은 프레임워크로 규칙을 적용하고(`--frontend`는 알아보지 못한 앱에만 쓰여요), `toolkit.config.json`의 `frontends`에 기록해요. 하나만 지정하면 `add-backend`가 연결할 프런트로도 쓰여요. 둘 이상이면 `--frontend`도 함께 주고 `--backend`는 빼세요. add-backend가 프런트를 고르지 못해 거부하면 init 실행이 중단돼요. 그 뒤에 `add-backend --frontendProject=<이름>`을 실행하세요.
 - `--strict` — init이 요청받은 것을 다 하지 못했을 때도 실패해요. 변경을 지키려고 건너뛴 파일이나 손으로 할 일이 남은 경우예요(둘 다 리포트 끝에 목록으로 나와요). CI용이에요. 거부나 섹션 중단은 이 옵션 없이도 0이 아닌 코드로 끝나고, 다른 섹션이 쓴 파일은 그대로 남아요. [`init`의 종료 코드](behavioral-contracts.md#init의-종료-코드)를 보세요.
 - `--frontend`가 없으면, 워크스페이스의 프런트 앱이 하나이고 알아볼 수 있는 프레임워크일 때 그 프레임워크를 써요.
 - 워크스페이스를 처음 설정하는 실행(`toolkit.config.json`이 아직 없음)에서는 FSD 섹션이 `nx.json`의 lint 입력에 `"..."` 뒤로 `{workspaceRoot}/toolkit.config.json`을 넣어요: `targetDefaults.lint.inputs = ["...", "{workspaceRoot}/toolkit.config.json"]`. 그러면 `fsd` 정책을 바꾼 뒤 Nx가 lint를 다시 실행해요. 모든 lint 타깃을 `@nx/eslint/plugin`이 추론하고 `targetDefaults`에 아직 lint 입력이 없을 때만 써요. `project.json`이나 `package.json`의 `nx.targets`에 lint 타깃을 직접 적은 프로젝트가 있으면 그 타깃에서는 `"..."`가 유지할 게 없어 프로젝트 파일이 lint 입력에서 빠지기 때문에(Nx 23.3.1·24.0.1에서 확인. `package.json`의 lint 스크립트도 같은 식으로 추론 타깃 자리를 차지해요, Nx 24.0.1에서 확인), 대신 상황에 맞는 조각과 이유를 출력해요. 다시 실행할 때는 조각만 출력해요.
