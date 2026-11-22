@@ -1,3 +1,22 @@
+## 0.5.0 (2026-11-22)
+
+### 🚀 Features
+
+- merge the solo preset into quick-start ([#33](https://github.com/clearlydev/nx-archweave/pull/33))
+- number the create questions and give each a default ([#34](https://github.com/clearlydev/nx-archweave/pull/34))
+- show what to run next after create ([#35](https://github.com/clearlydev/nx-archweave/pull/35))
+- exit non-zero when init refuses or a section aborts ([#37](https://github.com/clearlydev/nx-archweave/pull/37))
+- add doctor checks for lint inputs and the FSD policy file ([#38](https://github.com/clearlydev/nx-archweave/pull/38))
+
+### 🩹 Fixes
+
+- add toolkit.config.json to lint's inputs when init sets a workspace up ([#39](https://github.com/clearlydev/nx-archweave/pull/39))
+- print npx nx when the package manager is unknown ([#41](https://github.com/clearlydev/nx-archweave/pull/41))
+- stop asking about AI tool plugins in create ([#45](https://github.com/clearlydev/nx-archweave/pull/45))
+- bump anthropics/claude-code-action from 1.0.271 to 1.0.281 ([#42](https://github.com/clearlydev/nx-archweave/pull/42))
+- bump openai/codex-action from 1.13 to 1.14 ([#43](https://github.com/clearlydev/nx-archweave/pull/43))
+- correct the preset and fsd wording in agent rules, doctor and docs ([#46](https://github.com/clearlydev/nx-archweave/pull/46))
+
 ## 0.4.5 (2026-11-20)
 
 ### 🩹 Fixes
