@@ -47,7 +47,7 @@
 | 프로바이더 | 상태 | GitHub Actions 확인 결과 | 비용 |
 | --- | --- | --- | --- |
 | `claude` (기본) | — | 확인: 시크릿이 없으면 green-skip, Claude GitHub App 없이 토큰만 있으면 `401 … Claude Code is not installed on this repository`로 실패하고 `review`가 red, 깨끗한 pull request에서 요약·APPROVE verdict 코멘트·green `review`(처음부터 끝까지 약 1분 45초). 보안 결함 pull request가 BLOCK과 red `review`, 실패한 잡만 재실행해도 red 유지, 이후 라운드는 verdict 코멘트 하나를 수정, 요약을 남기지 않은 리뷰는 red(0.3.0). 라운드 한도 이후 커밋과 플러그인이 없는 워크스페이스의 리뷰가 필수 `review`를 red로 만들고 머지를 막음. 시크릿이 없을 때와 Dependabot pull request는 여전히 green이고 각각 안내가 남음(0.4.0). 요약은 `claude[bot]`으로 게시되고, 내용이 리뷰어에게 지시하는 pull request는 P1 `instructions-in-content` finding과 BLOCK(0.4.2) | Claude 구독. 깨끗한 리뷰 한 번에 약 $0.05 |
-| `gemini` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red, 깨끗한 pull request에서 별도 게시 스텝이 올린 요약·APPROVE·green `review`(0.4.2). 미확인: BLOCK, 라운드, 재실행 | 한도가 있는 무료 등급. 모델이 붐비면 503으로 실패하거나, 일일 할당량에서 멈출 수 있어요 |
+| `gemini` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red, 깨끗한 pull request에서 별도 게시 스텝이 올린 요약·APPROVE·green `review`(0.4.2). 미확인: BLOCK, 라운드, 재실행, 셸 차단(아래) | 한도가 있는 무료 등급. 모델이 붐비면 503으로 실패하거나, 일일 할당량에서 멈출 수 있어요 |
 | `gpt` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰 실패(API 한도) 시 `review`가 red. 미확인: 리뷰 완료 | ChatGPT 구독과 별개인 OpenAI API 크레딧. pull request에서 `@codex`를 멘션하는 건 별개의 ChatGPT 기능(Codex 커넥터)이에요. 이 워크플로를 실행하지 않고, 체크를 만들지 않으며, verdict 게이트도 거치지 않아요 |
 | `cursor` | beta | 확인: 시크릿이 없으면 green-skip, AI 리뷰가 실패하면 `review`가 red. 미확인: 리뷰 완료, BLOCK, 라운드, 재실행 | Cursor 요금제의 에이전트 사용량. Free 요금제는 첫 리뷰에서 한도에 걸렸어요 |
 
@@ -202,7 +202,7 @@ verdict는 같은 실행이 게시한 요약만 판정해요. 어떤 실행의 �
 - 모든 잡은 GitHub 기본값 360분 대신 15분이 지나면 멈춰요(`timeout-minutes: 15`). 이렇게 멈춘 AI 리뷰는 실패로 처리돼서 `review`가 빨간색이 돼요.
 - `claude` 에이전트는 claude-code-action의 PR 리뷰 예시와 같은 도구만 써요. inline comment, `gh pr diff`, `gh pr view`, 그리고 본문을 표준 입력으로 받는 이 pull request의 `gh pr comment`(`gh pr comment <번호> --body-file -`)뿐이고, 다른 셸 명령, `gh api`, 파일 수정은 안 돼요.
 - `gemini`와 `cursor` 에이전트는 GitHub 토큰을 받지 않아요. 앞 단계가 pull request의 diff와 설명을 `.archweave-review/`(`pr.diff`, `pr.md`)에 쓰고, 체크아웃에서 CLI의 프로젝트 설정(`.gemini`와 `.env`, 또는 `.cursor`)을 지워요. 에이전트 다음 단계가 워크플로 토큰으로 에이전트의 응답을 요약 코멘트로 게시해요. 이 두 프로바이더는 inline comment를 달지 않고, 모든 지적이 요약에 들어가요.
-- `gemini` 에이전트는 `read_file`과 `grep_search`만 쓸 수 있어요. `run-gemini-cli` 액션은 Gemini CLI를 YOLO 모드로 실행해서, 허용된 도구의 호출은 묻지 않고 모두 승인해요. 셸과 쓰기 도구를 막는 건 허용 도구 목록이에요. 액션은 기본값 `latest` 대신 고정된 Gemini CLI(`gemini_cli_version`)를 설치해요. Dependabot은 이 고정값을 올리지 않고, nx-archweave 새 릴리스가 올려요.
+- `gemini` 에이전트는 `read_file`과 `grep_search`만 쓸 수 있어요. `run-gemini-cli` 액션은 Gemini CLI를 YOLO 모드로 실행해서, 허용된 도구의 호출은 묻지 않고 모두 승인해요. 셸과 쓰기 도구를 막는 건 허용 도구 목록이에요. 이 목록에서 Gemini CLI가 셸 호출을 실제로 거부하는지는 아직 보지 못했어요. 무료 등급 실행이 모델이 답하기 전에 503이나 일일 할당량에서 멈췄어요. 액션은 기본값 `latest` 대신 고정된 Gemini CLI(`gemini_cli_version`)를 설치해요. Dependabot은 이 고정값을 올리지 않고, nx-archweave 새 릴리스가 올려요.
 - `cursor` 프로바이더는 `curl --proto '=https' --tlsv1.2 -fsS https://cursor.com/install | bash`로 `cursor-agent`를 설치해요. Cursor는 이 설치에 고정 버전이나 체크섬을 제공하지 않아요([보안 범위](#보안-범위) 참고).
 - `Show denied tool calls` 스텝은 거부된 호출마다 도구 이름과 명령 앞 200자를 JSON 한 줄로 출력하고, 그 구간에서는 워크플로 명령을 꺼 둬요. 실행이 오류로 끝나면(만료된 토큰, 사용 한도) 액션 로그에 없는 오류 문구 앞 300자도 출력해요. 도구가 돌려준 내용은 출력하지 않고, 아무것도 업로드하지 않아요. 액션의 `show_full_output`과 `display_report`는 도구 출력을 로그에 공개하므로 꺼 둬요.
 - 모든 프롬프트는 pull request의 제목, 설명, 커밋 메시지, 코드, 주석, 파일이 리뷰할 자료이지 리뷰어에게 주는 지시가 아니라고 적어요([판정 정책](#판정-정책) 참고).
