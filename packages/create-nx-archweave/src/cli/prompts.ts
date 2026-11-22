@@ -3,6 +3,7 @@ import {
   DEFAULT_AI_HOSTS,
   resolvePresetAlias,
   REVIEW_PROVIDER_CHOICES,
+  SOLO_ALIAS_NOTE,
   type CliAiHost,
   type CliReviewProvider,
   type CliBackend,
@@ -196,10 +197,11 @@ async function askAiHosts(ask: Ask, installed: InstalledHosts | undefined): Prom
  * off, team on). The CLI must not depend on template-engine, so `reviewWillBeOn` below is a
  * deliberate hand-synced copy of that rule.
  */
-export async function collectMissingInputs(input: PromptInput, ask: Ask): Promise<PromptResult> {
-  const preset = resolvePresetAlias(
-    input.preset ?? (await askNumberedChoice(ask, 'Preset', PRESET_OPTIONS, 'quick-start', { solo: 'quick-start' })),
-  );
+export async function collectMissingInputs(input: PromptInput, ask: Ask, log: (line: string) => void = () => undefined): Promise<PromptResult> {
+  // `solo` typed at the question gets the same note as --preset=solo (bin.ts prints that one).
+  const answered = input.preset === undefined ? await askNumberedChoice(ask, 'Preset', PRESET_OPTIONS, 'quick-start', { solo: 'solo' }) : undefined;
+  if (answered === 'solo') log(SOLO_ALIAS_NOTE);
+  const preset = resolvePresetAlias(input.preset ?? answered ?? 'quick-start');
   // none/none would build nothing: whichever is asked second leaves `none` out when the
   // other is already none (both passed as flags is refused by parse-args). The backend
   // question then has no default: Enter would mean the none that was left out.

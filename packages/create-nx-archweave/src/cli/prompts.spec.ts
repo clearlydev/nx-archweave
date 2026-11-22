@@ -15,6 +15,7 @@ import {
   type Ask,
   type PromptInput,
 } from './prompts.ts';
+import { SOLO_ALIAS_NOTE } from './types.ts';
 
 function scriptedAsk(answers: string[]): { ask: Ask; calls: string[] } {
   const calls: string[] = [];
@@ -133,9 +134,23 @@ describe('collectMissingInputs', () => {
     expect(result.preset).toBe('quick-start');
   });
 
-  it('the preset question does not offer solo, but an answer of solo is taken as quick-start', async () => {
+  it('the preset question does not offer solo, but an answer of solo is taken as quick-start, with the alias note', async () => {
     const { ask } = scriptedAsk(['solo', 'react-vite', 'none']);
-    expect((await collectMissingInputs(allMissing, ask)).preset).toBe('quick-start');
+    const logs: string[] = [];
+    expect((await collectMissingInputs(allMissing, ask, (line) => logs.push(line))).preset).toBe('quick-start');
+    expect(logs).toEqual([SOLO_ALIAS_NOTE]);
+  });
+
+  it('no alias note for quick-start answered by name, number or Enter, nor for --preset=solo (bin.ts prints that one)', async () => {
+    for (const answer of ['quick-start', '1', '']) {
+      const logs: string[] = [];
+      const { ask } = scriptedAsk([answer, 'react-vite', 'none']);
+      await collectMissingInputs(allMissing, ask, (line) => logs.push(line));
+      expect(logs).toEqual([]);
+    }
+    const logs: string[] = [];
+    await collectMissingInputs({ ...allMissing, preset: 'solo' }, scriptedAsk([]).ask, (line) => logs.push(line));
+    expect(logs).toEqual([]);
   });
 
   it('re-asks a choice question until a valid answer is given', async () => {
