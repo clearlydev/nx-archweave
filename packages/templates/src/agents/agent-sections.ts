@@ -56,7 +56,7 @@ export const UNIVERSAL_AGENT_SECTION_IDS: readonly AgentSectionId[] = [
 export const PLACEHOLDER_AGENT_SECTION_IDS: readonly AgentSectionId[] = ['project-goal', 'architecture-boundary'];
 
 /** The opt-in Team Rules section. Deliberately absent from
- * `DEFAULT_AGENT_SECTION_IDS` so Quick Start / Solo output stays byte-identical. */
+ * `DEFAULT_AGENT_SECTION_IDS` so Quick Start output stays byte-identical. */
 export const TEAM_AGENT_SECTION_ID = 'team-rules' satisfies AgentSectionId;
 
 /** The opt-in FSD section: the frontend's layer rules, included when
@@ -182,8 +182,9 @@ const EN_SECTIONS: Record<AgentSectionId, AgentRuleSection> = {
     heading: 'Frontend Structure (FSD Lite)',
     body: [
       'The frontend app follows canonical Feature-Sliced Design. "Lite" means only that the default scope',
-      'is `app`, `pages`, `features`, `entities` and `shared` (`widgets` only on request) and that Solo',
-      'workspaces get warnings instead of errors — the rules themselves are the canonical ones:',
+      'is `app`, `pages`, `features`, `entities` and `shared` (`widgets` only on request) and that a',
+      'quick-start workspace reports violations as warnings, a team one as errors — the rules themselves',
+      'are the canonical ones:',
       '- A layer imports only layers below it: app > pages > widgets > features > entities > shared.',
       '- Slices on one layer (pages, widgets, features, entities) never import each other; move the',
       "  shared part one layer down, or expose it through the other slice's `@x/<consumer>` public API.",
@@ -316,8 +317,8 @@ const KO_SECTIONS: Record<AgentSectionId, AgentRuleSection> = {
     heading: '프론트엔드 구조 (FSD Lite)',
     body: [
       '프론트엔드 앱은 정식 Feature-Sliced Design을 따른다. "Lite"는 기본 범위가 `app`, `pages`, `features`,',
-      '`entities`, `shared`이고(`widgets`는 요청할 때만), Solo 워크스페이스에서는 위반을 에러가 아닌',
-      '경고로 알린다는 뜻일 뿐이다 — 규칙 자체는 정식 FSD 그대로다:',
+      '`entities`, `shared`이고(`widgets`는 요청할 때만), quick-start 워크스페이스는 위반을 경고로,',
+      'team 워크스페이스는 에러로 알린다는 뜻일 뿐이다 — 규칙 자체는 정식 FSD 그대로다:',
       '- 레이어는 자기보다 아래 레이어만 import한다: app > pages > widgets > features > entities > shared.',
       '- 같은 레이어의 슬라이스끼리(pages, widgets, features, entities)는 import하지 않는다. 공유할 코드는',
       '  한 레이어 아래로 내리거나, 상대 슬라이스의 `@x/<consumer>` 공개 API로만 노출한다.',

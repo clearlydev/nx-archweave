@@ -4,6 +4,7 @@ import {
   UNIVERSAL_AGENT_SECTION_IDS,
   PLACEHOLDER_AGENT_SECTION_IDS,
   TEAM_AGENT_SECTION_ID,
+  FSD_AGENT_SECTION_ID,
   getAgentRuleSection,
   type AgentRuleLocale,
 } from './agent-sections.ts';
@@ -61,6 +62,13 @@ describe('agent-sections', () => {
       const section = getAgentRuleSection(locale, id);
       expect(section.body.trim()).toMatch(/^<!-- TODO:.*-->$/);
     }
+  });
+
+  it.each(LOCALES)('the FSD section names the presets as they are now: quick-start warns, team errors, no solo (%s)', (locale) => {
+    const body = getAgentRuleSection(locale, FSD_AGENT_SECTION_ID).body;
+    expect(body).not.toMatch(/solo/i);
+    expect(body).toContain('quick-start');
+    expect(body).toContain('team');
   });
 
   it('Language Policy text differs between en and ko', () => {
