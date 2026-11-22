@@ -133,8 +133,7 @@ nx g @clearlydev/nx-archweave:add-agent-rules --hosts=…
 
 - 질문에는 도구 4종 중 이 컴퓨터에 설치된 도구가 표시돼요. CLI가 `claude`, `codex`, `cursor-agent`, `gemini`를 `--version`으로 확인해요.
 - 실행되지 않는 도구는 '없음'으로 쳐요. 그래도 도구 4종은 모두 고를 수 있어요.
-- 마지막으로, 고른 도구 중 설치돼 있고 [카탈로그 플러그인](plugins.md)이 있는 도구마다 플러그인을 제안해요. 번호로 고르고, 엔터를 누르면 건너뛰어요(`--plugins=ponytail` 또는 `--plugins=none`). 터미널이 아니면 설치하지 않아요.
-- 고른 플러그인마다 마지막에 `install-integration --scope=project --apply` 단계가 추가돼요.
+- CLI는 [카탈로그 플러그인](plugins.md)을 묻지 않아요. 워크스페이스와 함께 설치하려면 `--plugins=ponytail`을 주세요. 플러그인마다 마지막에 `install-integration --scope=project --apply` 단계가 추가돼요. 아니면 나중에 워크스페이스에서 `install-integration`으로 추가하면 돼요.
 - 그 단계가 실패해도 워크스페이스는 완성된 상태예요. 리포트가 재시도 명령을 알려 줘요.
 
 ## 빠른 시작

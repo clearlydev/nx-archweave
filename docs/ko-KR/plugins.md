@@ -13,7 +13,7 @@ nx-archweave는 카탈로그의 플러그인을 AI 호스트에 **설치하고, 
 > [!TIP]
 > **외부 도구를 쓰지 않나요?** 이 문서는 건너뛰어도 돼요. 직접 호출하지 않으면 아무것도 실행되지 않고, 어떤 프리셋도 사용자 대신 통합을 켜지 않아요.
 
-`create-nx-archweave`의 마지막 질문은 고른 AI 호스트의 카탈로그 플러그인을 제안해요(엔터는 건너뛰기). 거기서 고른 플러그인마다 아래와 같은 `install-integration --apply`를 `project` 범위로 실행해요.
+`create-nx-archweave`는 플러그인을 묻지 않아요. 워크스페이스와 함께 카탈로그 플러그인을 설치하려면 `--plugins=<id>`를 주세요. 플러그인마다 아래와 같은 `install-integration --apply`를 `project` 범위로 실행해요. 아니면 나중에 워크스페이스에서 `install-integration`을 실행하면 돼요.
 
 ## 세 가지 규칙
 

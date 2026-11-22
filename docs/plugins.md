@@ -13,7 +13,7 @@ nx-archweave can **install, verify and record** a catalog plugin for your AI hos
 > [!TIP]
 > **Don't use any external tooling?** Skip this page. Nothing here runs unless you invoke it, and no preset ever turns on an integration for you.
 
-The last question `create-nx-archweave` asks offers the catalog plugins for the AI hosts you picked (press Enter to skip). Each plugin you pick there runs the same `install-integration --apply` shown below, at `project` scope.
+`create-nx-archweave` doesn't ask about plugins. Pass `--plugins=<id>` to install catalog plugins with the workspace: each one runs the same `install-integration --apply` shown below, at `project` scope. Or run `install-integration` in the workspace later.
 
 ## The three rules
 

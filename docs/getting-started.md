@@ -133,8 +133,7 @@ nx g @clearlydev/nx-archweave:add-agent-rules --hosts=…
 
 - The question shows which of the four tools are installed on this machine. The CLI checks `claude`, `codex`, `cursor-agent` and `gemini` with `--version`.
 - A tool that can't run counts as not found. You can still select all four tools either way.
-- Last, the CLI offers [catalog plugins](plugins.md) for each picked tool that's installed and has some. Pick them by number, or press Enter to skip (`--plugins=ponytail` or `--plugins=none`). Without a terminal, the CLI installs none.
-- Each plugin you pick becomes a final `install-integration --scope=project --apply` step.
+- The CLI doesn't ask about [catalog plugins](plugins.md). To install one with the workspace, pass `--plugins=ponytail`; each one becomes a final `install-integration --scope=project --apply` step. Or add one later in the workspace with `install-integration`.
 - If that step fails, the workspace is still complete, and the report gives you the command to retry.
 
 ## Quick start
