@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createDoctorCheck, type DoctorCheck } from '@nx-archweave/shared';
 import { ESLINT_CONFIG_CANDIDATES } from '../backend/eslint-boundaries.ts';
 import { lintInputsProjectSnippet, lintInputsTargetDefaultsSnippet, TOOLKIT_CONFIG_INPUT } from '../fsd/lint-cache-inputs.ts';
+import { detectWorkspacePackageManager, runNxCommand, type SupportedPackageManager } from '../environment/package-manager.ts';
 import { appliedFsdConfigs } from './fsd-enforcement-check.ts';
 import { projectPrefix, type DoctorProject } from './doctor-projects.ts';
 
@@ -145,6 +146,18 @@ function eslintConfigNames(root: string, projectRoot: string): string[] {
 
 const NOT_READ = 'nx.json could not be read';
 
+/** How a person runs this workspace's nx: its lockfile's package manager, then the one init
+ * recorded, else npx nx — the same order the generators' printed commands use. */
+function runNxAt(root: string): string {
+  const detected = detectWorkspacePackageManager(
+    (path) => existsSync(join(root, path)),
+    (path) => (existsSync(join(root, path)) ? readFileSync(join(root, path), 'utf-8') : undefined),
+  );
+  const recorded = readJson(join(root, 'toolkit.config.json'))?.['packageManager'];
+  const known = ['pnpm', 'npm', 'yarn', 'bun'].includes(recorded as string) ? (recorded as SupportedPackageManager) : null;
+  return runNxCommand(detected ?? known);
+}
+
 /** The FSD rule reads toolkit.config.json, so a project's lint result depends on it. Without it
  * among lint's inputs, Nx can replay a cached result after the fsd policy changed. Always a pass
  * (the workspace still works; `nx lint --skip-nx-cache` checks it): the guidance is the
@@ -188,7 +201,8 @@ export function buildLintCacheCheck(root: string, projects?: DoctorProject[]): D
             eslintConfigs: eslintConfigNames(root, project.root),
           });
         });
-  const skipCache = missing.map((project) => `nx ${setup.target} ${project.name} --skip-nx-cache`).join(', ');
+  const runNx = runNxAt(root);
+  const skipCache = missing.map((project) => `${runNx} ${setup.target} ${project.name} --skip-nx-cache`).join(', ');
   return createDoctorCheck({
     id,
     label,
