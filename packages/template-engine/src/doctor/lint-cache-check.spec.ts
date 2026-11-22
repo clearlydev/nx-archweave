@@ -66,6 +66,15 @@ describe('buildLintCacheCheck — the FSD rule reads toolkit.config.json; does l
     expect(check.suggestedAction).toContain('from nx-archweave 0.5.0 on has it already');
   });
 
+  it("the skip-cache command runs nx the workspace's way: its package manager, npx nx when unknown", () => {
+    const unknown = workspace({ plugins: [ESLINT_PLUGIN] });
+    expect(buildLintCacheCheck(unknown, [WEB]).suggestedAction).toContain('check with: npx nx lint web --skip-nx-cache');
+    const pnpm = workspace({ plugins: [ESLINT_PLUGIN] }, { 'pnpm-lock.yaml': '' });
+    expect(buildLintCacheCheck(pnpm, [WEB]).suggestedAction).toContain('check with: pnpm nx lint web --skip-nx-cache');
+    const recorded = workspace({ plugins: [ESLINT_PLUGIN] }, { 'toolkit.config.json': JSON.stringify({ frontend: 'react-vite', packageManager: 'npm' }) });
+    expect(buildLintCacheCheck(recorded, [WEB]).suggestedAction).toContain('check with: npm exec nx -- lint web --skip-nx-cache');
+  });
+
   it('gives a per-project snippet instead when any project in the workspace writes its own lint target', () => {
     const dir = workspace(
       { plugins: [ESLINT_PLUGIN] },

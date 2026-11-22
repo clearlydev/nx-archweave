@@ -36,7 +36,7 @@ apps/
 - `api` 앱이 없으면 `add-backend`는 거부하고, 프론트엔드 옆(`apps/api`)에 `api` 앱을 만드는 공식 명령을 출력해요.
 - **기존 태그 체계 사용.** 워크스페이스에 이미 태그 체계가 있으면 `toolkit.config.json`에 역할별 태그 이름을 적어 주세요. `add-backend`가 그 이름으로 앱에 태그를 달고 deny 규칙을 쓰고, `doctor`도 그 이름으로 검사해요. 이미 있는 태그는 두 번 달지 않고, 기존 태그는 지우지 않아요.
 - **shared-types 위치 지정, 또는 사용 안 함.** `sharedTypes`로 라이브러리 위치와 import 경로를 바꾸거나 끌 수 있어요.
-- **프론트엔드가 여러 개일 때.** `add-backend`는 프론트엔드 앱 하나를 연결해요. 여러 개면 거부하고 후보를 보여 주니, `--frontendProject=<이름>`으로 하나를 골라 주세요. `init`은 `--project`가 앱 하나를 가리킬 때만 그 앱을 넘겨요. `--project=web,admin`처럼 여러 개를 줬다면 뒤이어 `add-backend --frontendProject=<이름>`을 실행하세요. 그다음 나머지 프론트엔드 앱의 `tags`에 프론트엔드 태그(`scope:frontend` 또는 직접 정한 이름)를 달면 같은 deny 규칙이 적용돼요.
+- **프론트엔드가 여러 개일 때.** `add-backend`는 프론트엔드 앱 하나를 연결해요. 여러 개면 거부하고 후보를 보여 주니, `--frontendProject=<이름>`으로 하나를 골라 주세요. `init`은 `--project`가 앱 하나를 가리킬 때만 그 앱을 넘겨요. `--project=web,admin`처럼 여러 개를 줬다면 `init`에는 `--backend`를 빼고(add-backend가 거부하면 섹션 중단으로 `init`이 0이 아닌 코드로 끝나요) 뒤이어 `add-backend --frontendProject=<이름>`을 실행하세요. 그다음 나머지 프론트엔드 앱의 `tags`에 프론트엔드 태그(`scope:frontend` 또는 직접 정한 이름)를 달면 같은 deny 규칙이 적용돼요.
 - **이미 쓴 제약이 있을 때.** `add-backend`는 `depConstraints`가 Nx 기본값(모두 허용)일 때만 루트 ESLint 설정에 규칙을 써요. 직접 쓴 항목이 있으면(`scope:` 옆에 `type:` 같은 두 번째 태그 축 등) 파일은 그대로 두고 합칠 항목을 출력해요. 다른 태그 축의 규칙은 직접 써야 해요.
 
 ```jsonc

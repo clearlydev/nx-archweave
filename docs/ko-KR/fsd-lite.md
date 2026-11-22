@@ -123,7 +123,7 @@ export default [...baseConfig, ...fsdBoundaries({ severity: 'error', cwd: import
 ### 기존 앱에 도입하기
 
 1. **앱이 이미 따르는 관례를 먼저 적어 주세요.** 결과를 보기 전에 `toolkit.config.json`의 `fsd`를 정해요. 앱이 `shared`의 파일을 직접 import하고 테스트가 다른 슬라이스 내부를 import하면 `"preset": "practical"`로 하고, 앱만의 폴더는 `sliceGroups`와 `segments`로 적어요. `doctor`가 import 패턴에 맞는 `sharedPublicApi` 값을 제안해요.
-2. **경고로 시작하세요.** `add-fsd-lite --enforcement=warn`은 앱의 `eslint.config.mjs`에 `severity: 'warn'`을 넣어요(`--applyEslint`를 주면 직접 쓰고, 아니면 출력하는 스니펫에 넣어요). 위반 수가 줄면 거기서 `'error'`로 바꿔요.
+2. **경고로 시작하세요.** `add-fsd-lite --enforcement=warn`은 앱의 `eslint.config.mjs`에 `severity: 'warn'`을 넣어요(`--applyEslint`를 주면 직접 쓰고, 아니면 출력하는 스니펫에 넣어요). 위반 수가 줄면 거기서 `'error'`로 바꿔요. 위반 수는 `nx lint <app>`으로 보세요. `nx run-many`는 통과한 작업의 출력을 경고까지 숨겨요(`--output-style=static`을 주면 보여요).
 3. **이미 있는 위반은 묶어 두세요.** ESLint의 bulk suppressions(`eslint --suppress-all`)가 지금 있는 위반을 기록해 두어서, 새 위반만 보고돼요. ESLint 9.24.0 이상이 필요하고, 기록은 `eslint-suppressions.json`에 남아요.
 4. **정책을 바꾼 뒤에는 Nx 캐시를 건너뛰세요.** Nx는 `nx lint` 결과를 프로젝트 파일과 ESLint 설정을 기준으로 캐시해요. 프로젝트 폴더 밖의 `toolkit.config.json`은 여기에 들어가지 않아서, 거기서 `fsd`를 고친 뒤에는 `nx lint <app> --skip-nx-cache`로 새 결과를 확인하세요. 0.5.0부터 `init`이 설정한 워크스페이스는 보통 이 파일이 이미 lint 입력에 있어요([init](generators.md#init) 참고). 그렇지 않으면 doctor의 `fsd-lint-cache` 검사가 워크스페이스에 맞는 조각을 보여 줘요.
 
