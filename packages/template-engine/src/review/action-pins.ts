@@ -10,7 +10,7 @@ export const ACTION_PINS = {
   'oven-sh/setup-bun': 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0',
   'anthropics/claude-code-action': 'anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1.0.271',
   'google-github-actions/run-gemini-cli': 'google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22',
-  'openai/codex-action': 'openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13',
+  'openai/codex-action': 'openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14',
 } as const;
 
 export type PinnedAction = keyof typeof ACTION_PINS;
