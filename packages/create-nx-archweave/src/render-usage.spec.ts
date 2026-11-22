@@ -16,6 +16,8 @@ describe('renderUsage', () => {
     expect(usage).toContain('--package-manager <name>           npm, pnpm, yarn or bun');
     expect(usage).toContain('--ai-hosts <list>                  AI coding tools, comma-separated: claude-code, codex, cursor, gemini-cli');
     expect(usage).toContain('--plugins <list|none>              Optional plugins for the picked AI hosts, comma-separated: ponytail (Claude Code)');
+    expect(usage).toContain('(never asked: none unless you pass it; add one later with install-integration)');
+    expect(usage).not.toContain('asked if omitted, for hosts installed here');
     expect(usage).toContain('--help');
     expect(usage).toContain('--version');
     expect(usage).toContain(

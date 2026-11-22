@@ -182,7 +182,7 @@ AI review needs a provider API key and a repository secret, so it is off unless 
 ### `--plugins`
 
 - Comma-separated catalog ids (`ponytail`), or `none`.
-- Asked if omitted, for each picked host whose CLI is installed. You pick by number, and Enter picks none. Without a terminal, the CLI uses none.
+- Never asked: without the flag, none. Add one later in the workspace with `install-integration`.
 - Each plugin becomes a last, optional `install-integration --scope=project --apply` step. If that step fails, the workspace is still complete, and the report gives you the retry command.
 
 ### `--package-manager`

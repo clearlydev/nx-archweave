@@ -57,7 +57,7 @@ export function renderUsage(): string {
     '  --ai-hosts <list>                  AI coding tools, comma-separated: claude-code, codex, cursor, gemini-cli',
     '                                     (asked if omitted, showing which are installed; without a terminal: claude-code)',
     '  --plugins <list|none>              Optional plugins for the picked AI hosts, comma-separated: ' + PLUGIN_LIST,
-    '                                     (asked if omitted, for hosts installed here; without a terminal: none)',
+    '                                     (never asked: none unless you pass it; add one later with install-integration)',
     '  --review, --no-review              Force AI PR review on/off (default off; quick-start asks y/N; team: on)',
     '  --review-provider <name>           claude, gemini, gpt or cursor (asked when review is on; default: the first AI tool\'s)',
     '  --plugin-source <spec>             Override the nx-archweave plugin package/version to install',

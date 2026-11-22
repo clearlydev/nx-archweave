@@ -7,7 +7,7 @@ import { parseCliArgs } from './cli/parse-args.ts';
 import { checkInvocationDirectory, readExistingRepository, renderLocationRefusal } from './cli/location-check.ts';
 import { collectMissingInputs, reviewProviderConflict } from './cli/prompts.ts';
 import { resolvePresetAlias, SOLO_ALIAS_NOTE } from './cli/types.ts';
-import { buildPlan, nxGenerateCommand } from './cli/plan.ts';
+import { buildPlan } from './cli/plan.ts';
 import { detectInstalledHosts } from './cli/host-probe.ts';
 import { choosePlugins, resolvePluginFlag } from './cli/plugins.ts';
 import { spawnableCommand } from './cli/spawnable-command.ts';
@@ -100,10 +100,9 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   if (args.reviewProvider === 'cursor') console.error(CURSOR_PROVIDER_WARNING);
   const interactive = process.stdin.isTTY === true;
-  // Probed only for the questions: the host list shows what is installed, and plugins are
-  // offered only for a host whose CLI is here. A run with nothing to ask probes nothing.
-  const installedHosts =
-    interactive && (args.aiHosts === undefined || args.plugins === undefined) ? await detectInstalledHosts(readHostVersion) : undefined;
+  // Probed only for the AI host question, which shows what is installed. A run with nothing to
+  // ask probes nothing.
+  const installedHosts = interactive && args.aiHosts === undefined ? await detectInstalledHosts(readHostVersion) : undefined;
   let inputs;
   let pm;
   let plugins;
@@ -121,6 +120,7 @@ async function main(argv: readonly string[]): Promise<number> {
         interactive,
       },
       ask,
+      (line) => console.error(line),
     );
     // The preset or the review answer may have turned review off after the questions.
     const conflict = reviewProviderConflict(inputs.preset, inputs.review, args.reviewProvider);
@@ -140,20 +140,8 @@ async function main(argv: readonly string[]): Promise<number> {
       ask,
       (line) => console.log(line),
     );
-    // Last question: optional plugins for the picked hosts.
-    if (!('error' in pm)) {
-      plugins = await choosePlugins(
-        {
-          flag: args.plugins,
-          aiHosts: inputs.aiHosts,
-          installedHosts,
-          interactive,
-          nxG: nxGenerateCommand(pm.packageManager),
-        },
-        ask,
-        (line) => console.log(line),
-      );
-    }
+    // Optional plugins: only what --plugins names, never asked.
+    plugins = choosePlugins({ flag: args.plugins, aiHosts: inputs.aiHosts });
   } catch (error) {
     if (error instanceof NonInteractiveInputError) {
       console.error(error.message);
