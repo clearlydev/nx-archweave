@@ -17,7 +17,7 @@
     "enforcement": {
       "type": "string",
       "enum": ["error", "warn"],
-      "description": "Severity of the archweave/fsd-boundaries ESLint rule. The rule is canonical FSD either way; only how hard it reports differs (Team preset: error; Solo / Quick Start: warn). Defaults to toolkit.config.json's fsd.enforcement, else warn"
+      "description": "Severity of the archweave/fsd-boundaries ESLint rule. The rule is canonical FSD either way; only how hard it reports differs (team preset: error; quick-start: warn). Defaults to toolkit.config.json's fsd.enforcement, else warn"
     },
     "applyEslint": {
       "type": "boolean",
