@@ -30,12 +30,13 @@ describe('buildPlan', () => {
         command: 'pnpm',
         args: [
           'dlx',
-          'create-nx-workspace@24.0.1',
+          'create-nx-workspace@24.0.6',
           'my-app',
           '--preset=empty',
           '--aiAgents=claude',
           '--pm=pnpm',
           '--nxCloud=skip',
+          '--skipGitHubPush',
           '--interactive=false',
         ],
         cwd: null,
@@ -110,7 +111,7 @@ describe('buildPlan', () => {
     const plan = buildPlan({ ...baseInput, frontend: 'next' });
     expect(plan.steps[0].args).toEqual([
       'dlx',
-      'create-nx-workspace@24.0.1',
+      'create-nx-workspace@24.0.6',
       'my-app',
       '--preset=next',
       '--appName=web',
@@ -118,6 +119,7 @@ describe('buildPlan', () => {
       '--aiAgents=claude',
       '--pm=pnpm',
       '--nxCloud=skip',
+      '--skipGitHubPush',
       '--interactive=false',
     ]);
   });
@@ -538,13 +540,21 @@ describe('buildPlan — react-vite starts from the empty preset and Nx\'s own Re
   });
 });
 
+describe('buildPlan — no Nx Cloud and no GitHub push from create-nx-workspace', () => {
+  it.each(['pnpm', 'npm', 'yarn', 'bun'] as const)('passes --nxCloud=skip and --skipGitHubPush (%s)', (packageManager) => {
+    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager });
+    const args = plan.steps.find((s) => s.id === 'create-workspace')?.args ?? [];
+    expect(args).toEqual(expect.arrayContaining(['--nxCloud=skip', '--skipGitHubPush', '--interactive=false']));
+  });
+});
+
 describe('buildPlan — validated create-nx-workspace pin (E2E CI finding)', () => {
   it('pins create-nx-workspace to the version the E2E gate validated, never @latest', () => {
     for (const packageManager of ['pnpm', 'npm'] as const) {
       const plan = buildPlan({ name: 'my-app', preset: 'solo', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager });
       const step = plan.steps.find((s) => s.id === 'create-workspace');
       const spec = step?.args.find((a) => a.startsWith('create-nx-workspace@'));
-      expect(spec).toBe('create-nx-workspace@24.0.1');
+      expect(spec).toBe('create-nx-workspace@24.0.6');
     }
   });
 
