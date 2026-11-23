@@ -146,7 +146,7 @@ Every pull request runs:
 - the real create-flow E2E across npm, pnpm, yarn (berry and classic), bun, Windows and next × nest
 - the existing-workspace E2E on an Expo workspace made by Nx
 
-A failure caused by our code blocks the pull request. A change upstream (Nx's templates, the registry) shows up as a warning instead. A nightly run repeats the matrix strictly. A change that touches only documentation starts no CI.
+Any failure fails its check, and the first line of the failure says whether it is upstream (create-nx-workspace, Nx's generators, the workspace install) or ours. A nightly run repeats the matrix. A change that touches only documentation starts no CI.
 
 An Nx version bump (`VALIDATED_CREATE_NX_WORKSPACE_VERSION`) runs the CI workflow by hand with `legs=all` before merging.
 
