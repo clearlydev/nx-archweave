@@ -292,6 +292,7 @@ export function buildPlan(input: CreatePlanInput): CreatePlan {
               ...aiAgentArgs,
               '--pm=pnpm',
               '--nxCloud=skip',
+              '--skipGitHubPush',
               '--interactive=false',
             ]
           : [
@@ -302,6 +303,7 @@ export function buildPlan(input: CreatePlanInput): CreatePlan {
               ...aiAgentArgs,
               `--pm=${pm}`,
               '--nxCloud=skip',
+              '--skipGitHubPush',
               '--interactive=false',
             ],
       cwd: null,

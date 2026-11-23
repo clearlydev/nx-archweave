@@ -370,6 +370,15 @@ if (frontend !== 'none') {
   stepLog.record('lint inputs');
 }
 
+// 5''. create-nx-workspace ran with --nxCloud=skip and --skipGitHubPush: no Nx Cloud connection in
+// nx.json and no CI workflow it would have generated for Nx Cloud.
+{
+  const nxJsonText = readFileSync(join(demoDir, 'nx.json'), 'utf-8');
+  if (/"nxCloud(Id|AccessToken)"/.test(nxJsonText)) fail('no nx cloud', 'nx.json connects to Nx Cloud', nxJsonText);
+  if (existsSync(join(demoDir, '.github', 'workflows', 'ci.yml'))) fail('no nx cloud', 'create-nx-workspace generated .github/workflows/ci.yml');
+  stepLog.record('no nx cloud');
+}
+
 // 5'. express 5 on every path and manager: @nx/express installs it, and Nx 24's @nx/react no
 // longer peers on express 4, so the frontend choice can't pull the api back to 4.
 if (backend === 'express') {

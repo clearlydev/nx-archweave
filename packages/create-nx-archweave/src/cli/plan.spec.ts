@@ -36,6 +36,7 @@ describe('buildPlan', () => {
           '--aiAgents=claude',
           '--pm=pnpm',
           '--nxCloud=skip',
+          '--skipGitHubPush',
           '--interactive=false',
         ],
         cwd: null,
@@ -118,6 +119,7 @@ describe('buildPlan', () => {
       '--aiAgents=claude',
       '--pm=pnpm',
       '--nxCloud=skip',
+      '--skipGitHubPush',
       '--interactive=false',
     ]);
   });
@@ -535,6 +537,14 @@ describe('buildPlan — react-vite starts from the empty preset and Nx\'s own Re
     for (const packageManager of ['pnpm', 'npm', 'yarn', 'bun'] as const) {
       expect(buildPlan({ ...baseInput, packageManager }).steps[0].failureHint).toBeUndefined();
     }
+  });
+});
+
+describe('buildPlan — no Nx Cloud and no GitHub push from create-nx-workspace', () => {
+  it.each(['pnpm', 'npm', 'yarn', 'bun'] as const)('passes --nxCloud=skip and --skipGitHubPush (%s)', (packageManager) => {
+    const plan = buildPlan({ name: 'my-app', preset: 'quick-start', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager });
+    const args = plan.steps.find((s) => s.id === 'create-workspace')?.args ?? [];
+    expect(args).toEqual(expect.arrayContaining(['--nxCloud=skip', '--skipGitHubPush', '--interactive=false']));
   });
 });
 

@@ -43,6 +43,7 @@
     }
   ],
   "analytics": false,
+  "neverConnectToCloud": true,
   "targetDefaults": {
     "test": {
       "dependsOn": ["^build"]
@@ -79,5 +80,8 @@
       "tag": true,
       "commitMessage": "chore(release): v{version}"
     }
+  },
+  "affected": {
+    "legacy": true
   }
 }
