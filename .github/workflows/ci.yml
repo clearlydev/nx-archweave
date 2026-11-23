@@ -299,6 +299,8 @@ jobs:
           DRIVE: ${{ matrix.drive }}
           FIX: ${{ matrix.fix && '1' || '0' }}
         run: |
+          # The step shell stops at the first failing command; the probe records failures instead.
+          set +e +o pipefail
           if [ "$DRIVE" = C ]; then parent="$USERPROFILE/xdrive"; else parent="$RUNNER_TEMP/xdrive"; fi
           parent="$(cygpath -u "$parent")"; mkdir -p "$parent" && cd "$parent"
           resolved="$VERSION"
@@ -325,6 +327,7 @@ jobs:
             echo "| --- | --- | --- | --- | --- | --- | --- |"
             echo "| ${{ matrix.id }} | $TOOL | $resolved | $PM ${{ matrix.yarn }} | $DRIVE | $FIX | $code |"
           } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
 
   # A workspace nx-archweave did not create: Nx's own Expo preset makes it, the packed plugin is
   # added, and init detects the framework. It covers what the create flow cannot reach (the CLI
