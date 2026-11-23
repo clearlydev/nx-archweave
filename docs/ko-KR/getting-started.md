@@ -75,6 +75,9 @@ git add package.json <lockfile> && git commit -m "chore: add @clearlydev/nx-arch
 > [!NOTE]
 > Yarn 4는 배포된 지 하루가 안 된 패키지 버전을 받지 않아요(`npmMinimalAgeGate`, 기본 1440분). 그래서 새 버전이 나온 뒤 24시간 동안은 yarn이 그 버전을 찾지 못해요. `yarn dlx create-nx-archweave`도, yarn 워크스페이스 안의 플러그인 설치도 마찬가지예요. 하루 기다리거나, 그 실행에만 `YARN_NPM_MINIMAL_AGE_GATE=0`을 주세요.
 
+> [!WARNING]
+> **Windows: yarn으로 다른 드라이브에 워크스페이스를 만들면 실패해요.** Windows에서 yarn(1 또는 4)을 쓸 때, 워크스페이스를 만드는 폴더가 임시 폴더(`%TEMP%`, 보통 `C:`)와 다른 드라이브에 있으면(예: `D:\projects`) `spawnSync C:\Windows\system32\cmd.exe ENOENT`로 실패해요. Nx의 버그라서 `create-nx-workspace`만 실행해도 똑같이 실패해요([nrwl/nx#37991](https://github.com/nrwl/nx/issues/37991)). 고쳐질 때까지는 `%TEMP%`와 같은 드라이브에 만들거나, npm·pnpm·bun을 쓰세요.
+
 ### bun
 
 - bun은 신뢰 목록에 없는 의존성의 설치 스크립트를 알리지 않고 막아요.

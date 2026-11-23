@@ -75,6 +75,9 @@ Every generated command, workspace registration and review workflow then follows
 > [!NOTE]
 > Yarn 4 holds back package versions that are less than a day old (`npmMinimalAgeGate`, 1440 minutes by default). So for the first 24 hours after a release, yarn can't resolve the new version. That applies to `yarn dlx create-nx-archweave` and to the plugin install inside a yarn workspace. Wait a day, or set `YARN_NPM_MINIMAL_AGE_GATE=0` for that one run.
 
+> [!WARNING]
+> **Windows: creating the workspace on another drive fails with yarn.** With yarn (1 or 4) on Windows, creating the workspace fails with `spawnSync C:\Windows\system32\cmd.exe ENOENT` when the folder you create it in is on a different drive than your temporary folder (`%TEMP%`, usually on `C:`), for example `D:\projects`. This is a bug in Nx, so `create-nx-workspace` on its own fails the same way ([nrwl/nx#37991](https://github.com/nrwl/nx/issues/37991)). Until it's fixed, create the workspace on the same drive as `%TEMP%`, or use npm, pnpm or bun.
+
 ### bun
 
 - bun silently blocks the install scripts of dependencies that aren't on its trusted list.
