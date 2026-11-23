@@ -158,8 +158,8 @@ CLI는 실행할 단계를 먼저 출력한 뒤, 고른 패키지 매니저로 �
 npm이면 명령은 다음과 같아요.
 
 ```bash
-npx -y create-nx-workspace@24.0.1 my-app \
-  --preset=empty --pm=npm --nxCloud=skip --interactive=false
+npx -y create-nx-workspace@24.0.6 my-app \
+  --preset=empty --pm=npm --nxCloud=skip --skipGitHubPush --interactive=false
 npm exec nx -- add @nx/react
 npm exec nx -- g @nx/react:app apps/web --bundler=vite --linter=eslint \
   --style=css --unitTestRunner=vitest --e2eTestRunner=none --routing=false
@@ -172,8 +172,8 @@ npm exec nx -- g @clearlydev/nx-archweave:init \
 pnpm이면 3번째와 5번째 단계에 위 npm 명령과 같은 플래그가 붙어요.
 
 ```bash
-pnpm dlx create-nx-workspace@24.0.1 my-app \
-  --preset=empty --pm=pnpm --nxCloud=skip --interactive=false
+pnpm dlx create-nx-workspace@24.0.6 my-app \
+  --preset=empty --pm=pnpm --nxCloud=skip --skipGitHubPush --interactive=false
 pnpm nx add @nx/react
 pnpm nx g @nx/react:app apps/web …
 pnpm add -D -w @clearlydev/nx-archweave@^<cli-version>
