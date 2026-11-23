@@ -204,6 +204,128 @@ jobs:
       - run: node tools/e2e-create.mjs --pm=${{ matrix.pm }} --frontend=${{ matrix.frontend }} ${{ matrix.backend && format('--backend={0}', matrix.backend) || '' }} ${{ matrix.review && '--review' || '' }} ${{ matrix.preset && format('--preset={0}', matrix.preset) || '' }}
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
+  # Experiment: create-nx-workspace on Windows when the workspace is on another drive than
+  # the directory `nx new` runs from. Each case runs on its own runner, so package manager
+  # setups don't leak into each other. Results are in each job's summary.
+  xdrive:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    name: xdrive (${{ matrix.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: P01, tool: cnw, version: 24.0.6, pm: yarn, yarn: berry, drive: D }
+          - { id: P02, tool: cnw, version: 24.0.6, pm: yarn, yarn: berry, drive: C }
+          - { id: P03, tool: cnw, version: 24.0.1, pm: yarn, yarn: berry, drive: D }
+          - { id: P04, tool: archweave, version: 0.5.0, pm: yarn, yarn: berry, drive: D }
+          - { id: P05, tool: archweave, version: 0.5.0, pm: yarn, yarn: berry, drive: C }
+          - { id: P06, tool: cnw, version: 24.0.6, pm: npm, drive: D }
+          - { id: P07, tool: cnw, version: 24.0.6, pm: pnpm, drive: D }
+          - { id: P08, tool: cnw, version: 24.0.6, pm: bun, drive: D }
+          - { id: P09, tool: cnw, version: 24.0.6, pm: yarn, yarn: classic, drive: D }
+          - { id: P10, tool: cnw, version: 24.0.6, pm: yarn, yarn: berry, drive: D, fix: true }
+          - { id: P11, tool: cnw, version: next, pm: yarn, yarn: berry, drive: D }
+          - { id: P12, tool: cnw, version: canary, pm: yarn, yarn: berry, drive: D }
+    env:
+      NX_VERBOSE_LOGGING: 'true'
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+      # yarn berry turns immutable installs on under CI; create-nx-archweave sets this too.
+      YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
+      GIT_AUTHOR_NAME: probe
+      GIT_AUTHOR_EMAIL: probe@example.com
+      GIT_COMMITTER_NAME: probe
+      GIT_COMMITTER_EMAIL: probe@example.com
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: yarn berry
+        if: matrix.yarn == 'berry'
+        run: corepack enable yarn && cd "$RUNNER_TEMP" && corepack install -g yarn@4 && yarn --version
+      - name: yarn classic
+        if: matrix.yarn == 'classic'
+        run: cd "$RUNNER_TEMP" && yarn --version
+      - name: npm 11
+        if: matrix.pm == 'npm'
+        run: npm install -g npm@11 && npm --version
+      - name: pnpm
+        if: matrix.pm == 'pnpm'
+        run: npm install -g pnpm@11.9.0 && pnpm --version
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.pm == 'bun'
+        with:
+          bun-version: 1.4.2
+      - name: Write the preload (cwd trace, optional fix)
+        run: |
+          cat > "$RUNNER_TEMP/xdrive-preload.cjs" <<'JS'
+          // Records the cwd every child process gets. With NX_FIX_NEW_CWD=1 it also rewrites
+          // @nx/workspace's new generator to join the preInstall cwd with path.join.
+          const cp = require('child_process');
+          const fs = require('fs');
+          const Module = require('module');
+          const log = (entry) => { try { fs.appendFileSync(process.env.XDRIVE_LOG, JSON.stringify({ pid: process.pid, ...entry }) + '\n'); } catch {} };
+          for (const name of ['execSync', 'execFileSync', 'spawnSync', 'exec', 'execFile', 'spawn']) {
+            const original = cp[name];
+            cp[name] = function (command, ...rest) {
+              const options = rest.find((a) => a && typeof a === 'object' && !Array.isArray(a)) || {};
+              const cwd = options.cwd === undefined ? null : String(options.cwd);
+              log({ fn: name, command: String(command).slice(0, 120), cwd, driveless: cwd !== null && /^[\\/](?![\\/])/.test(cwd), cwdExists: cwd === null ? null : fs.existsSync(cwd), processCwd: process.cwd() });
+              return original.call(this, command, ...rest);
+            };
+          }
+          const target = /[\\/]@nx[\\/]workspace[\\/]dist[\\/]src[\\/]generators[\\/]new[\\/]new\.js$/;
+          const before = 'cwd: (0, devkit_1.joinPathFragments)(tree.root, options.directory),';
+          const after = "cwd: require('path').join(tree.root, options.directory),";
+          const compile = Module.prototype._compile;
+          Module.prototype._compile = function (content, filename) {
+            if (process.env.NX_FIX_NEW_CWD === '1' && target.test(filename)) {
+              const found = content.includes(before);
+              if (found) content = content.replace(before, after);
+              log({ fix: found ? 'applied' : 'pattern not found', file: filename });
+            }
+            return compile.call(this, content, filename);
+          };
+          JS
+      - name: Run ${{ matrix.id }}
+        env:
+          TOOL: ${{ matrix.tool }}
+          VERSION: ${{ matrix.version }}
+          PM: ${{ matrix.pm }}
+          DRIVE: ${{ matrix.drive }}
+          FIX: ${{ matrix.fix && '1' || '0' }}
+        run: |
+          if [ "$DRIVE" = C ]; then parent="$USERPROFILE/xdrive"; else parent="$RUNNER_TEMP/xdrive"; fi
+          parent="$(cygpath -u "$parent")"; mkdir -p "$parent" && cd "$parent"
+          resolved="$VERSION"
+          [ "$TOOL" = cnw ] && resolved="$(npm view "create-nx-workspace@$VERSION" version)"
+          echo "case=${{ matrix.id }} tool=$TOOL version=$resolved pm=$PM ${{ matrix.yarn }} drive=$DRIVE fix=$FIX"
+          echo "cwd=$(cygpath -w "$(pwd)") tmpdir=$(node -p "require('os').tmpdir()") homedir=$(node -p "require('os').homedir()")"
+          export XDRIVE_LOG="$(cygpath -m "$RUNNER_TEMP/xdrive-trace.jsonl")"
+          export NODE_OPTIONS="--require $(cygpath -m "$RUNNER_TEMP/xdrive-preload.cjs")"
+          export NX_FIX_NEW_CWD="$FIX"
+          if [ "$TOOL" = cnw ]; then
+            npx -y "create-nx-workspace@$resolved" demo --preset=empty --pm="$PM" --nxCloud=skip --skipGitHubPush --interactive=false --aiAgents=claude > out.log 2>&1
+          else
+            npx -y "create-nx-archweave@$resolved" demo --preset=quick-start --frontend=react-vite --backend=none --locale=en --package-manager="$PM" --no-review > out.log 2>&1
+          fi
+          code=$?
+          unset NODE_OPTIONS
+          tail -40 out.log
+          echo "--- ENOENT lines ---"; grep -n "ENOENT" out.log | head -5 || true
+          echo "--- preInstall / drive-less cwd (trace) ---"
+          grep -E '"driveless":true|set version|"fix":' "$RUNNER_TEMP/xdrive-trace.jsonl" | tail -10 || true
+          echo "RESULT ${{ matrix.id }}: exit $code"
+          {
+            echo "| case | tool | version | pm | drive | fix | exit |"
+            echo "| --- | --- | --- | --- | --- | --- | --- |"
+            echo "| ${{ matrix.id }} | $TOOL | $resolved | $PM ${{ matrix.yarn }} | $DRIVE | $FIX | $code |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # A workspace nx-archweave did not create: Nx's own Expo preset makes it, the packed plugin is
   # added, and init detects the framework. It covers what the create flow cannot reach (the CLI
   # does not offer Expo). One leg (pnpm, Linux): the package manager matrix is e2e's job. Runs
