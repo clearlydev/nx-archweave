@@ -158,7 +158,7 @@ The CLI prints its steps up front, then runs them with the package manager you c
 With npm, the steps are:
 
 ```bash
-npx -y create-nx-workspace@24.0.6 my-app \
+npx -y create-nx-workspace@24.0.1 my-app \
   --preset=empty --pm=npm --nxCloud=skip --skipGitHubPush --interactive=false
 npm exec nx -- add @nx/react
 npm exec nx -- g @nx/react:app apps/web --bundler=vite --linter=eslint \
@@ -172,7 +172,7 @@ npm exec nx -- g @clearlydev/nx-archweave:init \
 With pnpm, steps 3 and 5 take the same flags as the npm commands above:
 
 ```bash
-pnpm dlx create-nx-workspace@24.0.6 my-app \
+pnpm dlx create-nx-workspace@24.0.1 my-app \
   --preset=empty --pm=pnpm --nxCloud=skip --skipGitHubPush --interactive=false
 pnpm nx add @nx/react
 pnpm nx g @nx/react:app apps/web …
