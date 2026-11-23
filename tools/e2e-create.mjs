@@ -12,15 +12,10 @@
 //   node tools/e2e-create.mjs --pm=pnpm --review   (AI PR review on, without a secret)
 //   node tools/e2e-create.mjs --pm=pnpm --preset=solo   (the solo alias; default quick-start)
 //
-// Modes (hybrid gate):
-//   (default, strict)  every failure exits 1 — local release gate and the manual CI run.
-//   --mode=pr          UPSTREAM failures (create-nx-workspace itself, @nx/*
-//                      installs, official generators, the workspace's own
-//                      dependency install) exit 0 with a ::warning:: — the
-//                      ecosystem's drift must not hold our merges hostage.
-//                      OUR failures (pack, CLI start-up before its plan
-//                      print, wiring markers, registration, build/lint/typecheck/test,
-//                      doctor gate) still exit 1.
+// Every failure exits 1. The first line says whose failure it is: "upstream" for
+// create-nx-workspace itself, @nx/* installs, the official generators and the workspace's own
+// dependency install; "ours" for everything else (pack, CLI start-up before its plan print,
+// wiring markers, registration, build/lint/typecheck/test, the doctor gate).
 //
 // Packs both publishable packages (prepack bundles them), launches the packed
 // CLI the way a user does (`npm exec` / `pnpm dlx` / `yarn dlx` / `bunx`; only yarn
@@ -46,17 +41,11 @@ import { fileURLToPath } from 'node:url';
 import { createStepLog } from './e2e-steps.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const modeArg = process.argv.find((a) => a.startsWith('--mode='));
-const mode = modeArg ? modeArg.slice('--mode='.length) : 'strict';
-if (mode !== 'strict' && mode !== 'pr') {
-  console.error(`e2e-create: unsupported --mode "${mode}" (strict|pr)`);
-  process.exit(2);
-}
 const extraArgs = process.argv
   .slice(2)
-  .filter((a) => !a.startsWith('--pm=') && !a.startsWith('--mode=') && !a.startsWith('--frontend=') && !a.startsWith('--backend=') && !a.startsWith('--preset=') && a !== '--review');
+  .filter((a) => !a.startsWith('--pm=') && !a.startsWith('--frontend=') && !a.startsWith('--backend=') && !a.startsWith('--preset=') && a !== '--review');
 if (extraArgs.length > 0) {
-  console.error(`e2e-create: unknown arguments: ${extraArgs.join(' ')} (accepted: --pm=pnpm|npm|yarn|bun, --frontend=react-vite|next|none, --backend=express|nest|none, --preset=quick-start|solo, --mode=strict|pr, --review)`);
+  console.error(`e2e-create: unknown arguments: ${extraArgs.join(' ')} (accepted: --pm=pnpm|npm|yarn|bun, --frontend=react-vite|next|none, --backend=express|nest|none, --preset=quick-start|solo, --review)`);
   process.exit(2);
 }
 // --review turns AI PR review on, as a user would; no secret is set, so the workflow is only
@@ -113,14 +102,7 @@ function fail(step, detail, output, kind = 'ours') {
     if (!stopped || UPSTREAM_PLAN_STEPS.includes(stopped[1])) kind = 'upstream';
   }
   if (step === 'workspace install') kind = 'upstream'; // the workspace's own dep tree
-  if (kind === 'upstream' && mode === 'pr') {
-    const title = `e2e-create (${pm}): upstream drift at "${step}"`;
-    console.log(`::warning title=${title}::${(detail ?? '').replace(/\n/g, ' ')} — not blocking this PR; see the job log (the manual strict CI run reports it as a failure).`);
-    console.error(`\ne2e-create (${pm}) UPSTREAM failure at: ${step} (pr mode → green)`);
-    if (output) console.error(`\n--- captured output (tail) ---\n${output.slice(-4000)}`);
-    process.exit(0);
-  }
-  console.error(`\ne2e-create FAILED at: ${step}`);
+  console.error(`\ne2e-create FAILED at: ${step} (${kind === 'upstream' ? 'upstream: create-nx-workspace, Nx generators or the workspace install' : 'ours'})`);
   if (detail) console.error(`  ${detail}`);
   if (output) console.error(`\n--- captured output (tail) ---\n${output.slice(-4000)}`);
   console.error(`\ncompleted steps: ${steps.join(' → ') || '(none)'}`);

@@ -99,9 +99,9 @@ jobs:
 
   # Full create-flow release gate: pack → create a real workspace from the
   # real template → assert wiring, registration, build/lint, doctor gate.
-  # Hybrid gate: on PRs this runs only when code changed, and only OUR
-  # failures block (upstream drift surfaces as a warning annotation); the
-  # manual and nightly runs are strict and are the upstream canary.
+  # On PRs this runs only when code changed. Every failure fails the check, and its
+  # first line says whether it is upstream (create-nx-workspace, Nx generators, the
+  # workspace install) or ours. The nightly run is the canary for upstream changes.
   e2e:
     # main pushes run verify only: the same tree already passed its pull request.
     if: github.event_name != 'push' && (github.event_name != 'schedule' || github.repository == 'clearlydev/nx-archweave')
@@ -201,7 +201,7 @@ jobs:
             echo "npm_config_cache=$RUNNER_TEMP/npm-cache"
           } >> "$GITHUB_ENV"
 
-      - run: node tools/e2e-create.mjs --pm=${{ matrix.pm }} --frontend=${{ matrix.frontend }} ${{ matrix.backend && format('--backend={0}', matrix.backend) || '' }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }} ${{ matrix.review && '--review' || '' }} ${{ matrix.preset && format('--preset={0}', matrix.preset) || '' }}
+      - run: node tools/e2e-create.mjs --pm=${{ matrix.pm }} --frontend=${{ matrix.frontend }} ${{ matrix.backend && format('--backend={0}', matrix.backend) || '' }} ${{ matrix.review && '--review' || '' }} ${{ matrix.preset && format('--preset={0}', matrix.preset) || '' }}
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
   # A workspace nx-archweave did not create: Nx's own Expo preset makes it, the packed plugin is
@@ -247,7 +247,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
-      - run: node tools/e2e-existing.mjs --frontend=${{ matrix.frontend }} ${{ github.event_name == 'pull_request' && '--mode=pr' || '' }}
+      - run: node tools/e2e-existing.mjs --frontend=${{ matrix.frontend }}
         if: github.event_name != 'pull_request' || steps.filter.outputs.run == 'true'
 
   # The path a user takes with no flags: `npx create-nx-archweave@<version>` resolves the CLI by

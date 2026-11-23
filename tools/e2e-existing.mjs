@@ -3,13 +3,11 @@
 // the packed plugin is added and init detects the framework on its own. It covers what the
 // create flow cannot reach — today Expo, which create-nx-archweave does not offer.
 //
-//   node tools/e2e-existing.mjs --frontend=expo [--mode=pr]
+//   node tools/e2e-existing.mjs --frontend=expo
 //
-// Modes (same hybrid gate as e2e-create.mjs):
-//   (default, strict)  every failure exits 1.
-//   --mode=pr          UPSTREAM failures (create-nx-workspace, the workspace's own install)
-//                      exit 0 with a ::warning::; OUR failures (pack, plugin install, init,
-//                      the generated files, lint, doctor) still exit 1.
+// Every failure exits 1. The first line says whose failure it is: "upstream" for
+// create-nx-workspace, "ours" for everything else (pack, plugin install, init, the generated
+// files, lint, doctor).
 //
 // pnpm only: the package manager is not what this covers (e2e-create.mjs runs all four).
 // Asserts:
@@ -34,15 +32,9 @@ import { fileURLToPath } from 'node:url';
 import { createStepLog } from './e2e-steps.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const modeArg = process.argv.find((a) => a.startsWith('--mode='));
-const mode = modeArg ? modeArg.slice('--mode='.length) : 'strict';
-if (mode !== 'strict' && mode !== 'pr') {
-  console.error(`e2e-existing: unsupported --mode "${mode}" (strict|pr)`);
-  process.exit(2);
-}
-const extraArgs = process.argv.slice(2).filter((a) => !a.startsWith('--mode=') && !a.startsWith('--frontend='));
+const extraArgs = process.argv.slice(2).filter((a) => !a.startsWith('--frontend='));
 if (extraArgs.length > 0) {
-  console.error(`e2e-existing: unknown arguments: ${extraArgs.join(' ')} (accepted: --frontend=expo, --mode=strict|pr)`);
+  console.error(`e2e-existing: unknown arguments: ${extraArgs.join(' ')} (accepted: --frontend=expo)`);
   process.exit(2);
 }
 const frontendArg = process.argv.find((a) => a.startsWith('--frontend='));
@@ -66,13 +58,7 @@ const UPSTREAM_STEPS = ['create workspace'];
 const stepLog = createStepLog();
 const steps = stepLog.names;
 function fail(step, detail, output) {
-  if (UPSTREAM_STEPS.includes(step) && mode === 'pr') {
-    console.log(`::warning title=e2e-existing (${frontend}): upstream drift at "${step}"::${(detail ?? '').replace(/\n/g, ' ')} — not blocking this PR; the manual strict CI run reports it as a failure.`);
-    console.error(`\ne2e-existing (${frontend}) UPSTREAM failure at: ${step} (pr mode → green)`);
-    if (output) console.error(`\n--- captured output (tail) ---\n${output.slice(-4000)}`);
-    process.exit(0);
-  }
-  console.error(`\ne2e-existing FAILED at: ${step}`);
+  console.error(`\ne2e-existing FAILED at: ${step} (${UPSTREAM_STEPS.includes(step) ? 'upstream: create-nx-workspace' : 'ours'})`);
   if (detail) console.error(`  ${detail}`);
   if (output) console.error(`\n--- captured output (tail) ---\n${output.slice(-4000)}`);
   console.error(`\ncompleted steps: ${steps.join(' → ') || '(none)'}`);
