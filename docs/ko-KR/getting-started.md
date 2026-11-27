@@ -75,9 +75,6 @@ git add package.json <lockfile> && git commit -m "chore: add @clearlydev/nx-arch
 > [!NOTE]
 > Yarn 4는 배포된 지 하루가 안 된 패키지 버전을 받지 않아요(`npmMinimalAgeGate`, 기본 1440분). 그래서 새 버전이 나온 뒤 24시간 동안은 yarn이 그 버전을 찾지 못해요. `yarn dlx create-nx-archweave`도, yarn 워크스페이스 안의 플러그인 설치도 마찬가지예요. 하루 기다리거나, 그 실행에만 `YARN_NPM_MINIMAL_AGE_GATE=0`을 주세요.
 
-> [!WARNING]
-> **Windows: yarn으로 다른 드라이브에 워크스페이스를 만들면 실패해요.** Windows에서 yarn(1 또는 4)을 쓸 때, 워크스페이스를 만드는 폴더가 임시 폴더(`%TEMP%`, 보통 `C:`)와 다른 드라이브에 있으면(예: `D:\projects`) `spawnSync C:\Windows\system32\cmd.exe ENOENT`로 실패해요. Nx의 버그라서 `create-nx-workspace`만 실행해도 똑같이 실패해요([nrwl/nx#37991](https://github.com/nrwl/nx/issues/37991)). 고쳐질 때까지는 `%TEMP%`와 같은 드라이브에 만들거나, npm·pnpm·bun을 쓰세요.
-
 ### bun
 
 - bun은 신뢰 목록에 없는 의존성의 설치 스크립트를 알리지 않고 막아요.
@@ -161,7 +158,7 @@ CLI는 실행할 단계를 먼저 출력한 뒤, 고른 패키지 매니저로 �
 npm이면 명령은 다음과 같아요.
 
 ```bash
-npx -y create-nx-workspace@24.0.1 my-app \
+npx -y create-nx-workspace@24.1.0 my-app \
   --preset=empty --pm=npm --nxCloud=skip --skipGitHubPush --interactive=false
 npm exec nx -- add @nx/react
 npm exec nx -- g @nx/react:app apps/web --bundler=vite --linter=eslint \
@@ -175,7 +172,7 @@ npm exec nx -- g @clearlydev/nx-archweave:init \
 pnpm이면 3번째와 5번째 단계에 위 npm 명령과 같은 플래그가 붙어요.
 
 ```bash
-pnpm dlx create-nx-workspace@24.0.1 my-app \
+pnpm dlx create-nx-workspace@24.1.0 my-app \
   --preset=empty --pm=pnpm --nxCloud=skip --skipGitHubPush --interactive=false
 pnpm nx add @nx/react
 pnpm nx g @nx/react:app apps/web …

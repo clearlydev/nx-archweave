@@ -91,7 +91,7 @@ export const DEFAULT_PLUGIN_SOURCE = `@clearlydev/nx-archweave@^${CLI_VERSION}`;
 /** The CLI pins the exact create-nx-workspace version its own E2E gate validated. Every
  * path is a preset, so this pins the workspace's nx too. Bumping this constant is done
  * together with a green `node tools/e2e-create.mjs` run for both PMs. */
-export const VALIDATED_CREATE_NX_WORKSPACE_VERSION = '24.0.1';
+export const VALIDATED_CREATE_NX_WORKSPACE_VERSION = '24.1.0';
 
 
 /** `nx` through the workspace's own manager. npm never gets a bare `nx` (its exec needs `--`). */

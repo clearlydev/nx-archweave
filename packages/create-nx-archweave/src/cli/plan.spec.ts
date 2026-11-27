@@ -30,7 +30,7 @@ describe('buildPlan', () => {
         command: 'pnpm',
         args: [
           'dlx',
-          'create-nx-workspace@24.0.1',
+          'create-nx-workspace@24.1.0',
           'my-app',
           '--preset=empty',
           '--aiAgents=claude',
@@ -111,7 +111,7 @@ describe('buildPlan', () => {
     const plan = buildPlan({ ...baseInput, frontend: 'next' });
     expect(plan.steps[0].args).toEqual([
       'dlx',
-      'create-nx-workspace@24.0.1',
+      'create-nx-workspace@24.1.0',
       'my-app',
       '--preset=next',
       '--appName=web',
@@ -554,7 +554,7 @@ describe('buildPlan — validated create-nx-workspace pin (E2E CI finding)', () 
       const plan = buildPlan({ name: 'my-app', preset: 'solo', frontend: 'react-vite', backend: 'none', locale: 'en', aiHosts: ['claude-code'], packageManager });
       const step = plan.steps.find((s) => s.id === 'create-workspace');
       const spec = step?.args.find((a) => a.startsWith('create-nx-workspace@'));
-      expect(spec).toBe('create-nx-workspace@24.0.1');
+      expect(spec).toBe('create-nx-workspace@24.1.0');
     }
   });
 

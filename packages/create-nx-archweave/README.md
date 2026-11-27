@@ -62,14 +62,14 @@ Here are the steps for npm and pnpm.
 
 ```bash
 # npm
-npx -y create-nx-workspace@24.0.1 <name> \
+npx -y create-nx-workspace@24.1.0 <name> \
   --preset=empty --pm=npm --nxCloud=skip --skipGitHubPush --interactive=false
 npm exec nx -- add @nx/react
 npm exec nx -- g @nx/react:app apps/web --bundler=vite --linter=eslint \
   --style=css --unitTestRunner=vitest --e2eTestRunner=none --routing=false
 
 # pnpm
-pnpm dlx create-nx-workspace@24.0.1 <name> \
+pnpm dlx create-nx-workspace@24.1.0 <name> \
   --preset=empty --pm=pnpm --nxCloud=skip --skipGitHubPush --interactive=false
 pnpm nx add @nx/react
 pnpm nx g @nx/react:app apps/web …   (same flags)
