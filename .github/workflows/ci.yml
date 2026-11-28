@@ -216,7 +216,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: P01, tool: cnw, version: 24.0.6, pm: yarn, yarn: berry, drive: D }
+          - { id: P01, tool: cnw, version: 24.1.0, pm: yarn, yarn: berry, drive: D }
           - { id: P02, tool: cnw, version: 24.0.6, pm: yarn, yarn: berry, drive: C }
           - { id: P03, tool: cnw, version: 24.0.1, pm: yarn, yarn: berry, drive: D }
           - { id: P04, tool: archweave, version: 0.5.0, pm: yarn, yarn: berry, drive: D }
@@ -224,7 +224,7 @@ jobs:
           - { id: P06, tool: cnw, version: 24.0.6, pm: npm, drive: D }
           - { id: P07, tool: cnw, version: 24.0.6, pm: pnpm, drive: D }
           - { id: P08, tool: cnw, version: 24.0.6, pm: bun, drive: D }
-          - { id: P09, tool: cnw, version: 24.0.6, pm: yarn, yarn: classic, drive: D }
+          - { id: P09, tool: cnw, version: 24.1.0, pm: yarn, yarn: classic, drive: D }
           - { id: P10, tool: cnw, version: 24.0.6, pm: yarn, yarn: berry, drive: D, fix: true }
           - { id: P11, tool: cnw, version: next, pm: yarn, yarn: berry, drive: D }
           - { id: P12, tool: cnw, version: canary, pm: yarn, yarn: berry, drive: D }
